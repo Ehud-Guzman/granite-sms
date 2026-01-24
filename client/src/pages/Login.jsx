@@ -13,13 +13,7 @@ const DEMO_PASSWORD = "Demo@123";
 
 // ✅ Single SYSTEM_ADMIN only (platform owner)
 const DEMO_ACCOUNTS = [
-  {
-    key: "sysadmin",
-    label: "System Admin",
-    note: "Platform owner (single account)",
-    email: "nyamuehud@gmail.com",
-    password: "Ehudmwai2000."
-  },
+
   {
     key: "admin",
     label: "School Admin",

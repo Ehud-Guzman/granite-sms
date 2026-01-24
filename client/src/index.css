@@ -1,0 +1,459 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- Base ---------- */
+html, body, #root { height: 100%; }
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: var(--brand-secondary-hsl);
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: var(--brand-primary-hsl);
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+
+    --ring: var(--brand-secondary-hsl);
+    --radius: 0.5rem;
+
+    /* ---------- Branding (defaults) ---------- */
+    --brand-primary: #111827;
+    --brand-secondary: #2563eb;
+
+    /* HSL equivalents (must be set for theming tokens) */
+    --brand-primary-hsl: 222 47% 11%;
+    --brand-secondary-hsl: 221 83% 53%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+}
+
+/* =========================================================
+   PRINT ENGINE (ONE STRATEGY)
+   We print ONE target by setting:
+     document.documentElement.dataset.printing = "print-..."
+   ========================================================= */
+
+.print-only { display: none; }
+
+/* Multi-line support */
+.print-letterhead__headerText,
+.print-footer {
+  white-space: pre-line;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @media print {
+  .print-meta {
+    font-size: 10.5px;
+    color: #555;
+  }
+}
+
+
+  /* hide UI helpers */
+  .no-print { display: none !important; }
+
+  /* hide everything by default */
+  body * { visibility: hidden !important; }
+
+  /* print-only blocks visible in print */
+  .print-only { display: block !important; }
+
+  /* =========================
+     WHITELIST TARGETS — FEES
+     ========================= */
+
+  html[data-printing="print-fees-receipt"] #print-fees-receipt,
+  html[data-printing="print-fees-receipt"] #print-fees-receipt * {
+    visibility: visible !important;
+  }
+
+  html[data-printing="print-fees-summary"] #print-fees-summary,
+  html[data-printing="print-fees-summary"] #print-fees-summary * {
+    visibility: visible !important;
+  }
+
+  html[data-printing="print-fees-defaulters"] #print-fees-defaulters,
+  html[data-printing="print-fees-defaulters"] #print-fees-defaulters * {
+    visibility: visible !important;
+  }
+
+  html[data-printing="print-fees-collections"] #print-fees-collections,
+  html[data-printing="print-fees-collections"] #print-fees-collections * {
+    visibility: visible !important;
+  }
+
+  /* =========================
+     WHITELIST TARGETS — ACADEMIC
+     ========================= */
+
+  html[data-printing="print-class-results"] #print-class-results,
+  html[data-printing="print-class-results"] #print-class-results * {
+    visibility: visible !important;
+  }
+
+  html[data-printing="print-student-slip"] #print-student-slip,
+  html[data-printing="print-student-slip"] #print-student-slip * {
+    visibility: visible !important;
+  }
+
+  html[data-printing="print-class-performance"] #print-class-performance,
+  html[data-printing="print-class-performance"] #print-class-performance * {
+    visibility: visible !important;
+  }
+
+  /* =========================
+     Anchor active print blocks
+     ========================= */
+  #print-fees-receipt,
+  #print-fees-summary,
+  #print-fees-defaulters,
+  #print-fees-collections,
+  #print-class-results,
+  #print-student-slip,
+  #print-class-performance {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+  }
+
+  /* =========================
+     PRINT DOCUMENT (GLOBAL)
+     ========================= */
+
+  .print-doc {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(297mm - 24mm); /* A4 height minus @page top+bottom margin */
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    color: #111;
+    background: #fff;
+  }
+
+  .print-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    margin-top: 2px;
+  }
+
+  /* ✅ THIS is the missing piece that makes mt-auto work */
+  .print-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+  }
+
+  .print-muted {
+    color: #888 !important;
+    font-size: 10px !important;
+    font-weight: 500 !important;
+  }
+
+  /* safer tables */
+  table.print-table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+  table.print-table th,
+  table.print-table td {
+    border: 1px solid #ddd !important;
+    padding: 6px !important;
+  }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+
+  /* let scroll containers print fully */
+  .overflow-auto { overflow: visible !important; }
+
+  /* extra safety for Tailwind max-height utilities used in reports */
+  .max-h-\[520px\] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* remove heavy UI shadows on paper */
+  .shadow,
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg {
+    box-shadow: none !important;
+  }
+
+  /* Tighten paper density */
+  .print-doc table { font-size: 11px; }
+  .print-doc th,
+  .print-doc td { padding: 4px 6px !important; }
+
+  /* =========================
+     PRINT LETTERHEAD (V2)
+     Clean + sharp + minimal
+     ========================= */
+
+  .print-letterhead {
+    text-align: center;
+    margin-bottom: 8px;
+    
+  }
+
+  .print-letterhead__logoWrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+
+  .print-letterhead__logo {
+    height: 52px;
+    width: auto;
+    object-fit: contain;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: pixelated; 
+    image-rendering: crisp-edges;
+  }
+
+  .print-letterhead__schoolName {
+    font-size: 16.5px;
+    font-weight: 900;
+    letter-spacing: 0.25px;
+    line-height: 1.1;
+  }
+
+  .print-letterhead__headerText {
+    margin-top: 3px;
+    font-size: 10.5px;
+    color: #444;
+    line-height: 1.3;
+  }
+
+  .print-letterhead__rule {
+    margin: 8px 0 10px;
+    height: 1px;
+    background: #ddd;
+  }
+
+  /* =========================
+     PRINT FOOTER
+     ========================= */
+
+  .print-footer {
+    margin-top: 12px;
+    text-align: center;
+    font-size: 10px;
+    color: #666;
+  }
+}
+
+/* =========================
+   FEES RECEIPT (A4 PREMIUM)
+   ========================= */
+
+#print-fees-receipt .fees-a4 {
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  color: #111;
+  background: #fff;
+}
+
+#print-fees-receipt .fees-a4__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+#print-fees-receipt .fees-a4__schoolName {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+}
+
+#print-fees-receipt .fees-a4__schoolMeta {
+  margin-top: 4px;
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+  color: #333;
+}
+
+#print-fees-receipt .fees-a4__titleBox {
+  text-align: right;
+  min-width: 220px;
+}
+
+#print-fees-receipt .fees-a4__title {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+}
+
+#print-fees-receipt .fees-a4__titleSub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #333;
+}
+
+#print-fees-receipt .fees-a4__rule {
+  margin: 12px 0;
+  height: 1px;
+  background: #ddd;
+}
+
+#print-fees-receipt .fees-a4__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+#print-fees-receipt .fees-a4__box {
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+#print-fees-receipt .fees-a4__boxTitle {
+  font-size: 11px;
+  font-weight: 800;
+  color: #222;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#print-fees-receipt .fees-a4__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px dashed #eee;
+}
+
+#print-fees-receipt .fees-a4__row span {
+  color: #444;
+}
+
+#print-fees-receipt .fees-a4__row b {
+  color: #111;
+  font-weight: 800;
+  text-align: right;
+}
+
+#print-fees-receipt .fees-a4__amount {
+  margin: 14px 0;
+  border: 1px solid #111;
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+
+#print-fees-receipt .fees-a4__amountLabel {
+  font-size: 11px;
+  color: #333;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  font-weight: 800;
+}
+
+#print-fees-receipt .fees-a4__amountValue {
+  margin-top: 6px;
+  font-size: 26px;
+  font-weight: 1000;
+  letter-spacing: 0.2px;
+}
+
+#print-fees-receipt .fees-a4__totals {
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+#print-fees-receipt .fees-a4__totalsRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+#print-fees-receipt .fees-a4__totalsRow--strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+#print-fees-receipt .fees-a4__footer {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+#print-fees-receipt .fees-a4__sigLine {
+  height: 1px;
+  background: #111;
+  margin-top: 24px;
+}
+
+#print-fees-receipt .fees-a4__sigLabel {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #222;
+  font-weight: 700;
+}
+
+#print-fees-receipt .fees-a4__note {
+  margin-top: 14px;
+  font-size: 10.5px;
+  color: #444;
+}

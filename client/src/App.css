@@ -1,0 +1,24 @@
+/* ---------------------------
+   Global App Base (App.css)
+   - NO print logic here
+---------------------------- */
+
+#root {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  text-decoration: none;
+}

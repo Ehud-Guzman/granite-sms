@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Frontend build
+client/dist
+client/dist-ssr
+
+# Backend (if any build output later)
+server/dist
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS / Editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

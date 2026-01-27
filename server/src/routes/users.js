@@ -237,18 +237,16 @@ router.post(
         select: safeUserSelect(),
       });
 
-      await logAudit({
-        req,
-        ...actorCtx(req),
-        schoolId,
-        action: "USER_CREATED",
-        targetType: "USER",
-        targetId: user.id,
-        metadata: {
-          role,
-          generatedPassword,
-        },
-      });
+   await logAudit(req, {
+  action: "USER_CREATED",
+  targetType: "USER",
+  targetId: user.id,
+  metadata: {
+    schoolId,
+    role,
+    generatedPassword,
+  },
+});
 
       return res.status(201).json({
         user,
@@ -334,27 +332,18 @@ router.patch("/:id", async (req, res) => {
 
     const action = changed.role ? "USER_ROLE_CHANGED" : "USER_UPDATED";
 
-    await logAudit({
-      req,
-      ...actorCtx(req),
-      schoolId: updated.schoolId,
-      action,
-      targetType: "USER",
-      targetId: updated.id,
-      metadata: {
-        changed,
-        from: {
-          email: target.email,
-          role: target.role,
-          schoolId: target.schoolId,
-        },
-        to: {
-          email: updated.email,
-          role: updated.role,
-          schoolId: updated.schoolId,
-        },
-      },
-    });
+await logAudit(req, {
+  action,
+  targetType: "USER",
+  targetId: updated.id,
+  metadata: {
+    schoolId: updated.schoolId,
+    changed,
+    from: { email: target.email, role: target.role, schoolId: target.schoolId },
+    to: { email: updated.email, role: updated.role, schoolId: updated.schoolId },
+  },
+});
+
 
     return res.json({ user: updated });
   } catch (err) {
@@ -397,15 +386,13 @@ router.post("/:id/status", async (req, res) => {
       select: safeUserSelect(),
     });
 
-    await logAudit({
-      req,
-      ...actorCtx(req),
-      schoolId: updated.schoolId,
-      action: isActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
-      targetType: "USER",
-      targetId: updated.id,
-      metadata: { from: target.isActive, to: isActive },
-    });
+  await logAudit(req, {
+  action: isActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+  targetType: "USER",
+  targetId: updated.id,
+  metadata: { schoolId: updated.schoolId, from: target.isActive, to: isActive },
+});
+
 
     return res.json({ user: updated });
   } catch (err) {
@@ -463,15 +450,13 @@ router.post("/:id/reset-password", async (req, res) => {
       },
     });
 
-    await logAudit({
-      req,
-      ...actorCtx(req),
-      schoolId: target.schoolId,
-      action: "PASSWORD_RESET",
-      targetType: "USER",
-      targetId: target.id,
-      metadata: { generatedPassword },
-    });
+   await logAudit(req, {
+  action: "PASSWORD_RESET",
+  targetType: "USER",
+  targetId: target.id,
+  metadata: { schoolId: target.schoolId, generatedPassword },
+});
+
 
     return res.json({
       ok: true,

@@ -1,11 +1,12 @@
 // client/src/pages/SettingsPage.jsx
 import { useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useMe } from "@/hooks/useMe";
 import { capsFor } from "@/config/capabilities";
@@ -24,19 +25,18 @@ import BrandingPrintTab from "@/features/settings/branding/BrandingPrintTab.jsx"
 const ALL_TABS = [
   { key: "general", label: "General" },
   { key: "schools", label: "Schools" },
-  { key: "users", label: "Users & Roles" },
+  { key: "users", label: "Users" },
   { key: "security", label: "Security" },
-  { key: "subs", label: "Subscriptions & Limits" },
-  { key: "backup", label: "Backups & Restore" },
-  { key: "logs", label: "Logs & Monitoring" },
-  { key: "branding", label: "Branding & Print" },
+  { key: "subs", label: "Subscriptions" },
+  { key: "backup", label: "Backups" },
+  { key: "logs", label: "Logs" },
+  { key: "branding", label: "Branding" },
 ];
 
-// Policy: tabs that are platform-only (SYSTEM_ADMIN-only)
+// Tabs that are platform-only (SYSTEM_ADMIN-only)
 const SYSTEM_ONLY = new Set(["schools", "backup", "subs"]);
 
-// Optional: tabs that require tenant scope for SYSTEM_ADMIN (selected school)
-// In your backend, many settings endpoints require x-school-id; this prevents 403 spam.
+// Tabs that require tenant scope for SYSTEM_ADMIN (selected school)
 const TENANT_SCOPE_REQUIRED_FOR_SYSADMIN = new Set([
   "users",
   "security",
@@ -47,19 +47,20 @@ const TENANT_SCOPE_REQUIRED_FOR_SYSADMIN = new Set([
   "general",
 ]);
 
-function ForbiddenNotice({ title, text }) {
+function Notice({ title, text, actions = null }) {
   return (
-    <div className="rounded-md border bg-muted/30 p-3 text-sm">
-      <div className="font-medium">{title}</div>
-      <div className="mt-1 text-muted-foreground">{text}</div>
+    <div className="rounded-md border bg-muted/20 p-3 text-sm">
+      <div className="font-medium mb-1">{title}</div>
+      <div className="text-muted-foreground">{text}</div>
+      {actions && <div className="mt-2 flex gap-2">{actions}</div>}
     </div>
   );
 }
 
 function getTabPolicy(tabKey, caps, ctx) {
-  const { role, isSystemAdmin, hasSelectedSchool } = ctx;
+  const { isSystemAdmin, hasSelectedSchool } = ctx;
 
-  // Base allow by capability (your existing model)
+  // Capability allow rules
   const capAllowed = (() => {
     switch (tabKey) {
       case "schools":
@@ -75,14 +76,12 @@ function getTabPolicy(tabKey, caps, ctx) {
     }
   })();
 
-  // If capability says no → locked
   if (!capAllowed) {
-    // Friendly reason based on policy
     if (SYSTEM_ONLY.has(tabKey)) {
       return {
         canAccess: false,
         reason: "SYSTEM_ADMIN only",
-        hint: "Only the platform owner can access this.",
+        hint: "Only the platform owner can access this section.",
       };
     }
     return {
@@ -92,8 +91,7 @@ function getTabPolicy(tabKey, caps, ctx) {
     };
   }
 
-  // SYSTEM_ADMIN: require selected school for tenant-scoped settings
-  // (But allow “Schools” tab to still work without selection if your backend supports platform listing)
+  // SYSTEM_ADMIN needs selected school for tenant-scoped tabs
   if (
     isSystemAdmin &&
     !hasSelectedSchool &&
@@ -103,16 +101,17 @@ function getTabPolicy(tabKey, caps, ctx) {
     return {
       canAccess: false,
       reason: "Select a school first",
-      hint: "Pick a school context to manage tenant settings (x-school-id required).",
+      hint: "Pick a school context to manage tenant settings.",
     };
   }
 
-  // Otherwise allowed
   return { canAccess: true, reason: null, hint: null };
 }
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const meQ = useMe();
+
   const role = String(meQ.data?.user?.role || "").toUpperCase() || "STUDENT";
   const caps = capsFor(role);
 
@@ -121,14 +120,14 @@ export default function SettingsPage() {
   const hasSelectedSchool = !!selectedSchool?.id;
 
   const ctx = useMemo(
-    () => ({ role, isSystemAdmin, hasSelectedSchool }),
-    [role, isSystemAdmin, hasSelectedSchool]
+    () => ({ isSystemAdmin, hasSelectedSchool }),
+    [isSystemAdmin, hasSelectedSchool]
   );
 
   const [sp, setSp] = useSearchParams();
   const rawTab = sp.get("tab") || "";
 
-  // Tabs with access policy (we DO NOT hide them anymore)
+  // Build tab list with policies
   const tabList = useMemo(() => {
     return ALL_TABS.map((t) => {
       const policy = getTabPolicy(t.key, caps, ctx);
@@ -136,19 +135,18 @@ export default function SettingsPage() {
     });
   }, [caps, ctx]);
 
-  // Default tab choice: first allowed tab (fallback to general)
+  // Default tab: first allowed, else general
   const defaultTab = useMemo(() => {
     const firstAllowed = tabList.find((t) => t.canAccess);
     return firstAllowed?.key || "general";
   }, [tabList]);
 
   const effectiveTab = useMemo(() => {
-    // if URL tab exists (even if locked), keep it for debugging transparency
     if (rawTab && ALL_TABS.some((t) => t.key === rawTab)) return rawTab;
     return defaultTab;
   }, [rawTab, defaultTab]);
 
-  // Keep URL synced only if tab is invalid (not in ALL_TABS)
+  // Keep URL synced on first load
   useEffect(() => {
     if (!rawTab) {
       setSp({ tab: effectiveTab }, { replace: true });
@@ -162,111 +160,132 @@ export default function SettingsPage() {
 
   const tabLabel = currentTab?.label || "Settings";
 
+  function renderScopeNoticeIfNeeded() {
+    if (!isSystemAdmin) return null;
+    if (hasSelectedSchool) return null;
+
+    return (
+      <Notice
+        title="Platform mode active"
+        text="You're currently not scoped to a school. Tenant settings require a selected school."
+        actions={
+          <>
+            <Button size="sm" onClick={() => navigate("/select-school")}>
+              Select school
+            </Button>
+          </>
+        }
+      />
+    );
+  }
+
   const renderTab = () => {
-    // Hard-guard: locked tabs render a useful message (no silent redirect)
     if (!currentTab?.canAccess) {
-      const reason = currentTab?.reason || "Locked";
-      const hint = currentTab?.hint || "You do not have access to this section.";
-      return <ForbiddenNotice title={reason} text={hint} />;
+      return (
+        <div className="py-8 text-center">
+          <div className="text-lg font-medium mb-2">{currentTab?.reason || "Locked"}</div>
+          <div className="text-muted-foreground max-w-md mx-auto">
+            {currentTab?.hint || "You do not have access to this section."}
+          </div>
+          {isSystemAdmin && !hasSelectedSchool && currentTab?.reason === "Select a school first" && (
+            <Button className="mt-4" onClick={() => navigate("/select-school")}>
+              Select School
+            </Button>
+          )}
+        </div>
+      );
     }
 
     switch (effectiveTab) {
       case "general":
         return <GeneralSettingsTab />;
-
       case "schools":
         return <SchoolsSettingsTab />;
-
       case "users":
         return <UsersSettingsTab />;
-
       case "security":
         return <SecuritySettingsTab />;
-
       case "subs":
         return <SubscriptionLimitsTab />;
-
       case "backup":
         return <BackupsRestoreTab />;
-
       case "logs":
         return <AuditLogsTab />;
-
       case "branding":
         return <BrandingPrintTab />;
-
       default:
-        return (
-          <div className="text-sm text-muted-foreground">
-            Unknown tab. Pick one above.
-          </div>
-        );
+        return <div className="text-sm text-muted-foreground">Select a tab above.</div>;
     }
   };
 
-  if (!meQ.isLoading && tabList.length === 0) {
+  if (meQ.isLoading) {
     return (
-      <div className="p-4 md:p-6">
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Your role does not have access to settings.
-        </p>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-muted-foreground">Loading settings...</div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <div className="flex items-start justify-between gap-2">
+    <div className="p-4 md:p-6 space-y-6">
+      <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Control plane for governance, tenant management, and operational visibility.
+          <p className="text-muted-foreground mt-1">
+            System configuration and management
           </p>
         </div>
-
-        <div className="flex flex-col items-end gap-1">
-          <Badge variant="secondary" className="uppercase text-[10px]">
+        
+        <div className="flex items-center gap-2">
+          {isSystemAdmin && (
+            <div className="text-sm text-muted-foreground">
+              {hasSelectedSchool ? (
+                <span className="font-medium">{selectedSchool?.name || selectedSchool?.id}</span>
+              ) : (
+                "Platform"
+              )}
+            </div>
+          )}
+          <Badge variant="outline" className="font-normal">
             {role}
           </Badge>
-
-          {isSystemAdmin ? (
-            <div className="text-[11px] text-muted-foreground">
-              Scope:{" "}
-              <span className="font-medium text-foreground">
-                {hasSelectedSchool ? selectedSchool?.name || selectedSchool?.id : "Platform (no school selected)"}
-              </span>
-            </div>
-          ) : null}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {tabList.map((t) => {
-          const locked = !t.canAccess;
-          return (
-            <Button
-              key={t.key}
-              size="sm"
-              variant={effectiveTab === t.key ? "default" : "outline"}
-              onClick={() => setSp({ tab: t.key })}
-              disabled={locked}
-              title={locked ? `${t.reason}: ${t.hint}` : ""}
-              className={locked ? "opacity-70 cursor-not-allowed" : ""}
-            >
-              {t.label}
-            </Button>
-          );
-        })}
-      </div>
+      {renderScopeNoticeIfNeeded()}
 
-      <Separator />
+      <Tabs value={effectiveTab} onValueChange={(value) => setSp({ tab: value })}>
+        <div className="overflow-x-auto pb-2">
+          <TabsList className="inline-flex">
+            {tabList.map((t) => (
+              <TabsTrigger
+                key={t.key}
+                value={t.key}
+                disabled={!t.canAccess}
+                className="relative"
+              >
+                {t.label}
+                {!t.canAccess && (
+                  <span className="ml-1.5 opacity-60">🔒</span>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+      </Tabs>
 
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">{tabLabel}</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">{tabLabel}</CardTitle>
+          {currentTab?.hint && currentTab.canAccess && (
+            <CardDescription className="text-sm">
+              {currentTab.hint}
+            </CardDescription>
+          )}
         </CardHeader>
-        <CardContent>{renderTab()}</CardContent>
+        <CardContent>
+          {renderTab()}
+        </CardContent>
       </Card>
     </div>
   );

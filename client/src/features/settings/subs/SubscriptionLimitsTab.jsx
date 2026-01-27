@@ -21,13 +21,16 @@ function remainingLabel(rem) {
 function fmtDate(d) {
   if (!d) return "—";
   try {
-    return new Date(d).toLocaleString();
+    return new Date(d).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    });
   } catch {
     return String(d);
   }
 }
 
-// For <input type="datetime-local">: needs "YYYY-MM-DDTHH:mm"
 function toDateTimeLocalValue(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -47,8 +50,48 @@ function buildSchoolHeaders({ isSystemAdmin, schoolId }) {
   return undefined;
 }
 
-// IMPORTANT: match your Prisma enum
 const STATUS_OPTIONS = ["TRIAL", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"];
+
+const ENTITLEMENTS = [
+  { key: "EXAMS_READ", group: "Academics", desc: "View exams module" },
+  { key: "EXAMS_WRITE", group: "Academics", desc: "Create/edit exams and marks" },
+  { key: "RESULTS_READ", group: "Academics", desc: "View results" },
+  { key: "RESULTS_WRITE", group: "Academics", desc: "Publish/edit results" },
+  { key: "STUDENTS_READ", group: "School Data", desc: "View students" },
+  { key: "STUDENTS_WRITE", group: "School Data", desc: "Create/edit students" },
+  { key: "CLASSES_READ", group: "School Data", desc: "View classes" },
+  { key: "CLASSES_WRITE", group: "School Data", desc: "Create/edit classes" },
+  { key: "TEACHERS_READ", group: "School Data", desc: "View teachers" },
+  { key: "TEACHERS_WRITE", group: "School Data", desc: "Create/edit teachers" },
+  { key: "ATTENDANCE_READ", group: "Attendance", desc: "View attendance" },
+  { key: "ATTENDANCE_WRITE", group: "Attendance", desc: "Take/modify attendance" },
+  { key: "FEES_READ", group: "Finance", desc: "View fees" },
+  { key: "FEES_WRITE", group: "Finance", desc: "Post payments, invoices" },
+  { key: "FEES_REFUND", group: "Finance", desc: "Reverse/refund payments" },
+  { key: "REPORTS_READ", group: "Reports", desc: "View reports" },
+  { key: "REPORTS_EXPORT", group: "Reports", desc: "Export/print reports" },
+  { key: "USERS_MANAGE", group: "Admin", desc: "Create/manage users" },
+  { key: "AUDIT_LOG_READ", group: "Ops", desc: "View audit logs" },
+  { key: "BACKUPS_RESTORE", group: "Ops", desc: "Backups and restore" },
+];
+
+const PLAN_PRESETS = {
+  FREE: ["EXAMS_READ", "RESULTS_READ"],
+  BASIC: ["EXAMS_READ", "RESULTS_READ", "ATTENDANCE_READ", "FEES_READ"],
+  PRO: [
+    "EXAMS_READ",
+    "EXAMS_WRITE",
+    "RESULTS_READ",
+    "RESULTS_WRITE",
+    "ATTENDANCE_READ",
+    "ATTENDANCE_WRITE",
+    "FEES_READ",
+    "FEES_WRITE",
+    "REPORTS_READ",
+    "REPORTS_EXPORT",
+  ],
+  ENTERPRISE: ENTITLEMENTS.map((x) => x.key),
+};
 
 async function fetchSubscriptionOverview({ schoolId, isSystemAdmin }) {
   const headers = buildSchoolHeaders({ isSystemAdmin, schoolId });
@@ -78,27 +121,120 @@ async function patchEntitlements({ schoolId, isSystemAdmin, entitlements }) {
   return data;
 }
 
+function ProgressBar({ percent }) {
+  if (percent == null) return null;
+  const p = Math.max(0, Math.min(100, Number(percent) || 0));
+  return (
+    <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+      <div className="h-full bg-primary transition-all" style={{ width: `${p}%` }} />
+    </div>
+  );
+}
+
+function severityFrom({ percent, atLimit }) {
+  const p = percent == null ? null : Number(percent);
+  if (atLimit) return "danger";
+  if (p != null && p >= 90) return "danger";
+  if (p != null && p >= 80) return "warn";
+  return "ok";
+}
+
+function badgeForSeverity(sev) {
+  return sev === "danger" ? "destructive" : sev === "warn" ? "secondary" : "outline";
+}
+
+function UsageCard({ title, used, cap, remaining, percent, atLimit }) {
+  const sev = severityFrom({ percent, atLimit });
+  const badgeVariant = badgeForSeverity(sev);
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium">{title}</div>
+          <Badge variant={badgeVariant} className="text-xs">
+            {cap === null ? "Unlimited" : `${used}/${cap}`}
+          </Badge>
+        </div>
+
+        <div className="text-2xl font-semibold">{used ?? 0}</div>
+
+        <div className="text-sm">
+          <div className="text-muted-foreground">Cap: {capLabel(cap)}</div>
+          <div className="text-muted-foreground">Remaining: {remainingLabel(remaining)}</div>
+        </div>
+
+        <ProgressBar percent={percent} />
+
+        {sev !== "ok" && (
+          <div className="text-xs text-muted-foreground">
+            {sev === "danger"
+              ? "At or near limit — new records may be blocked"
+              : "Approaching limit"}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function UpgradePressureCard({ isSystemAdmin, flags, percent, atLimit, sub }) {
+  if (isSystemAdmin) return null;
+
+  const canWrite = !!flags?.canWrite;
+  const isExpired = !!flags?.isExpired;
+
+  if (canWrite && !isExpired) return null;
+
+  const headline = !canWrite || isExpired
+    ? "Subscription is blocking changes"
+    : "You've hit or are about to hit a limit";
+
+  const msg = !canWrite || isExpired
+    ? "Creating new records may be blocked until the subscription is active again."
+    : "Some creates may fail. Consider upgrading to avoid interruptions.";
+
+  return (
+    <Card className="border-destructive/20">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="font-medium">{headline}</div>
+          <Badge variant="destructive" className="text-xs">
+            {String(sub?.planCode || "-").toUpperCase()}
+          </Badge>
+        </div>
+
+        <div className="text-sm text-muted-foreground">{msg}</div>
+
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => {
+              alert("Upgrade request sent.");
+            }}
+          >
+            Request Upgrade
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SubscriptionLimitsTab() {
   const meQ = useMe();
   const role = String(meQ?.data?.user?.role || "").toUpperCase();
   const isSystemAdmin = role === "SYSTEM_ADMIN";
 
   const LS_KEY = "sysadmin.schoolId";
-
-  // Committed schoolId (controls the query)
   const [schoolId, setSchoolId] = useState(() => localStorage.getItem(LS_KEY) || "");
-  // Draft input (typing here should never trigger fetch)
   const [schoolIdDraft, setSchoolIdDraft] = useState(() => localStorage.getItem(LS_KEY) || "");
 
   const canFetch = !isSystemAdmin || !!schoolId.trim();
 
   const q = useQuery({
     queryKey: ["settings-subscription-overview", isSystemAdmin ? schoolId.trim() : "TENANT"],
-    queryFn: () =>
-      fetchSubscriptionOverview({
-        schoolId: schoolId.trim(),
-        isSystemAdmin,
-      }),
+    queryFn: () => fetchSubscriptionOverview({ schoolId: schoolId.trim(), isSystemAdmin }),
     enabled: canFetch,
     retry: false,
   });
@@ -108,7 +244,6 @@ export default function SubscriptionLimitsTab() {
     if (!v) return;
     setSchoolId(v);
     localStorage.setItem(LS_KEY, v);
-    // Query key changed; refetch happens automatically, but this makes it feel instant.
     q.refetch();
   };
 
@@ -121,20 +256,16 @@ export default function SubscriptionLimitsTab() {
   const sub = q.data?.subscription || null;
   const usage = q.data?.usage || {};
   const remaining = q.data?.remaining || {};
+  const percent = q.data?.percent || {};
+  const atLimit = q.data?.atLimit || {};
   const flags = q.data?.flags || {};
-  const scope = q.data?.scope || (isSystemAdmin ? "SYSTEM_ADMIN" : "ADMIN");
 
   const status = String(sub?.status || "NONE").toUpperCase();
   const isExpired = !!flags.isExpired;
-
-  // Backend signal: whether subscription allows writes (usually ACTIVE/TRIAL and not expired)
   const canWrite = !!flags.canWrite;
 
-  // Split permission model (important)
-  const canEditMeta = isSystemAdmin; // plan/status/expiry should be fixable even if writes are blocked
+  const canEditMeta = isSystemAdmin;
   const canEditLimitsAndEntitlements = isSystemAdmin && canWrite;
-
-  const mode = canWrite ? "WRITE_ENABLED" : "READ_ONLY";
 
   const enabledEntitlements = useMemo(() => {
     const ent = sub?.entitlements && typeof sub.entitlements === "object" ? sub.entitlements : {};
@@ -144,23 +275,26 @@ export default function SubscriptionLimitsTab() {
       .sort();
   }, [sub]);
 
-  // -----------------------------
-  // SYSTEM_ADMIN edit state
-  // -----------------------------
   const [planDraft, setPlanDraft] = useState("");
   const [statusDraft, setStatusDraft] = useState("TRIAL");
-  const [expiryDraft, setExpiryDraft] = useState(""); // datetime-local
+  const [expiryDraft, setExpiryDraft] = useState("");
   const [limitsDraft, setLimitsDraft] = useState({
     STUDENTS_MAX: "",
     TEACHERS_MAX: "",
     CLASSES_MAX: "",
+    USERS_MAX: "",
   });
 
-  const [entDraft, setEntDraft] = useState({}); // key -> boolean
+  const [entDraft, setEntDraft] = useState({});
   const [newEntKey, setNewEntKey] = useState("");
-  const [newEntVal, setNewEntVal] = useState(true);
+  const [entSearch, setEntSearch] = useState("");
+  const [showEnabledOnly, setShowEnabledOnly] = useState(false);
 
-  // Sync drafts when data changes
+  const entMeta = useMemo(() => {
+    const map = new Map(ENTITLEMENTS.map((x) => [x.key, x]));
+    return map;
+  }, []);
+
   useEffect(() => {
     if (!sub) return;
 
@@ -168,18 +302,21 @@ export default function SubscriptionLimitsTab() {
     setStatusDraft(String(sub.status || "TRIAL").toUpperCase());
     setExpiryDraft(toDateTimeLocalValue(sub.currentPeriodEnd));
 
-    const currentLimitsObj =
-      sub?.limits && typeof sub.limits === "object" ? sub.limits : null;
+    const currentLimitsObj = sub?.limits && typeof sub.limits === "object" ? sub.limits : null;
 
-    // Prefer JSON limits if present; otherwise show legacy columns
     const studentsMax = currentLimitsObj?.STUDENTS_MAX ?? sub.maxStudents ?? "";
     const teachersMax = currentLimitsObj?.TEACHERS_MAX ?? sub.maxTeachers ?? "";
     const classesMax = currentLimitsObj?.CLASSES_MAX ?? sub.maxClasses ?? "";
+    const usersMax =
+      currentLimitsObj?.USERS_MAX ??
+      (Object.prototype.hasOwnProperty.call(sub || {}, "maxUsers") ? sub.maxUsers : "") ??
+      "";
 
     setLimitsDraft({
       STUDENTS_MAX: studentsMax === null ? "null" : String(studentsMax ?? ""),
       TEACHERS_MAX: teachersMax === null ? "null" : String(teachersMax ?? ""),
       CLASSES_MAX: classesMax === null ? "null" : String(classesMax ?? ""),
+      USERS_MAX: usersMax === null ? "null" : String(usersMax ?? ""),
     });
 
     const ent = sub?.entitlements && typeof sub.entitlements === "object" ? sub.entitlements : {};
@@ -191,6 +328,7 @@ export default function SubscriptionLimitsTab() {
     sub?.maxStudents,
     sub?.maxTeachers,
     sub?.maxClasses,
+    sub?.maxUsers,
     sub?.limits,
     sub?.entitlements,
   ]);
@@ -198,44 +336,23 @@ export default function SubscriptionLimitsTab() {
   const errMsg =
     q.isError ? q.error?.response?.data?.message || "Failed to load subscription overview." : null;
 
-  // -----------------------------
-  // Mutations
-  // -----------------------------
   const mPatchSub = useMutation({
-    mutationFn: (payload) =>
-      patchSubscription({
-        schoolId: schoolId.trim(),
-        isSystemAdmin,
-        payload,
-      }),
+    mutationFn: (payload) => patchSubscription({ schoolId: schoolId.trim(), isSystemAdmin, payload }),
     onSuccess: () => q.refetch(),
   });
 
   const mPatchLimits = useMutation({
-    mutationFn: (limits) =>
-      patchLimits({
-        schoolId: schoolId.trim(),
-        isSystemAdmin,
-        limits,
-      }),
+    mutationFn: (limits) => patchLimits({ schoolId: schoolId.trim(), isSystemAdmin, limits }),
     onSuccess: () => q.refetch(),
   });
 
   const mPatchEnt = useMutation({
     mutationFn: (entitlements) =>
-      patchEntitlements({
-        schoolId: schoolId.trim(),
-        isSystemAdmin,
-        entitlements,
-      }),
+      patchEntitlements({ schoolId: schoolId.trim(), isSystemAdmin, entitlements }),
     onSuccess: () => q.refetch(),
   });
 
   function parseLimitInput(v) {
-    // UI rules:
-    // - "null" => unlimited
-    // - "" => ignore (don’t send)
-    // - number >= 0 => send as int
     const s = String(v ?? "").trim();
     if (!s) return undefined;
     if (s.toLowerCase() === "null") return null;
@@ -248,15 +365,12 @@ export default function SubscriptionLimitsTab() {
     if (!canEditMeta) return;
 
     const payload = {};
-
     const p = String(planDraft || "").trim();
     if (p) payload.planCode = p.toUpperCase();
 
     const st = String(statusDraft || "").trim().toUpperCase();
     if (st) payload.status = st;
 
-    // expiry: allow clearing -> null
-    // only send if meta editable
     payload.currentPeriodEnd = expiryDraft ? new Date(expiryDraft).toISOString() : null;
 
     mPatchSub.mutate(payload);
@@ -266,7 +380,7 @@ export default function SubscriptionLimitsTab() {
     if (!canEditLimitsAndEntitlements) return;
 
     const next = {};
-    for (const key of ["STUDENTS_MAX", "TEACHERS_MAX", "CLASSES_MAX"]) {
+    for (const key of ["STUDENTS_MAX", "TEACHERS_MAX", "CLASSES_MAX", "USERS_MAX"]) {
       const parsed = parseLimitInput(limitsDraft[key]);
       if (parsed === "INVALID") {
         alert(`Invalid ${key}. Use a number >= 0, "null", or blank.`);
@@ -280,10 +394,7 @@ export default function SubscriptionLimitsTab() {
   }
 
   function toggleEntitlement(key) {
-    setEntDraft((prev) => ({
-      ...(prev || {}),
-      [key]: !prev?.[key],
-    }));
+    setEntDraft((prev) => ({ ...(prev || {}), [key]: !prev?.[key] }));
   }
 
   function addEntitlement() {
@@ -295,12 +406,8 @@ export default function SubscriptionLimitsTab() {
       return;
     }
 
-    setEntDraft((prev) => ({
-      ...(prev || {}),
-      [k]: !!newEntVal,
-    }));
+    setEntDraft((prev) => ({ ...(prev || {}), [k]: true }));
     setNewEntKey("");
-    setNewEntVal(true);
   }
 
   function saveEntitlements() {
@@ -308,58 +415,106 @@ export default function SubscriptionLimitsTab() {
     mPatchEnt.mutate(entDraft || {});
   }
 
-  // -----------------------------
-  // UI gates
-  // -----------------------------
-  if (meQ?.isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading…</div>;
+  const entKeys = useMemo(() => {
+    const inCatalog = ENTITLEMENTS.map((x) => x.key);
+    const inDb = Object.keys(entDraft || {});
+    return Array.from(new Set([...inCatalog, ...inDb])).sort();
+  }, [entDraft]);
+
+  const filteredEntKeys = useMemo(() => {
+    const q = String(entSearch || "").trim().toUpperCase();
+    return entKeys.filter((k) => {
+      const v = !!entDraft?.[k];
+      if (showEnabledOnly && !v) return false;
+      if (!q) return true;
+      const meta = entMeta.get(k);
+      const g = String(meta?.group || "OTHER").toUpperCase();
+      const d = String(meta?.desc || "").toUpperCase();
+      return k.includes(q) || g.includes(q) || d.includes(q);
+    });
+  }, [entKeys, entDraft, entSearch, showEnabledOnly, entMeta]);
+
+  const entGroups = useMemo(() => {
+    const groups = new Map();
+    for (const k of filteredEntKeys) {
+      const g = entMeta.get(k)?.group || "Other";
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(k);
+    }
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filteredEntKeys, entMeta]);
+
+  function setMany(keys, value) {
+    setEntDraft((prev) => {
+      const next = { ...(prev || {}) };
+      for (const k of keys) next[k] = !!value;
+      return next;
+    });
   }
 
-  // SYSTEM_ADMIN: no school selected -> show selector UI only
+  function clearAllCatalogKeys() {
+    setEntDraft((prev) => {
+      const next = { ...(prev || {}) };
+      for (const k of ENTITLEMENTS.map((x) => x.key)) next[k] = false;
+      return next;
+    });
+  }
+
+  function enableAllReads() {
+    const reads = entKeys.filter((k) => k.endsWith("_READ"));
+    setMany(reads, true);
+  }
+
+  function applyPreset(planCode) {
+    const p = String(planCode || "").trim().toUpperCase();
+    const keys = PLAN_PRESETS[p] || [];
+    setEntDraft((prev) => {
+      const next = { ...(prev || {}) };
+      for (const k of ENTITLEMENTS.map((x) => x.key)) next[k] = false;
+      for (const k of keys) next[k] = true;
+      return next;
+    });
+  }
+
+  if (meQ?.isLoading) return (
+    <div className="flex items-center justify-center min-h-[200px]">
+      <div className="text-muted-foreground">Loading...</div>
+    </div>
+  );
+
   if (isSystemAdmin && !schoolId.trim()) {
     return (
-      <div className="space-y-3 min-w-0">
-        <div className="flex items-center gap-2">
-          <div className="font-medium">Subscription & Limits</div>
-          <Badge variant="outline" className="text-[10px] uppercase">
-            SYSTEM_ADMIN
-          </Badge>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold">Subscription Management</h2>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="outline" className="font-normal">SYSTEM_ADMIN</Badge>
+          </div>
         </div>
 
         <Card>
-          <CardContent className="p-6 space-y-3">
-            <div className="text-sm text-muted-foreground">
-              Enter a <span className="font-medium">schoolId</span> then press{" "}
-              <span className="font-medium">Load</span>.
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                value={schoolIdDraft}
-                onChange={(e) => setSchoolIdDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitSchool();
-                }}
-                placeholder="Paste schoolId (cuid)"
-              />
-
-              <div className="flex gap-2">
-                <Button onClick={commitSchool} disabled={!String(schoolIdDraft || "").trim()}>
-                  Load
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={clearSchool}
-                  disabled={!String(schoolIdDraft || "").trim()}
-                >
-                  Clear
-                </Button>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-medium mb-2">Select a School</h3>
+                <p className="text-sm text-muted-foreground">
+                  Enter a school ID to manage its subscription and limits.
+                </p>
               </div>
-            </div>
 
-            <div className="text-xs text-muted-foreground">
-              Only loads when you click <span className="font-medium">Load</span> or press{" "}
-              <span className="font-medium">Enter</span>.
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  value={schoolIdDraft}
+                  onChange={(e) => setSchoolIdDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && commitSchool()}
+                  placeholder="School ID (cuid)"
+                />
+                <div className="flex gap-2">
+                  <Button onClick={commitSchool} disabled={!String(schoolIdDraft || "").trim()}>
+                    Load School
+                  </Button>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -367,413 +522,383 @@ export default function SubscriptionLimitsTab() {
     );
   }
 
-  if (q.isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading subscription…</div>;
-  }
+  if (q.isLoading) return (
+    <div className="flex items-center justify-center min-h-[200px]">
+      <div className="text-muted-foreground">Loading subscription data...</div>
+    </div>
+  );
 
   if (q.isError) {
     return (
-      <div className="text-sm text-destructive space-y-1">
-        <div>{errMsg}</div>
-        <div className="text-muted-foreground">
-          Backend required:{" "}
-          <span className="font-medium">GET /api/settings/subscription/overview</span>. For SYSTEM_ADMIN, ensure{" "}
-          <span className="font-medium">x-school-id</span> is sent.
-        </div>
+      <div className="space-y-4">
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-lg font-medium mb-2">Failed to load subscription</div>
+            <div className="text-muted-foreground mb-4">
+              {errMsg}
+            </div>
+            <div className="flex justify-center gap-2">
+              <Button variant="outline" onClick={() => q.refetch()}>
+                Try Again
+              </Button>
+              {isSystemAdmin && (
+                <Button onClick={clearSchool}>Change School</Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
+  const usedStudents = usage.studentsCount ?? 0;
+  const usedTeachers = usage.teachersCount ?? 0;
+  const usedClasses = usage.classesCount ?? 0;
+  const usedUsers = usage.usersCount ?? 0;
+
+  const capStudents = sub?.maxStudents ?? null;
+  const capTeachers = sub?.maxTeachers ?? null;
+  const capClasses = sub?.maxClasses ?? null;
+  const capUsers =
+    Object.prototype.hasOwnProperty.call(sub || {}, "maxUsers")
+      ? sub?.maxUsers ?? null
+      : (sub?.limits && typeof sub.limits === "object" ? sub.limits.USERS_MAX : null) ?? null;
+
+  const enabledCount = entKeys.filter((k) => !!entDraft?.[k]).length;
+  const totalCount = entKeys.length;
+
   return (
-    <div className="space-y-4 min-w-0">
-      {/* Header row */}
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <div className="font-medium">Subscription & Limits</div>
-
-          <Badge variant="secondary" className="text-[10px] uppercase">
-            {mode}
-          </Badge>
-
-          <Badge variant="outline" className="text-[10px] uppercase">
-            {scope}
-          </Badge>
-
-          {isSystemAdmin && schoolId ? (
-            <Badge variant="outline" className="text-[10px] uppercase">
-              SCHOOL: {schoolId}
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold">Subscription & Limits</h2>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant={canWrite ? "default" : "secondary"} className="font-normal">
+              {canWrite ? "Active" : "Read Only"}
             </Badge>
-          ) : null}
-
-          {isExpired ? (
-            <Badge variant="destructive" className="text-[10px] uppercase">
-              EXPIRED
+            <Badge variant="outline" className="font-normal">
+              {isSystemAdmin ? "SYSTEM_ADMIN" : "TENANT"}
             </Badge>
-          ) : null}
-
-          {isSystemAdmin ? (
-            <Badge variant={canEditLimitsAndEntitlements ? "secondary" : "outline"} className="text-[10px] uppercase">
-              {canEditLimitsAndEntitlements ? "LIMITS/ENT: EDIT" : "LIMITS/ENT: LOCKED"}
-            </Badge>
-          ) : null}
+            {isExpired && (
+              <Badge variant="destructive" className="font-normal">Expired</Badge>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 justify-start lg:justify-end">
-          {isSystemAdmin ? (
-            <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
+          {isSystemAdmin && (
+            <div className="flex items-center gap-2">
               <Input
-                className="h-8 w-full sm:w-[320px]"
+                className="w-48"
                 value={schoolIdDraft}
                 onChange={(e) => setSchoolIdDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitSchool();
-                }}
-                placeholder="schoolId"
+                placeholder="School ID"
               />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={commitSchool}
-                disabled={!String(schoolIdDraft || "").trim()}
-                className="whitespace-nowrap"
-              >
-                Load
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={clearSchool}
-                title="Clear selected school"
-                className="whitespace-nowrap"
-              >
-                Clear
-              </Button>
+              <Button size="sm" onClick={commitSchool}>Load</Button>
             </div>
-          ) : null}
-
-          <Button size="sm" variant="outline" onClick={() => q.refetch()} className="whitespace-nowrap">
+          )}
+          <Button size="sm" variant="outline" onClick={() => q.refetch()}>
             Refresh
           </Button>
         </div>
       </div>
 
-      {/* Overview card */}
+      <UpgradePressureCard
+        isSystemAdmin={isSystemAdmin}
+        flags={flags}
+        percent={percent}
+        atLimit={atLimit}
+        sub={sub}
+      />
+
+      {/* Overview */}
       <Card>
-        <CardContent className="p-6 space-y-3 min-w-0">
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="text-sm">
-              Plan: <span className="font-medium">{sub?.planCode || "-"}</span>
-            </div>
-            <div className="text-sm">
-              Status: <span className="font-medium">{status}</span>
-            </div>
-            <div className="text-sm">
-              Expiry: <span className="font-medium">{fmtDate(sub?.currentPeriodEnd)}</span>
-            </div>
-          </div>
-
-          <div className="text-xs text-muted-foreground">
-            Caps are enforced server-side on create endpoints. Usage reflects the same rules.
-          </div>
-
-          <Separator />
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Card>
-              <CardContent className="p-4 space-y-1">
-                <div className="text-xs text-muted-foreground">Students</div>
-                <div className="text-2xl font-semibold">{usage.studentsCount ?? 0}</div>
-                <div className="text-xs text-muted-foreground">
-                  Cap: <span className="font-medium text-foreground">{capLabel(sub?.maxStudents)}</span>
+        <CardContent className="pt-6">
+          <div className="space-y-6">
+            <div>
+              <h3 className="font-medium mb-3">Current Subscription</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <div className="text-muted-foreground">Plan</div>
+                  <div className="font-medium">{sub?.planCode || "-"}</div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Remaining:{" "}
-                  <span className="font-medium text-foreground">
-                    {remainingLabel(remaining.studentsRemaining)}
-                  </span>
+                <div>
+                  <div className="text-muted-foreground">Status</div>
+                  <div className="font-medium">{status}</div>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4 space-y-1">
-                <div className="text-xs text-muted-foreground">Teachers</div>
-                <div className="text-2xl font-semibold">{usage.teachersCount ?? 0}</div>
-                <div className="text-xs text-muted-foreground">
-                  Cap: <span className="font-medium text-foreground">{capLabel(sub?.maxTeachers)}</span>
+                <div>
+                  <div className="text-muted-foreground">Expiry</div>
+                  <div className="font-medium">{fmtDate(sub?.currentPeriodEnd)}</div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Remaining:{" "}
-                  <span className="font-medium text-foreground">
-                    {remainingLabel(remaining.teachersRemaining)}
-                  </span>
+                <div>
+                  <div className="text-muted-foreground">Mode</div>
+                  <div className="font-medium">{canWrite ? "Active" : "Read Only"}</div>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4 space-y-1">
-                <div className="text-xs text-muted-foreground">Classes</div>
-                <div className="text-2xl font-semibold">{usage.classesCount ?? 0}</div>
-                <div className="text-xs text-muted-foreground">
-                  Cap: <span className="font-medium text-foreground">{capLabel(sub?.maxClasses)}</span>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Remaining:{" "}
-                  <span className="font-medium text-foreground">
-                    {remainingLabel(remaining.classesRemaining)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Entitlements (Enabled)</div>
-
-            {enabledEntitlements.length ? (
-              <div className="flex flex-wrap gap-2">
-                {enabledEntitlements.map((k) => (
-                  <Badge key={k} variant="outline" className="text-[10px] uppercase">
-                    {k}
-                  </Badge>
-                ))}
               </div>
-            ) : (
-              <div className="text-sm text-muted-foreground">No entitlements enabled.</div>
-            )}
+            </div>
+
+            <Separator />
+
+            <div>
+              <h3 className="font-medium mb-3">Usage Overview</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <UsageCard
+                  title="Students"
+                  used={usedStudents}
+                  cap={capStudents}
+                  remaining={remaining.studentsRemaining}
+                  percent={percent.students}
+                  atLimit={atLimit.students}
+                />
+                <UsageCard
+                  title="Teachers"
+                  used={usedTeachers}
+                  cap={capTeachers}
+                  remaining={remaining.teachersRemaining}
+                  percent={percent.teachers}
+                  atLimit={atLimit.teachers}
+                />
+                <UsageCard
+                  title="Classes"
+                  used={usedClasses}
+                  cap={capClasses}
+                  remaining={remaining.classesRemaining}
+                  percent={percent.classes}
+                  atLimit={atLimit.classes}
+                />
+                <UsageCard
+                  title="Users"
+                  used={usedUsers}
+                  cap={capUsers}
+                  remaining={remaining.usersRemaining}
+                  percent={percent.users}
+                  atLimit={atLimit.users}
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <h3 className="font-medium mb-2">Enabled Entitlements</h3>
+              {enabledEntitlements.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {enabledEntitlements.map((k) => (
+                    <Badge key={k} variant="outline" className="font-normal">
+                      {k}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-muted-foreground">No entitlements enabled</div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* SYSTEM_ADMIN controls */}
-      {isSystemAdmin ? (
-        <div className="space-y-4">
-          {/* Plan / Status / Expiry */}
+      {isSystemAdmin && (
+        <div className="space-y-6">
+          {/* Subscription Meta */}
           <Card>
-            <CardContent className="p-6 space-y-4 min-w-0">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="font-medium">Subscription Meta</div>
-                <Badge variant={canEditMeta ? "secondary" : "outline"} className="text-[10px] uppercase">
-                  {canEditMeta ? "EDITABLE" : "LOCKED"}
-                </Badge>
-              </div>
-
-              <div className="text-sm text-muted-foreground">
-                Meta is editable even when writes are blocked (use this to reactivate a tenant).
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Plan Code</div>
-                  <Input
-                    value={planDraft}
-                    onChange={(e) => setPlanDraft(e.target.value)}
-                    placeholder="FREE / BASIC / PRO"
-                    disabled={!canEditMeta || mPatchSub.isPending}
-                  />
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium">Subscription Details</h3>
+                  <Badge variant={canEditMeta ? "default" : "outline"} className="text-xs">
+                    {canEditMeta ? "Editable" : "Locked"}
+                  </Badge>
                 </div>
 
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Status</div>
-                  <select
-                    className="w-full border rounded-md h-10 px-3 bg-background text-sm"
-                    value={statusDraft}
-                    onChange={(e) => setStatusDraft(e.target.value)}
-                    disabled={!canEditMeta || mPatchSub.isPending}
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Current Period End</div>
-                  <Input
-                    type="datetime-local"
-                    value={expiryDraft}
-                    onChange={(e) => setExpiryDraft(e.target.value)}
-                    disabled={!canEditMeta || mPatchSub.isPending}
-                  />
-                  <div className="text-[11px] text-muted-foreground">Clear it (empty) to remove expiry.</div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={savePlanStatusExpiry} disabled={!canEditMeta || mPatchSub.isPending}>
-                  {mPatchSub.isPending ? "Saving…" : "Save Meta"}
-                </Button>
-
-                {mPatchSub.isError ? (
-                  <div className="text-sm text-destructive">
-                    {mPatchSub.error?.response?.data?.message || "Save failed"}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Plan Code</div>
+                    <Input
+                      value={planDraft}
+                      onChange={(e) => setPlanDraft(e.target.value)}
+                      placeholder="FREE / BASIC / PRO"
+                    />
                   </div>
-                ) : null}
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Status</div>
+                    <select
+                      className="w-full border rounded-md h-10 px-3 bg-background text-sm"
+                      value={statusDraft}
+                      onChange={(e) => setStatusDraft(e.target.value)}
+                    >
+                      {STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Expiry Date</div>
+                    <Input
+                      type="datetime-local"
+                      value={expiryDraft}
+                      onChange={(e) => setExpiryDraft(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <Button onClick={savePlanStatusExpiry} disabled={mPatchSub.isPending}>
+                  {mPatchSub.isPending ? "Saving..." : "Save Changes"}
+                </Button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Limits editor */}
+          {/* Limits */}
           <Card>
-            <CardContent className="p-6 space-y-4 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-medium">Limits</div>
-                <Badge variant={canEditLimitsAndEntitlements ? "secondary" : "outline"} className="text-[10px] uppercase">
-                  {canEditLimitsAndEntitlements ? "EDITABLE" : "LOCKED"}
-                </Badge>
-              </div>
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium">Resource Limits</h3>
+                  <Badge variant={canEditLimitsAndEntitlements ? "default" : "outline"} className="text-xs">
+                    {canEditLimitsAndEntitlements ? "Editable" : "Locked"}
+                  </Badge>
+                </div>
 
-              <div className="text-xs text-muted-foreground">
-                Enter a number (≥ 0), or type <span className="font-medium">null</span> for Unlimited. Blank = no change.
-              </div>
-
-              {!canEditLimitsAndEntitlements ? (
                 <div className="text-sm text-muted-foreground">
-                  Limits are locked because subscription writes are disabled. Update status/expiry first.
-                </div>
-              ) : null}
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">STUDENTS_MAX</div>
-                  <Input
-                    value={limitsDraft.STUDENTS_MAX}
-                    onChange={(e) => setLimitsDraft((p) => ({ ...p, STUDENTS_MAX: e.target.value }))}
-                    disabled={!canEditLimitsAndEntitlements || mPatchLimits.isPending}
-                    placeholder="e.g. 500 or null"
-                  />
+                  Enter numbers (≥ 0) or "null" for unlimited. Leave blank to keep current.
                 </div>
 
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">TEACHERS_MAX</div>
-                  <Input
-                    value={limitsDraft.TEACHERS_MAX}
-                    onChange={(e) => setLimitsDraft((p) => ({ ...p, TEACHERS_MAX: e.target.value }))}
-                    disabled={!canEditLimitsAndEntitlements || mPatchLimits.isPending}
-                    placeholder="e.g. 50 or null"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {["STUDENTS_MAX", "TEACHERS_MAX", "CLASSES_MAX", "USERS_MAX"].map((k) => (
+                    <div className="space-y-2" key={k}>
+                      <div className="text-sm font-medium">{k}</div>
+                      <Input
+                        value={limitsDraft[k]}
+                        onChange={(e) => setLimitsDraft((p) => ({ ...p, [k]: e.target.value }))}
+                        placeholder="e.g. 500 or null"
+                      />
+                    </div>
+                  ))}
                 </div>
 
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">CLASSES_MAX</div>
-                  <Input
-                    value={limitsDraft.CLASSES_MAX}
-                    onChange={(e) => setLimitsDraft((p) => ({ ...p, CLASSES_MAX: e.target.value }))}
-                    disabled={!canEditLimitsAndEntitlements || mPatchLimits.isPending}
-                    placeholder="e.g. 40 or null"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
                 <Button onClick={saveLimits} disabled={!canEditLimitsAndEntitlements || mPatchLimits.isPending}>
-                  {mPatchLimits.isPending ? "Saving…" : "Save Limits"}
+                  {mPatchLimits.isPending ? "Saving..." : "Save Limits"}
                 </Button>
-
-                {mPatchLimits.isError ? (
-                  <div className="text-sm text-destructive">
-                    {mPatchLimits.error?.response?.data?.message || "Save failed"}
-                  </div>
-                ) : null}
               </div>
             </CardContent>
           </Card>
 
-          {/* Entitlements manager */}
+          {/* Entitlements */}
           <Card>
-            <CardContent className="p-6 space-y-4 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-medium">Entitlements</div>
-                <Badge variant={canEditLimitsAndEntitlements ? "secondary" : "outline"} className="text-[10px] uppercase">
-                  {canEditLimitsAndEntitlements ? "EDITABLE" : "LOCKED"}
-                </Badge>
-              </div>
-
-              <div className="text-xs text-muted-foreground">
-                Toggle keys on/off. Add new keys in uppercase (e.g. EXAMS_WRITE). Click Save to apply.
-              </div>
-
-              {!canEditLimitsAndEntitlements ? (
-                <div className="text-sm text-muted-foreground">
-                  Entitlements are locked because subscription writes are disabled. Update status/expiry first.
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium">Entitlements</h3>
+                  <Badge variant={canEditLimitsAndEntitlements ? "default" : "outline"} className="text-xs">
+                    {canEditLimitsAndEntitlements ? "Editable" : "Locked"}
+                  </Badge>
                 </div>
-              ) : null}
 
-              {/* Add new entitlement */}
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Input
-                  value={newEntKey}
-                  onChange={(e) => setNewEntKey(e.target.value)}
-                  placeholder="NEW_KEY (A-Z0-9_)"
-                  disabled={!canEditLimitsAndEntitlements || mPatchEnt.isPending}
-                />
-                <select
-                  className="border rounded-md h-10 px-3 bg-background text-sm"
-                  value={newEntVal ? "true" : "false"}
-                  onChange={(e) => setNewEntVal(e.target.value === "true")}
-                  disabled={!canEditLimitsAndEntitlements || mPatchEnt.isPending}
-                >
-                  <option value="true">true</option>
-                  <option value="false">false</option>
-                </select>
-                <Button
-                  variant="outline"
-                  onClick={addEntitlement}
-                  disabled={
-                    !canEditLimitsAndEntitlements ||
-                    mPatchEnt.isPending ||
-                    !String(newEntKey || "").trim()
-                  }
-                >
-                  Add
-                </Button>
-              </div>
-
-              {/* Existing entitlements */}
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {Object.keys(entDraft || {})
-                  .sort()
-                  .map((k) => {
-                    const v = !!entDraft?.[k];
-                    return (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => toggleEntitlement(k)}
-                        disabled={!canEditLimitsAndEntitlements || mPatchEnt.isPending}
-                        className={[
-                          "flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition",
-                          v ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted",
-                        ].join(" ")}
-                        title="Toggle"
-                      >
-                        <span className="font-medium">{k}</span>
-                        <span className="text-xs opacity-90">{v ? "ON" : "OFF"}</span>
-                      </button>
-                    );
-                  })}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={saveEntitlements} disabled={!canEditLimitsAndEntitlements || mPatchEnt.isPending}>
-                  {mPatchEnt.isPending ? "Saving…" : "Save Entitlements"}
-                </Button>
-
-                {mPatchEnt.isError ? (
-                  <div className="text-sm text-destructive">
-                    {mPatchEnt.error?.response?.data?.message || "Save failed"}
+                <div className="flex items-center justify-between">
+                  <div className="text-sm">
+                    Enabled: <span className="font-medium">{enabledCount}</span> of {totalCount}
                   </div>
-                ) : null}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={enableAllReads}
+                    >
+                      Enable All Read
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowEnabledOnly(!showEnabledOnly)}
+                    >
+                      {showEnabledOnly ? "Show All" : "Show Enabled"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    value={entSearch}
+                    onChange={(e) => setEntSearch(e.target.value)}
+                    placeholder="Search entitlements..."
+                    className="flex-1"
+                  />
+                  <div className="flex gap-2">
+                    {Object.keys(PLAN_PRESETS).map((p) => (
+                      <Button
+                        key={p}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => applyPreset(p)}
+                      >
+                        {p}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {entGroups.map(([groupName, keys]) => (
+                    <div key={groupName} className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-medium">{groupName}</h4>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setMany(keys, true)}
+                          >
+                            Enable All
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setMany(keys, false)}
+                          >
+                            Disable All
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {keys.map((k) => {
+                          const v = !!entDraft?.[k];
+                          const meta = entMeta.get(k);
+                          return (
+                            <div
+                              key={k}
+                              className={`flex items-center justify-between p-3 rounded-md border cursor-pointer transition-colors ${
+                                v ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+                              }`}
+                              onClick={() => toggleEntitlement(k)}
+                            >
+                              <div>
+                                <div className="font-medium">{k}</div>
+                                {meta?.desc && (
+                                  <div className="text-sm opacity-90">{meta.desc}</div>
+                                )}
+                              </div>
+                              <div className={`h-4 w-4 rounded-full border ${v ? "bg-white" : ""}`} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <Button onClick={saveEntitlements} disabled={!canEditLimitsAndEntitlements || mPatchEnt.isPending}>
+                  {mPatchEnt.isPending ? "Saving..." : "Save Entitlements"}
+                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

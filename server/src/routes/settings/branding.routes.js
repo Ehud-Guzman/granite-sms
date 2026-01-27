@@ -45,6 +45,110 @@ async function getOrCreateSettings(schoolId) {
   return settings;
 }
 
+// ---------- validation helpers ----------
+const THEME_KEYS = new Set(["royal-blue", "emerald", "maroon", "amber", "slate"]);
+const MODES = new Set(["light", "dark"]);
+const DENSITIES = new Set(["normal", "compact", "comfortable"]);
+const RADII = new Set(["sharp", "rounded", "pill"]);
+
+const isHex = (v) =>
+  v == null || (typeof v === "string" && /^#([0-9a-fA-F]{6})$/.test(v.trim()));
+
+const isStringOrNull = (v) => v == null || typeof v === "string";
+
+function normalizeThemeValue(set, v, fieldName) {
+  if (v == null) return null; // allow clearing
+  const s = String(v).trim();
+  if (!set.has(s)) throw new Error(`${fieldName} is invalid`);
+  return s;
+}
+
+function brandingPayload(body) {
+  const b = body || {};
+
+  // ✅ allowlist (prevents unknown-field 400)
+  const allowed = new Set([
+    "brandPrimaryColor",
+    "brandSecondaryColor",
+    "themeKey",
+    "mode",
+    "density",
+    "radius",
+  ]);
+
+  for (const k of Object.keys(b)) {
+    if (!allowed.has(k)) {
+      const err = new Error(`Unknown field: ${k}`);
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  // ✅ validate & normalize
+  if ("brandPrimaryColor" in b && !isHex(b.brandPrimaryColor)) {
+    const err = new Error("brandPrimaryColor must be hex (#1f2937)");
+    err.statusCode = 400;
+    throw err;
+  }
+  if ("brandSecondaryColor" in b && !isHex(b.brandSecondaryColor)) {
+    const err = new Error("brandSecondaryColor must be hex (#2563eb)");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if ("themeKey" in b && !isStringOrNull(b.themeKey)) {
+    const err = new Error("themeKey must be a string or null");
+    err.statusCode = 400;
+    throw err;
+  }
+  if ("mode" in b && !isStringOrNull(b.mode)) {
+    const err = new Error("mode must be a string or null");
+    err.statusCode = 400;
+    throw err;
+  }
+  if ("density" in b && !isStringOrNull(b.density)) {
+    const err = new Error("density must be a string or null");
+    err.statusCode = 400;
+    throw err;
+  }
+  if ("radius" in b && !isStringOrNull(b.radius)) {
+    const err = new Error("radius must be a string or null");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const data = {};
+
+  if ("brandPrimaryColor" in b) data.brandPrimaryColor = b.brandPrimaryColor || null;
+  if ("brandSecondaryColor" in b) data.brandSecondaryColor = b.brandSecondaryColor || null;
+
+  if ("themeKey" in b) data.themeKey = normalizeThemeValue(THEME_KEYS, b.themeKey, "themeKey");
+  if ("mode" in b) data.mode = normalizeThemeValue(MODES, b.mode, "mode");
+  if ("density" in b) data.density = normalizeThemeValue(DENSITIES, b.density, "density");
+  if ("radius" in b) data.radius = normalizeThemeValue(RADII, b.radius, "radius");
+
+  return data;
+}
+
+function brandingResponse(schoolId, s) {
+  return {
+    branding: {
+      schoolId,
+      brandLogoUrl: s.brandLogoUrl,
+      brandPrimaryColor: s.brandPrimaryColor,
+      brandSecondaryColor: s.brandSecondaryColor,
+
+      // ✅ new theme knobs
+      themeKey: s.themeKey || null,
+      mode: s.mode || null,
+      density: s.density || null,
+      radius: s.radius || null,
+
+      updatedAt: s.updatedAt,
+    },
+  };
+}
+
 // ---------- multer ----------
 const uploadDir = path.join(SERVER_ROOT, "uploads", "branding");
 ensureDir(uploadDir);
@@ -88,15 +192,7 @@ router.get("/", requireAuth, async (req, res) => {
     const { schoolId } = resolved;
     const s = await getOrCreateSettings(schoolId);
 
-    return res.json({
-      branding: {
-        schoolId,
-        brandLogoUrl: s.brandLogoUrl,
-        brandPrimaryColor: s.brandPrimaryColor,
-        brandSecondaryColor: s.brandSecondaryColor,
-        updatedAt: s.updatedAt,
-      },
-    });
+    return res.json(brandingResponse(schoolId, s));
   } catch (err) {
     console.error("GET BRANDING ERROR:", err);
     return res.status(500).json({ message: "Server error" });
@@ -114,36 +210,27 @@ router.patch("/", requireAuth, async (req, res) => {
     if (!resolved.ok) return res.status(resolved.code).json({ message: resolved.message });
 
     const { schoolId } = resolved;
-    const body = req.body || {};
 
-    const allowed = ["brandPrimaryColor", "brandSecondaryColor"];
-    for (const k of Object.keys(body)) {
-      if (!allowed.includes(k))
-        return res.status(400).json({ message: `Unknown field: ${k}` });
+    // ✅ validate + normalize payload
+    let data;
+    try {
+      data = brandingPayload(req.body || {});
+    } catch (e) {
+      const code = e.statusCode || 400;
+      return res.status(code).json({ message: e.message || "Bad Request" });
     }
 
-    const hexOk = (v) =>
-      v == null || (typeof v === "string" && /^#([0-9a-fA-F]{6})$/.test(v.trim()));
-
-    if ("brandPrimaryColor" in body && !hexOk(body.brandPrimaryColor)) {
-      return res.status(400).json({ message: "brandPrimaryColor must be hex (#1f2937)" });
-    }
-    if ("brandSecondaryColor" in body && !hexOk(body.brandSecondaryColor)) {
-      return res.status(400).json({ message: "brandSecondaryColor must be hex (#2563eb)" });
+    if (Object.keys(data).length === 0) {
+      // no-op, return current settings (fast + predictable)
+      const s = await getOrCreateSettings(schoolId);
+      return res.json(brandingResponse(schoolId, s));
     }
 
     const s = await getOrCreateSettings(schoolId);
 
     const updated = await prisma.schoolSettings.update({
       where: { id: s.id },
-      data: {
-        ...("brandPrimaryColor" in body
-          ? { brandPrimaryColor: body.brandPrimaryColor || null }
-          : {}),
-        ...("brandSecondaryColor" in body
-          ? { brandSecondaryColor: body.brandSecondaryColor || null }
-          : {}),
-      },
+      data,
     });
 
     clearSettingsCache();
@@ -155,18 +242,10 @@ router.patch("/", requireAuth, async (req, res) => {
       action: "BRANDING_UPDATED",
       targetType: "SCHOOL_SETTINGS",
       targetId: updated.id,
-      metadata: { updatedFields: Object.keys(body) },
+      metadata: { updatedFields: Object.keys(req.body || {}) },
     });
 
-    return res.json({
-      branding: {
-        schoolId,
-        brandLogoUrl: updated.brandLogoUrl,
-        brandPrimaryColor: updated.brandPrimaryColor,
-        brandSecondaryColor: updated.brandSecondaryColor,
-        updatedAt: updated.updatedAt,
-      },
-    });
+    return res.json(brandingResponse(schoolId, updated));
   } catch (err) {
     console.error("PATCH BRANDING ERROR:", err);
     return res.status(500).json({ message: "Server error" });
@@ -234,15 +313,7 @@ router.post("/logo", requireAuth, async (req, res) => {
       metadata: { brandLogoUrl: url },
     });
 
-    return res.status(201).json({
-      branding: {
-        schoolId,
-        brandLogoUrl: updated.brandLogoUrl,
-        brandPrimaryColor: updated.brandPrimaryColor,
-        brandSecondaryColor: updated.brandSecondaryColor,
-        updatedAt: updated.updatedAt,
-      },
-    });
+    return res.status(201).json(brandingResponse(schoolId, updated));
   } catch (err) {
     console.error("UPLOAD LOGO ERROR:", err);
     return res.status(400).json({ message: err?.message || "Upload failed" });

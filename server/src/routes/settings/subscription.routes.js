@@ -2,42 +2,61 @@
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
-import { resolveSchoolScope, upper } from "../../utils/roleScope.js";
+import { tenantContext, requireTenant } from "../../middleware/tenant.js";
 import { logAudit } from "../../utils/audit.js";
+import { invalidateEntitlementsCache } from "../../middleware/entitlements.js";
 
 const router = Router();
 
-// ✅ Must match Prisma enum in schema.prisma
-// SubscriptionStatus = TRIAL | ACTIVE | PAST_DUE | CANCELED | EXPIRED
+// -----------------------------
+// Policy + constants
+// -----------------------------
 const ALLOWED_STATUS = ["TRIAL", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"];
-
-// JSON limit keys (preferred)
-const LIMIT_KEYS = ["STUDENTS_MAX", "TEACHERS_MAX", "CLASSES_MAX"];
-
-// Which statuses allow writes (business policy)
 const WRITE_ENABLED_STATUS = new Set(["TRIAL", "ACTIVE"]);
+const LIMIT_KEYS = ["STUDENTS_MAX", "TEACHERS_MAX", "CLASSES_MAX", "USERS_MAX"];
 
-function toUpperStr(v) {
-  const s = typeof v === "string" ? v.trim() : "";
-  return s ? upper(s) : null;
+function upper(v) {
+  return String(v || "").trim().toUpperCase();
+}
+
+function isSystemAdmin(role) {
+  return upper(role) === "SYSTEM_ADMIN";
+}
+
+function isExpired(sub) {
+  if (!sub?.currentPeriodEnd) return false;
+  return new Date(sub.currentPeriodEnd).getTime() < Date.now();
+}
+
+function canWriteNow(sub) {
+  const st = upper(sub?.status);
+  return WRITE_ENABLED_STATUS.has(st) && !isExpired(sub);
+}
+
+function parsePlanCode(v) {
+  const s = upper(v);
+  if (!s) return undefined;
+  // Your enum PlanCode controls real validity, but this is fine for UI guard
+  if (s.length > 32) return undefined;
+  return s;
+}
+
+function parseStatus(v) {
+  const s = upper(v);
+  if (!s) return undefined;
+  return ALLOWED_STATUS.includes(s) ? s : undefined;
 }
 
 function parseISODateOrNull(v) {
-  // allowed:
-  // - null => clear
-  // - ""   => clear
-  // - ISO string => Date
-  // invalid => undefined
-  if (v == null || v === "") return null;
+  if (v === null || v === "") return null;
+  if (v === undefined) return undefined;
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? undefined : d;
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d;
 }
 
+// number>=0 | null
 function parseCapValue(v) {
-  // allowed:
-  // - null => unlimited
-  // - number >= 0
-  // invalid => undefined
   if (v === null) return null;
   if (v === "" || v === undefined) return undefined;
   const n = Number(v);
@@ -45,43 +64,63 @@ function parseCapValue(v) {
   return Math.floor(n);
 }
 
-function capFromLimitsJson(limits, key) {
-  if (!limits || typeof limits !== "object") return undefined;
+function getLimitFromJson(sub, key) {
+  const limits = sub?.limits && typeof sub.limits === "object" ? sub.limits : null;
+  if (!limits) return undefined;
   const v = limits[key];
   if (v === null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
 
-function assertSystemAdmin(role) {
-  return upper(role) === "SYSTEM_ADMIN";
+// Effective cap (matches your middleware logic)
+function effectiveCap(sub, resource) {
+  if (resource === "students") {
+    const json = getLimitFromJson(sub, "STUDENTS_MAX");
+    return json !== undefined ? json : sub.maxStudents;
+  }
+  if (resource === "teachers") {
+    const json = getLimitFromJson(sub, "TEACHERS_MAX");
+    return json !== undefined ? json : sub.maxTeachers;
+  }
+  if (resource === "classes") {
+    const json = getLimitFromJson(sub, "CLASSES_MAX");
+    return json !== undefined ? json : sub.maxClasses;
+  }
+  if (resource === "users") {
+    // NO typed maxUsers in Prisma model => JSON-only
+    const json = getLimitFromJson(sub, "USERS_MAX");
+    return json !== undefined ? json : null; // null => unlimited
+  }
+  return null;
 }
 
-async function getLatestSubscription(schoolId) {
-  return prisma.subscription.findFirst({
-    where: { schoolId },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      planCode: true,
-      status: true,
-      maxStudents: true,
-      maxTeachers: true,
-      maxClasses: true,
-      currentPeriodEnd: true,
-      entitlements: true,
-      limits: true,
-      createdAt: true,
-    },
-  });
+function percentUsed(used, cap) {
+  if (cap == null) return null;
+  const c = Number(cap);
+  if (!Number.isFinite(c) || c <= 0) return 100;
+  const u = Number(used || 0);
+  return Math.max(0, Math.min(100, Math.round((u / c) * 100)));
+}
+
+function atLimit(used, cap) {
+  if (cap == null) return false;
+  const c = Number(cap);
+  const u = Number(used || 0);
+  if (!Number.isFinite(c)) return false;
+  return u >= c;
 }
 
 async function ensureSubscriptionRow(schoolId) {
-  const latest = await getLatestSubscription(schoolId);
-  if (latest) return latest;
+  let sub = await prisma.subscription.findFirst({
+    where: { schoolId },
+    orderBy: { createdAt: "desc" },
+  });
 
-  // ✅ Consistent safe defaults
-  return prisma.subscription.create({
+  if (sub) return sub;
+
+  // Default FREE plan creation (auto-heal)
+  sub = await prisma.subscription.create({
     data: {
       schoolId,
       planCode: "FREE",
@@ -89,87 +128,101 @@ async function ensureSubscriptionRow(schoolId) {
       maxStudents: 50,
       maxTeachers: 10,
       maxClasses: 5,
-      currentPeriodEnd: null,
-      entitlements: {},
       limits: null,
-    },
-    select: {
-      id: true,
-      planCode: true,
-      status: true,
-      maxStudents: true,
-      maxTeachers: true,
-      maxClasses: true,
-      currentPeriodEnd: true,
-      entitlements: true,
-      limits: true,
-      createdAt: true,
+      entitlements: {},
+      currentPeriodEnd: null,
+      canceledAt: null,
+      trialEndsAt: null,
     },
   });
+
+  return sub;
 }
+
+// -----------------------------
+// Router scope rules
+// - requireAuth + tenantContext always
+// - endpoints requireTenant (x-school-id / token school scope) because this is tenant settings
+// -----------------------------
+router.use(requireAuth, tenantContext);
 
 // -----------------------------
 // GET /api/settings/subscription/overview
 // -----------------------------
-router.get("/overview", requireAuth, async (req, res) => {
+router.get("/overview", requireTenant, async (req, res) => {
   try {
-    const resolved = resolveSchoolScope(req, { allowPlatform: false });
-    if (!resolved.ok) return res.status(resolved.code).json({ message: resolved.message });
+    const schoolId = req.schoolId;
+    const role = upper(req.role);
 
-    const { role, schoolId } = resolved;
-
-    // ✅ Always ensure row exists so the frontend has stable shape
     const sub = await ensureSubscriptionRow(schoolId);
 
-    // Effective caps (match middleware behavior)
-    const capStudents = capFromLimitsJson(sub.limits, "STUDENTS_MAX");
-    const capTeachers = capFromLimitsJson(sub.limits, "TEACHERS_MAX");
-    const capClasses = capFromLimitsJson(sub.limits, "CLASSES_MAX");
-
-    const maxStudents = capStudents !== undefined ? capStudents : sub.maxStudents;
-    const maxTeachers = capTeachers !== undefined ? capTeachers : sub.maxTeachers;
-    const maxClasses = capClasses !== undefined ? capClasses : sub.maxClasses;
-
-    // Align with enforcement:
-    // - students: active only
-    // - classes: active only
-    // - teachers: total
-    const [studentsCount, teachersCount, classesCount] = await Promise.all([
+    // Usage counts (match enforcement policy)
+    const [studentsCount, teachersCount, classesCount, usersCount] = await Promise.all([
       prisma.student.count({ where: { schoolId, isActive: true } }),
       prisma.teacher.count({ where: { schoolId } }),
       prisma.class.count({ where: { schoolId, isActive: true } }),
+      prisma.user.count({ where: { schoolId, isActive: true } }),
     ]);
+
+    // Effective caps (UI should display the same caps enforcement uses)
+    const maxStudents = effectiveCap(sub, "students");
+    const maxTeachers = effectiveCap(sub, "teachers");
+    const maxClasses = effectiveCap(sub, "classes");
+    const maxUsers = effectiveCap(sub, "users"); // JSON-only
 
     const remaining = {
       studentsRemaining: maxStudents == null ? null : Math.max(Number(maxStudents) - studentsCount, 0),
       teachersRemaining: maxTeachers == null ? null : Math.max(Number(maxTeachers) - teachersCount, 0),
       classesRemaining: maxClasses == null ? null : Math.max(Number(maxClasses) - classesCount, 0),
+      usersRemaining: maxUsers == null ? null : Math.max(Number(maxUsers) - usersCount, 0),
     };
 
-    const now = new Date();
-    const isExpired = sub.currentPeriodEnd ? now > new Date(sub.currentPeriodEnd) : false;
-    const normalizedStatus = upper(sub.status);
+    const percent = {
+      students: percentUsed(studentsCount, maxStudents),
+      teachers: percentUsed(teachersCount, maxTeachers),
+      classes: percentUsed(classesCount, maxClasses),
+      users: percentUsed(usersCount, maxUsers),
+    };
 
-    // ✅ Write policy
-    const canWrite = WRITE_ENABLED_STATUS.has(normalizedStatus) && !isExpired;
+    const atLimitMap = {
+      students: atLimit(studentsCount, maxStudents),
+      teachers: atLimit(teachersCount, maxTeachers),
+      classes: atLimit(classesCount, maxClasses),
+      users: atLimit(usersCount, maxUsers),
+    };
+
+    const flags = {
+      isExpired: isExpired(sub),
+      canWrite: canWriteNow(sub),
+    };
 
     return res.json({
       scope: role,
       schoolId,
       subscription: {
+        id: sub.id,
         planCode: sub.planCode,
         status: sub.status,
+        startsAt: sub.startsAt,
         currentPeriodEnd: sub.currentPeriodEnd,
-        entitlements: sub.entitlements || {},
-        limits: sub.limits || null,
-        // Keep legacy caps too for UI compatibility
+        canceledAt: sub.canceledAt,
+        trialEndsAt: sub.trialEndsAt,
+
+        // raw config
+        limits: sub.limits ?? null,
+        entitlements: sub.entitlements ?? {},
+
+        // ✅ computed effective caps for UI display
         maxStudents,
         maxTeachers,
         maxClasses,
+        maxUsers, // computed field (JSON-only)
       },
-      usage: { studentsCount, teachersCount, classesCount },
+      usage: { studentsCount, teachersCount, classesCount, usersCount },
       remaining,
-      flags: { isExpired, canWrite },
+      percent,
+      atLimit: atLimitMap,
+      flags,
     });
   } catch (err) {
     console.error("SUBSCRIPTION OVERVIEW ERROR:", err);
@@ -179,73 +232,62 @@ router.get("/overview", requireAuth, async (req, res) => {
 
 // -----------------------------
 // PATCH /api/settings/subscription
-// SYSTEM_ADMIN only
-// body: { planCode?, status?, currentPeriodEnd? }
+// SYSTEM_ADMIN only (tenant scoped)
+// body: { planCode?, status?, currentPeriodEnd? (ISO or null) }
 // -----------------------------
-router.patch("/", requireAuth, async (req, res) => {
+router.patch("/", requireTenant, async (req, res) => {
   try {
-    const resolved = resolveSchoolScope(req, { allowPlatform: false });
-    if (!resolved.ok) return res.status(resolved.code).json({ message: resolved.message });
+    if (!isSystemAdmin(req.role)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
-    const { role, schoolId } = resolved;
-    if (!assertSystemAdmin(role)) return res.status(403).json({ message: "Forbidden" });
+    const schoolId = req.schoolId;
+    const sub = await ensureSubscriptionRow(schoolId);
 
-    const latest = await ensureSubscriptionRow(schoolId);
-
-    const planCode = toUpperStr(req.body?.planCode);
-    const status = toUpperStr(req.body?.status);
-    const currentPeriodEnd = parseISODateOrNull(req.body?.currentPeriodEnd);
-
-    if (planCode && planCode.length > 32) {
+    const planCode = parsePlanCode(req.body?.planCode);
+    if (req.body?.planCode !== undefined && planCode === undefined) {
       return res.status(400).json({ message: "Invalid planCode" });
     }
 
-    if (status && !ALLOWED_STATUS.includes(status)) {
+    const status = parseStatus(req.body?.status);
+    if (req.body?.status !== undefined && status === undefined) {
       return res.status(400).json({
         message: `Invalid status. Allowed: ${ALLOWED_STATUS.join(", ")}`,
       });
     }
 
-    if (currentPeriodEnd === undefined) {
-      return res.status(400).json({ message: "Invalid currentPeriodEnd (must be ISO date or null)" });
+    const currentPeriodEnd = parseISODateOrNull(req.body?.currentPeriodEnd);
+    if (req.body?.currentPeriodEnd !== undefined && currentPeriodEnd === undefined) {
+      return res.status(400).json({ message: "Invalid currentPeriodEnd (ISO date or null)" });
     }
 
-    const nextData = {
-      ...(planCode ? { planCode } : {}),
-      ...(status ? { status } : {}),
+    const data = {
+      ...(planCode !== undefined ? { planCode } : {}),
+      ...(status !== undefined ? { status } : {}),
       ...(req.body?.currentPeriodEnd !== undefined ? { currentPeriodEnd } : {}),
     };
 
-    if (Object.keys(nextData).length === 0) {
+    if (Object.keys(data).length === 0) {
       return res.status(400).json({ message: "No changes provided" });
     }
 
     const updated = await prisma.subscription.update({
-      where: { id: latest.id },
-      data: nextData,
-      select: {
-        id: true,
-        planCode: true,
-        status: true,
-        currentPeriodEnd: true,
-        entitlements: true,
-        limits: true,
-        maxStudents: true,
-        maxTeachers: true,
-        maxClasses: true,
-      },
+      where: { id: sub.id },
+      data,
     });
+
+    // ✅ IMPORTANT: bust entitlement cache (status/expiry impacts gating)
+    invalidateEntitlementsCache(schoolId);
 
     await logAudit(req, {
       action: "SETTINGS_SUBSCRIPTION_UPDATED",
       targetType: "SCHOOL",
       targetId: schoolId,
       metadata: {
-        schoolId,
         before: {
-          planCode: latest.planCode,
-          status: latest.status,
-          currentPeriodEnd: latest.currentPeriodEnd,
+          planCode: sub.planCode,
+          status: sub.status,
+          currentPeriodEnd: sub.currentPeriodEnd,
         },
         after: {
           planCode: updated.planCode,
@@ -265,63 +307,51 @@ router.patch("/", requireAuth, async (req, res) => {
 // -----------------------------
 // PATCH /api/settings/subscription/limits
 // SYSTEM_ADMIN only
-// body: { limits: { STUDENTS_MAX?, TEACHERS_MAX?, CLASSES_MAX? } }
-// values: number >= 0 | null
+// body: { limits: { STUDENTS_MAX?, TEACHERS_MAX?, CLASSES_MAX?, USERS_MAX? } }
 // -----------------------------
-router.patch("/limits", requireAuth, async (req, res) => {
+router.patch("/limits", requireTenant, async (req, res) => {
   try {
-    const resolved = resolveSchoolScope(req, { allowPlatform: false });
-    if (!resolved.ok) return res.status(resolved.code).json({ message: resolved.message });
+    if (!isSystemAdmin(req.role)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
-    const { role, schoolId } = resolved;
-    if (!assertSystemAdmin(role)) return res.status(403).json({ message: "Forbidden" });
-
-    const latest = await ensureSubscriptionRow(schoolId);
+    const schoolId = req.schoolId;
+    const sub = await ensureSubscriptionRow(schoolId);
 
     const incoming = req.body?.limits;
     if (!incoming || typeof incoming !== "object") {
       return res.status(400).json({ message: "limits must be an object" });
     }
 
-    const prevLimits = latest.limits && typeof latest.limits === "object" ? latest.limits : {};
-    const nextLimits = { ...prevLimits };
+    const prev = sub.limits && typeof sub.limits === "object" ? sub.limits : {};
+    const next = { ...prev };
 
-    for (const k of Object.keys(incoming)) {
+    for (const [k, v] of Object.entries(incoming)) {
       const key = upper(k);
       if (!LIMIT_KEYS.includes(key)) continue;
 
-      const parsed = parseCapValue(incoming[k]);
+      const parsed = parseCapValue(v);
       if (parsed === undefined) {
-        return res.status(400).json({ message: `Invalid limit value for ${key} (number>=0 or null)` });
+        return res.status(400).json({
+          message: `Invalid value for ${key}. Use number >= 0 or null`,
+        });
       }
-      nextLimits[key] = parsed;
+      next[key] = parsed;
     }
 
     const updated = await prisma.subscription.update({
-      where: { id: latest.id },
-      data: { limits: nextLimits },
-      select: {
-        id: true,
-        planCode: true,
-        status: true,
-        currentPeriodEnd: true,
-        entitlements: true,
-        limits: true,
-        maxStudents: true,
-        maxTeachers: true,
-        maxClasses: true,
-      },
+      where: { id: sub.id },
+      data: { limits: next },
     });
+
+    // ✅ optional but recommended: keep gating consistent after any sub update
+    invalidateEntitlementsCache(schoolId);
 
     await logAudit(req, {
       action: "SETTINGS_LIMITS_UPDATED",
       targetType: "SCHOOL",
       targetId: schoolId,
-      metadata: {
-        schoolId,
-        before: prevLimits,
-        after: nextLimits,
-      },
+      metadata: { before: prev, after: next },
     });
 
     return res.json({ ok: true, subscription: updated });
@@ -334,59 +364,52 @@ router.patch("/limits", requireAuth, async (req, res) => {
 // -----------------------------
 // PATCH /api/settings/subscription/entitlements
 // SYSTEM_ADMIN only
-// body: { entitlements: { SOME_KEY: true/false } }
+// body: { entitlements: { KEY: true/false } }
 // -----------------------------
-router.patch("/entitlements", requireAuth, async (req, res) => {
+router.patch("/entitlements", requireTenant, async (req, res) => {
   try {
-    const resolved = resolveSchoolScope(req, { allowPlatform: false });
-    if (!resolved.ok) return res.status(resolved.code).json({ message: resolved.message });
+    if (!isSystemAdmin(req.role)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
-    const { role, schoolId } = resolved;
-    if (!assertSystemAdmin(role)) return res.status(403).json({ message: "Forbidden" });
-
-    const latest = await ensureSubscriptionRow(schoolId);
+    const schoolId = req.schoolId;
+    const sub = await ensureSubscriptionRow(schoolId);
 
     const incoming = req.body?.entitlements;
     if (!incoming || typeof incoming !== "object") {
       return res.status(400).json({ message: "entitlements must be an object" });
     }
 
-    const prevEnt = latest.entitlements && typeof latest.entitlements === "object" ? latest.entitlements : {};
-    const nextEnt = { ...prevEnt };
+    const prev = sub.entitlements && typeof sub.entitlements === "object" ? sub.entitlements : {};
+    const next = { ...prev };
 
     for (const [k, v] of Object.entries(incoming)) {
-      const key = upper(String(k || "").trim());
-      if (!key || !/^[A-Z0-9_]{3,64}$/.test(key)) continue;
-
-      if (typeof v !== "boolean") {
-        return res.status(400).json({ message: `Invalid entitlement value for ${key} (must be boolean)` });
+      const key = upper(k);
+      if (!key || !/^[A-Z0-9_]{3,64}$/.test(key)) {
+        return res.status(400).json({ message: `Invalid entitlement key: ${k}` });
       }
-      nextEnt[key] = v;
+      if (typeof v !== "boolean") {
+        return res
+          .status(400)
+          .json({ message: `Invalid entitlement value for ${key} (boolean required)` });
+      }
+      next[key] = v;
     }
 
     const updated = await prisma.subscription.update({
-      where: { id: latest.id },
-      data: { entitlements: nextEnt },
-      select: {
-        id: true,
-        planCode: true,
-        status: true,
-        currentPeriodEnd: true,
-        entitlements: true,
-        limits: true,
-        maxStudents: true,
-        maxTeachers: true,
-        maxClasses: true,
-      },
+      where: { id: sub.id },
+      data: { entitlements: next },
     });
+
+    // ✅ CRITICAL: bust cache so new entitlements apply immediately
+    invalidateEntitlementsCache(schoolId);
 
     await logAudit(req, {
       action: "SETTINGS_ENTITLEMENTS_UPDATED",
       targetType: "SCHOOL",
       targetId: schoolId,
       metadata: {
-        schoolId,
-        changedKeys: Object.keys(incoming).map((k) => upper(String(k))),
+        changedKeys: Object.keys(incoming).map((k) => upper(k)),
       },
     });
 

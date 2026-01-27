@@ -6,20 +6,35 @@ import { createExamSession, listExamTypes, createExamType } from "@/api/exams.ap
 import { listClasses } from "@/api/classes.api";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, PlusCircle, Calendar, BookOpen, Users, X, Check } from "lucide-react";
 
-const TERMS = ["TERM1", "TERM2", "TERM3"];
+const TERMS = [
+  { value: "TERM1", label: "Term 1" },
+  { value: "TERM2", label: "Term 2" },
+  { value: "TERM3", label: "Term 3" },
+];
 
 function fmtClass(c) {
   return c?.name
@@ -42,7 +57,6 @@ function isValidYear(y) {
 }
 
 function parseWeightInput(v) {
-  // allow blank => null
   const s = String(v ?? "").trim();
   if (!s) return null;
 
@@ -57,24 +71,22 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
   const qc = useQueryClient();
 
   const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("session");
 
-  // create type modal
-  const [typeOpen, setTypeOpen] = useState(false);
-  const [typeForm, setTypeForm] = useState(() => ({
+  const [typeForm, setTypeForm] = useState({
     name: "",
     code: "",
-    weight: "", // string input; parsed to number|null
-  }));
+    weight: "",
+  });
 
-  const [form, setForm] = useState(() => ({
+  const [form, setForm] = useState({
     name: "",
     year: defaultYear ?? new Date().getFullYear(),
     term: String(defaultTerm ?? "TERM1").toUpperCase(),
     classId: "",
     examTypeId: "",
-  }));
+  });
 
-  // When opening drawer, prefill year/term nicely (but don't fight user edits)
   useEffect(() => {
     if (!open) return;
     setForm((p) => ({
@@ -82,10 +94,8 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
       year: p.year ?? (defaultYear ?? new Date().getFullYear()),
       term: String(p.term || defaultTerm || "TERM1").toUpperCase(),
     }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, defaultYear, defaultTerm]);
 
-  // Queries: only run when open
   const typesQ = useQuery({
     queryKey: ["examTypes"],
     queryFn: listExamTypes,
@@ -108,6 +118,7 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
       classes.map((c) => ({
         id: String(c.id),
         label: fmtClass(c),
+        value: String(c.id),
       })),
     [classes]
   );
@@ -115,11 +126,10 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
   const canSubmit =
     form.name.trim().length > 0 &&
     isValidYear(form.year) &&
-    TERMS.includes(String(form.term || "").toUpperCase()) &&
+    TERMS.some(t => t.value === String(form.term || "").toUpperCase()) &&
     String(form.classId || "").trim().length > 0 &&
     String(form.examTypeId || "").trim().length > 0;
 
-  // ---- Create session mutation
   const createSessionMut = useMutation({
     mutationFn: async () => {
       const payload = {
@@ -133,20 +143,18 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
     },
     onSuccess: () => {
       setOpen(false);
-      setForm((p) => ({
-        ...p,
+      setForm({
         name: "",
+        year: defaultYear ?? new Date().getFullYear(),
+        term: String(defaultTerm ?? "TERM1").toUpperCase(),
         classId: "",
         examTypeId: "",
-      }));
-
-      // refresh session lists wherever you use them
+      });
       qc.invalidateQueries({ queryKey: ["examSessions"], exact: false });
       onCreated?.();
     },
   });
 
-  // ---- Create exam type mutation
   const createTypeMut = useMutation({
     mutationFn: async () => {
       const name = String(typeForm.name || "").trim();
@@ -162,271 +170,326 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
       const payload = {
         name,
         code: code ? code.toUpperCase() : null,
-        weight: parsed, // number | null
+        weight: parsed,
       };
 
       return createExamType(payload);
     },
     onSuccess: async (created) => {
-      // refresh types then auto-select new one
       await qc.invalidateQueries({ queryKey: ["examTypes"] });
-
       const createdId = created?.id ? String(created.id) : null;
       if (createdId) {
         setForm((p) => ({ ...p, examTypeId: createdId }));
+        setActiveTab("session");
       }
-
-      setTypeOpen(false);
       setTypeForm({ name: "", code: "", weight: "" });
       typesQ.refetch();
     },
   });
 
-  const typesLoadingState = (() => {
-    if (typesQ.isLoading) return { label: "Loading types…" };
-    if (typesQ.isError) return { label: `Failed to load types: ${apiErrMsg(typesQ.error)}` };
-    if (!examTypes.length) return { label: "No exam types found — create one." };
-    return null;
-  })();
-
   return (
     <>
-      <Button onClick={() => setOpen(true)}>Create session</Button>
+      <Button onClick={() => setOpen(true)} className="gap-2">
+        <PlusCircle className="h-4 w-4" />
+        Create Exam Session
+      </Button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <Card className="w-full max-w-2xl">
-            <CardHeader className="space-y-1">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div>
-                  <CardTitle>Create Exam Session</CardTitle>
-                  <div className="text-sm text-muted-foreground">
-                    A session = Class + Term + Year + Exam Type.
-                  </div>
-                </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" />
+              Create Exam Session
+            </DialogTitle>
+            <DialogDescription>
+              Create a new exam session by selecting class, term, year, and exam type.
+            </DialogDescription>
+          </DialogHeader>
 
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-[10px] uppercase">
-                    exams
-                  </Badge>
-                </div>
-              </div>
-            </CardHeader>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="session" className="gap-2">
+                <Calendar className="h-4 w-4" />
+                Exam Session
+              </TabsTrigger>
+              <TabsTrigger value="type" className="gap-2">
+                <BookOpen className="h-4 w-4" />
+                Exam Type
+              </TabsTrigger>
+            </TabsList>
 
-            <CardContent className="space-y-4">
-              {/* Session name */}
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Session name</div>
-                <Input
-                  placeholder="e.g. Grade 4A Midterm 2026"
-                  value={form.name}
-                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                />
-              </div>
-
-              {/* Year + Term */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Year</div>
+            <TabsContent value="session" className="space-y-6 pt-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="session-name">Session Name *</Label>
                   <Input
-                    placeholder="2026"
-                    value={form.year}
-                    onChange={(e) => setForm((p) => ({ ...p, year: e.target.value }))}
+                    id="session-name"
+                    placeholder="e.g., Grade 4A Midterm 2026"
+                    value={form.name}
+                    onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
                   />
-                  {!isValidYear(form.year) ? (
-                    <div className="text-[11px] text-destructive">
-                      Year must be between 2000 and 2100.
-                    </div>
-                  ) : null}
+                  <p className="text-xs text-muted-foreground">
+                    A descriptive name for this exam session
+                  </p>
                 </div>
 
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Term</div>
-                  <select
-                    className="h-10 rounded-md border bg-background px-3 text-sm"
-                    value={form.term}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, term: String(e.target.value).toUpperCase() }))
-                    }
-                  >
-                    {TERMS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Actions</div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setTypeOpen(true)}
-                    disabled={createTypeMut.isPending}
-                  >
-                    + Create exam type
-                  </Button>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Class */}
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Class</div>
-                <select
-                  className="h-10 rounded-md border bg-background px-3 text-sm w-full"
-                  value={form.classId}
-                  onChange={(e) => setForm((p) => ({ ...p, classId: e.target.value }))}
-                  disabled={classesQ.isLoading}
-                >
-                  <option value="">
-                    {classesQ.isLoading ? "Loading classes…" : "Select class…"}
-                  </option>
-                  {classOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-                {classesQ.isError ? (
-                  <div className="text-sm text-destructive">
-                    Failed to load classes: {apiErrMsg(classesQ.error)}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="year">Year *</Label>
+                    <Input
+                      id="year"
+                      type="number"
+                      min="2000"
+                      max="2100"
+                      placeholder="2026"
+                      value={form.year}
+                      onChange={(e) => setForm((p) => ({ ...p, year: e.target.value }))}
+                    />
+                    {!isValidYear(form.year) && (
+                      <p className="text-xs text-destructive">
+                        Year must be between 2000 and 2100
+                      </p>
+                    )}
                   </div>
-                ) : null}
-              </div>
 
-              {/* Exam type */}
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Exam type</div>
-                <select
-                  className="h-10 rounded-md border bg-background px-3 text-sm w-full"
-                  value={form.examTypeId}
-                  onChange={(e) => setForm((p) => ({ ...p, examTypeId: e.target.value }))}
-                  disabled={typesQ.isLoading}
-                >
-                  <option value="">Select type…</option>
+                  <div className="space-y-2">
+                    <Label htmlFor="term">Term *</Label>
+                    <Select
+                      value={form.term}
+                      onValueChange={(value) => setForm((p) => ({ ...p, term: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select term" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TERMS.map((term) => (
+                          <SelectItem key={term.value} value={term.value}>
+                            {term.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-                  {typesLoadingState ? (
-                    <option value="" disabled>
-                      {typesLoadingState.label}
-                    </option>
-                  ) : (
-                    examTypes.map((t) => (
-                      <option key={t.id} value={String(t.id)}>
-                        {t.name}
-                        {t.code ? ` (${t.code})` : ""} — weight {t.weight ?? "—"}
-                      </option>
-                    ))
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label htmlFor="class">Class *</Label>
+                  <Select
+                    value={form.classId}
+                    onValueChange={(value) => setForm((p) => ({ ...p, classId: value }))}
+                    disabled={classesQ.isLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={classesQ.isLoading ? "Loading classes..." : "Select class"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {classOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                            {option.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {classesQ.isError && (
+                    <Alert variant="destructive" className="py-2">
+                      <AlertDescription className="text-xs">
+                        Failed to load classes: {apiErrMsg(classesQ.error)}
+                      </AlertDescription>
+                    </Alert>
                   )}
-                </select>
+                </div>
 
-                {typesQ.isError ? (
-                  <div className="text-sm text-destructive">
-                    Failed to load exam types: {apiErrMsg(typesQ.error)}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="exam-type">Exam Type *</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setActiveTab("type")}
+                      className="h-auto p-0 text-xs"
+                    >
+                      <PlusCircle className="h-3 w-3 mr-1" />
+                      Create new type
+                    </Button>
                   </div>
-                ) : null}
+                  <Select
+                    value={form.examTypeId}
+                    onValueChange={(value) => setForm((p) => ({ ...p, examTypeId: value }))}
+                    disabled={typesQ.isLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={typesQ.isLoading ? "Loading types..." : "Select exam type"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {examTypes.map((type) => (
+                        <SelectItem key={type.id} value={String(type.id)}>
+                          <div className="flex items-center justify-between w-full">
+                            <div>
+                              <div className="font-medium">{type.name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {type.code && `Code: ${type.code} • `}Weight: {type.weight ?? "—"}
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="text-[10px]">
+                              {type.weight || 0}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {typesQ.isError && (
+                    <Alert variant="destructive" className="py-2">
+                      <AlertDescription className="text-xs">
+                        Failed to load exam types: {apiErrMsg(typesQ.error)}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {!examTypes.length && !typesQ.isLoading && (
+                    <div className="text-xs text-muted-foreground">
+                      No exam types found. Create one first.
+                    </div>
+                  )}
+                </div>
 
-                {!examTypes.length && !typesQ.isLoading ? (
-                  <div className="text-xs text-muted-foreground">
-                    You need at least one exam type before creating sessions.
-                  </div>
-                ) : null}
+                {createSessionMut.isError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      Failed to create session: {apiErrMsg(createSessionMut.error)}
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
+            </TabsContent>
 
-              {/* Footer buttons */}
-              <div className="flex justify-end gap-2 pt-2">
+            <TabsContent value="type" className="space-y-6 pt-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="type-name">Exam Type Name *</Label>
+                  <Input
+                    id="type-name"
+                    placeholder="e.g., MIDTERM"
+                    value={typeForm.name}
+                    onChange={(e) => setTypeForm((p) => ({ ...p, name: e.target.value }))}
+                    disabled={createTypeMut.isPending}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="type-code">Code (Optional)</Label>
+                  <Input
+                    id="type-code"
+                    placeholder="e.g., MID"
+                    value={typeForm.code}
+                    onChange={(e) => setTypeForm((p) => ({ ...p, code: e.target.value }))}
+                    disabled={createTypeMut.isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    A short code for this exam type
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="type-weight">Weight (Optional)</Label>
+                  <Input
+                    id="type-weight"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="1"
+                    placeholder="0.3"
+                    value={typeForm.weight}
+                    onChange={(e) => setTypeForm((p) => ({ ...p, weight: e.target.value }))}
+                    disabled={createTypeMut.isPending}
+                  />
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Used for aggregation (e.g., CAT 0.3 + ENDTERM 0.7)
+                    </p>
+                    {typeForm.weight && (
+                      <Badge variant={parseWeightInput(typeForm.weight)?.error ? "destructive" : "secondary"}>
+                        {parseWeightInput(typeForm.weight)?.error ? "Invalid" : "Valid"}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {createTypeMut.isError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      {apiErrMsg(createTypeMut.error)}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter className="flex justify-between sm:justify-between">
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={createSessionMut.isPending || createTypeMut.isPending}
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </Button>
+
+            <div className="flex gap-2">
+              {activeTab === "type" && (
                 <Button
+                  onClick={() => setActiveTab("session")}
                   variant="outline"
-                  onClick={() => setOpen(false)}
-                  disabled={createSessionMut.isPending}
+                  disabled={createTypeMut.isPending}
                 >
-                  Cancel
+                  Back to Session
                 </Button>
+              )}
 
+              {activeTab === "type" ? (
+                <Button
+                  onClick={() => createTypeMut.mutate()}
+                  disabled={createTypeMut.isPending || !String(typeForm.name || "").trim()}
+                  className="gap-2"
+                >
+                  {createTypeMut.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <PlusCircle className="h-4 w-4" />
+                      Create Type
+                    </>
+                  )}
+                </Button>
+              ) : (
                 <Button
                   onClick={() => createSessionMut.mutate()}
                   disabled={!canSubmit || createSessionMut.isPending}
+                  className="gap-2"
                 >
-                  {createSessionMut.isPending ? "Creating…" : "Create session"}
+                  {createSessionMut.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Create Session
+                    </>
+                  )}
                 </Button>
-              </div>
-
-              {/* Create session error */}
-              {createSessionMut.isError ? (
-                <div className="text-sm text-destructive">
-                  Failed to create session: {apiErrMsg(createSessionMut.error)}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Create Exam Type Dialog */}
-      <Dialog open={typeOpen} onOpenChange={setTypeOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Create exam type</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Name</div>
-              <Input
-                value={typeForm.name}
-                onChange={(e) => setTypeForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="e.g. MIDTERM"
-                disabled={createTypeMut.isPending}
-              />
+              )}
             </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Code (optional)</div>
-              <Input
-                value={typeForm.code}
-                onChange={(e) => setTypeForm((p) => ({ ...p, code: e.target.value }))}
-                placeholder="e.g. MID"
-                disabled={createTypeMut.isPending}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Weight (optional)</div>
-              <Input
-                value={typeForm.weight}
-                onChange={(e) => setTypeForm((p) => ({ ...p, weight: e.target.value }))}
-                placeholder="0.3 (between 0 and 1). Leave blank for none."
-                disabled={createTypeMut.isPending}
-              />
-              <div className="text-[11px] text-muted-foreground">
-                Weight is used for future aggregation (e.g. CAT 0.3 + ENDTERM 0.7).
-              </div>
-            </div>
-
-            {createTypeMut.isError ? (
-              <div className="text-sm text-destructive">
-                {apiErrMsg(createTypeMut.error)}
-              </div>
-            ) : null}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setTypeOpen(false)}
-              disabled={createTypeMut.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => createTypeMut.mutate()}
-              disabled={createTypeMut.isPending || !String(typeForm.name || "").trim()}
-            >
-              {createTypeMut.isPending ? "Creating…" : "Create type"}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -22,10 +22,8 @@ async function getSecurityOverview(params = {}) {
   return data;
 }
 
-// OPTIONAL: school search for SYSTEM_ADMIN UX
-// Change endpoint if yours is different.
 async function getSchools(params = {}) {
-  const { data } = await api.get("/api/schools", { params }); // expects { schools: [...] }
+  const { data } = await api.get("/api/schools", { params });
   return data;
 }
 
@@ -45,12 +43,10 @@ function clampInt(n) {
 
 function RiskBadge({ label, value, kind = "neutral" }) {
   const v = clampInt(value);
-  const variant =
-    kind === "danger" ? "destructive" : kind === "warn" ? "secondary" : "secondary";
   return (
     <div className="flex items-center justify-between text-sm">
       <div className="text-muted-foreground">{label}</div>
-      <Badge variant={variant} className="font-medium">
+      <Badge variant={kind === "danger" ? "destructive" : "secondary"} className="font-normal">
         {v}
       </Badge>
     </div>
@@ -62,15 +58,14 @@ export default function SecuritySettingsTab() {
   const role = String(meData?.user?.role || "").toUpperCase();
   const [, setSp] = useSearchParams();
 
-  // UX state
   const [schoolId, setSchoolId] = useState("");
   const [schoolQuery, setSchoolQuery] = useState("");
-  const [range, setRange] = useState("24h"); // UI-ready: 24h | 7d (backend can ignore)
+  const [range, setRange] = useState("24h");
 
   const overviewParams = useMemo(() => {
     const p = {};
     if (role === "SYSTEM_ADMIN" && schoolId.trim()) p.schoolId = schoolId.trim();
-    if (range) p.range = range; // safe even if backend ignores
+    if (range) p.range = range;
     return p;
   }, [role, schoolId, range]);
 
@@ -87,7 +82,6 @@ export default function SecuritySettingsTab() {
     keepPreviousData: true,
   });
 
-  // optional schools search (only for SYSTEM_ADMIN)
   const schoolsQ = useQuery({
     enabled: role === "SYSTEM_ADMIN",
     queryKey: ["schools-search", schoolQuery],
@@ -103,15 +97,18 @@ export default function SecuritySettingsTab() {
 
   const goToLogs = () => setSp({ tab: "logs" });
 
-  const copy = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // ignore
+const copy = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (err) {
+    // Silently fail - it's a non-critical feature
+    // But at least log in development
+    if (import.meta.env.DEV) {
+      console.warn('Failed to copy to clipboard:', err);
     }
-  };
+  }
+};
 
-  // derive risk signal
   const failed = clampInt(overview?.today?.loginFailed);
   const blocked = clampInt(overview?.today?.loginBlockedLocked);
   const locked = clampInt(overview?.today?.accountLocked);
@@ -123,286 +120,276 @@ export default function SecuritySettingsTab() {
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        <div className="text-sm text-muted-foreground">Loading security…</div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Card><CardContent className="p-6 h-24" /></Card>
-          <Card><CardContent className="p-6 h-24" /></Card>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card><CardContent className="p-6 h-32" /></Card>
+          <Card><CardContent className="p-6 h-32" /></Card>
         </div>
-        <Card><CardContent className="p-6 h-40" /></Card>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card><CardContent className="p-6 h-48" /></Card>
+          <Card><CardContent className="p-6 h-48" /></Card>
+          <Card><CardContent className="p-6 h-48" /></Card>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="space-y-3">
-        <div className="text-sm text-destructive">Failed to load security settings/overview.</div>
-        <div className="text-xs text-muted-foreground">
-          Backend hint: <span className="font-medium">SECURITY OVERVIEW ERROR</span>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              policyQ.refetch();
-              overviewQ.refetch();
-            }}
-          >
-            Retry
-          </Button>
-          <Button size="sm" onClick={goToLogs}>
-            View audit logs
-          </Button>
-        </div>
+      <div className="space-y-4">
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-lg font-medium mb-2">Failed to load security settings</div>
+            <div className="text-muted-foreground mb-4">
+              Please check your connection and try again.
+            </div>
+            <div className="flex justify-center gap-2">
+              <Button variant="outline" onClick={() => { policyQ.refetch(); overviewQ.refetch(); }}>
+                Retry
+              </Button>
+              <Button onClick={goToLogs}>View Audit Logs</Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="uppercase text-[10px]">
-            {role || "—"}
-          </Badge>
-
-          <Badge variant={riskVariant} className="uppercase text-[10px]">
-            risk: {riskLevel}
-          </Badge>
-
-          <div className="text-sm text-muted-foreground">
-            Policy is enforced server-side. This page surfaces live signals and audit-driven metrics.
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold">Security Overview</h2>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="outline" className="font-normal">{role}</Badge>
+            <Badge variant={riskVariant} className="font-normal">
+              Risk Level: {riskLevel}
+            </Badge>
           </div>
         </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              policyQ.refetch();
-              overviewQ.refetch();
-            }}
-          >
+        
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => { policyQ.refetch(); overviewQ.refetch(); }}>
             Refresh
           </Button>
-          <Button size="sm" onClick={goToLogs}>
-            View audit logs
-          </Button>
+          <Button size="sm" onClick={goToLogs}>Audit Logs</Button>
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <div className="text-xs text-muted-foreground">Range</div>
+      {/* Time Range Selector */}
+      <div className="flex items-center gap-4">
+        <div className="text-sm font-medium">Time Range</div>
         <div className="flex gap-2">
           <Button
             size="sm"
             variant={range === "24h" ? "default" : "outline"}
             onClick={() => setRange("24h")}
           >
-            24h
+            24 Hours
           </Button>
           <Button
             size="sm"
             variant={range === "7d" ? "default" : "outline"}
             onClick={() => setRange("7d")}
           >
-            7d
+            7 Days
           </Button>
         </div>
       </div>
 
-      {/* SYSTEM_ADMIN scope */}
-      {role === "SYSTEM_ADMIN" ? (
+      {/* SYSTEM_ADMIN Scope Selector */}
+      {role === "SYSTEM_ADMIN" && (
         <Card>
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
+          <CardContent className="pt-6">
+            <div className="space-y-4">
               <div>
-                <div className="text-sm font-medium">Scope</div>
-                <div className="text-sm text-muted-foreground">
-                  Filter security signals by a school (recommended) or leave empty for platform-wide.
+                <h3 className="text-base font-medium mb-1">Filter by School</h3>
+                <p className="text-sm text-muted-foreground">
+                  View security data for a specific school or leave blank for platform-wide overview.
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-sm font-medium mb-1.5">School ID</div>
+                  <Input
+                    value={schoolId}
+                    onChange={(e) => setSchoolId(e.target.value)}
+                    placeholder="Enter school ID"
+                  />
+                </div>
+                
+                <div>
+                  <div className="text-sm font-medium mb-1.5">Search School Name</div>
+                  <Input
+                    value={schoolQuery}
+                    onChange={(e) => setSchoolQuery(e.target.value)}
+                    placeholder="Search by name"
+                  />
                 </div>
               </div>
 
-              {schoolId ? (
-                <Button variant="outline" size="sm" onClick={() => copy(schoolId)}>
-                  Copy schoolId
+              {/* School Search Results */}
+              {schoolsQ.data?.schools?.length > 0 && (
+                <div className="border rounded-md p-3">
+                  <div className="text-sm font-medium mb-2">Quick Select</div>
+                  <div className="space-y-2">
+                    {schoolsQ.data.schools.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSchoolId(s.id)}
+                        className="w-full text-left p-2 rounded hover:bg-muted text-sm flex items-center justify-between"
+                      >
+                        <span>{s.name}</span>
+                        <Badge variant="outline" className="text-xs">{s.id}</Badge>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setSchoolId("")}>
+                  Clear Filter
                 </Button>
-              ) : null}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => schoolsQ.refetch?.()}
+                >
+                  Refresh Schools
+                </Button>
+                {schoolId && (
+                  <Button variant="outline" size="sm" onClick={() => copy(schoolId)}>
+                    Copy ID
+                  </Button>
+                )}
+              </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <Input
-                value={schoolId}
-                onChange={(e) => setSchoolId(e.target.value)}
-                placeholder="Selected schoolId (optional)"
-              />
-
-              <Input
-                value={schoolQuery}
-                onChange={(e) => setSchoolQuery(e.target.value)}
-                placeholder="Search school name (optional)"
-              />
-            </div>
-
-            {/* School search results (optional) */}
-            {schoolsQ.data?.schools?.length ? (
-              <div className="border rounded-md p-2 space-y-1">
-                <div className="text-xs text-muted-foreground">
-                  Quick pick (from /api/schools):
+      {/* Policy Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium">Login Lockout Policy</h3>
+                <Badge variant={policy?.lockout?.enabled ? "default" : "secondary"}>
+                  {policy?.lockout?.enabled ? "Enabled" : "Disabled"}
+                </Badge>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Max Attempts</span>
+                  <span className="font-medium">{policy?.lockout?.maxAttempts}</span>
                 </div>
-                <div className="space-y-1">
-                  {schoolsQ.data.schools.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSchoolId(s.id)}
-                      className="w-full text-left px-2 py-1 rounded hover:bg-muted text-sm flex items-center justify-between"
-                    >
-                      <span className="truncate">{s.name}</span>
-                      <span className="text-xs text-muted-foreground">{s.id}</span>
-                    </button>
-                  ))}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Lock Duration</span>
+                  <span className="font-medium">{policy?.lockout?.lockMinutes} minutes</span>
                 </div>
               </div>
-            ) : null}
-
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setSchoolId("")}>
-                Clear scope
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSchoolQuery("");
-                  schoolsQ.refetch?.();
-                }}
-              >
-                Refresh schools
-              </Button>
             </div>
+          </CardContent>
+        </Card>
 
-            {schoolsQ.isError ? (
-              <div className="text-xs text-muted-foreground">
-                School search unavailable (endpoint missing). You can still paste a schoolId.
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium">Audit Logs</h3>
+                <Badge variant={policy?.auditLogs?.enabled ? "default" : "secondary"}>
+                  {policy?.auditLogs?.enabled ? "Enabled" : "Disabled"}
+                </Badge>
               </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Policy */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Card>
-          <CardContent className="p-6 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">Login lockout policy</div>
-              <Badge variant="secondary">{policy?.lockout?.enabled ? "ENABLED" : "DISABLED"}</Badge>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Max attempts:{" "}
-              <span className="text-foreground font-medium">{policy?.lockout?.maxAttempts}</span>
-              {" • "}
-              Lock time:{" "}
-              <span className="text-foreground font-medium">{policy?.lockout?.lockMinutes} mins</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">Audit logs</div>
-              <Badge variant="secondary">{policy?.auditLogs?.enabled ? "ENABLED" : "DISABLED"}</Badge>
-            </div>
-            <div className="text-sm text-muted-foreground">{policy?.notes}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Separator />
-
-      {/* Live overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Card>
-          <CardContent className="p-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">Today</div>
-              <Badge variant="secondary" className="text-[10px] uppercase">
-                counts
-              </Badge>
-            </div>
-
-            <div className="space-y-2">
-              <RiskBadge label="Login success" value={overview?.today?.loginSuccess ?? 0} />
-              <RiskBadge label="Login failed" value={overview?.today?.loginFailed ?? 0} kind={failed >= 10 ? "warn" : "neutral"} />
-              <RiskBadge label="Account locked" value={overview?.today?.accountLocked ?? 0} kind={locked >= 3 ? "warn" : "neutral"} />
-              <RiskBadge label="Blocked (locked)" value={overview?.today?.loginBlockedLocked ?? 0} kind={blocked >= 3 ? "danger" : "neutral"} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">Active locks</div>
-              <Badge variant="secondary" className="text-[10px] uppercase">
-                signal
-              </Badge>
-            </div>
-            <div className="text-3xl font-semibold">{overview?.activeLocks ?? 0}</div>
-            <div className="text-xs text-muted-foreground">
-              Backend-driven signal (exact meaning depends on your implementation).
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">Last security event</div>
-              <Badge variant="secondary" className="text-[10px] uppercase">
-                latest
-              </Badge>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Action:{" "}
-              <span className="text-foreground font-medium">{overview?.lastEventAction || "-"}</span>
-              <br />
-              Time:{" "}
-              <span className="text-foreground font-medium">{fmtDate(overview?.lastEventAt)}</span>
+              <div className="text-sm text-muted-foreground">
+                {policy?.notes || "System activity is being logged and monitored."}
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Top actions */}
+      {/* Today's Activity */}
+      <div>
+        <h3 className="text-lg font-medium mb-3">Today's Security Activity</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium mb-2">Authentication Events</h4>
+                  <div className="space-y-2">
+                    <RiskBadge label="Successful Logins" value={overview?.today?.loginSuccess ?? 0} />
+                    <RiskBadge label="Failed Logins" value={failed} kind={failed >= 10 ? "warn" : "neutral"} />
+                    <RiskBadge label="Account Locked" value={locked} kind={locked >= 3 ? "warn" : "neutral"} />
+                    <RiskBadge label="Blocked (Locked)" value={blocked} kind={blocked >= 3 ? "danger" : "neutral"} />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-3">
+                <h4 className="font-medium">Active Account Locks</h4>
+                <div className="text-3xl font-semibold">{overview?.activeLocks ?? 0}</div>
+                <div className="text-sm text-muted-foreground">
+                  Currently locked accounts due to security policy violations.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-3">
+                <h4 className="font-medium">Latest Security Event</h4>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <div className="text-muted-foreground">Action</div>
+                    <div className="font-medium">{overview?.lastEventAction || "None"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Time</div>
+                    <div className="font-medium">{fmtDate(overview?.lastEventAt)}</div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Recent Activity */}
       <Card>
-        <CardContent className="p-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="font-medium">Top actions ({range})</div>
-            <Badge variant="secondary" className="text-[10px] uppercase">
-              activity
-            </Badge>
-          </div>
-
-          {overview?.last24hTopActions?.length ? (
-            <div className="space-y-2">
-              {overview.last24hTopActions.map((x) => (
-                <div key={x.action} className="flex items-center justify-between text-sm">
-                  <div className="text-muted-foreground">{x.action}</div>
-                  <div className="font-medium">{x.count}</div>
-                </div>
-              ))}
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium">Recent Security Events ({range})</h3>
+              <Badge variant="outline">Activity</Badge>
             </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">No activity in this window.</div>
-          )}
+            
+            {overview?.last24hTopActions?.length ? (
+              <div className="space-y-3">
+                {overview.last24hTopActions.map((x) => (
+                  <div key={x.action} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{x.action}</span>
+                    <Badge variant="secondary" className="font-normal">{x.count}</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-muted-foreground">
+                No security events in the selected time period.
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

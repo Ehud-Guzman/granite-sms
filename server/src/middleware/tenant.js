@@ -8,21 +8,62 @@ function normalizeHeader(v) {
 }
 
 function isValidSchoolKey(v) {
-  // Accept either:
-  // - cuid-like ids
-  // - short codes like KPS / KMT
-  // Keep strict enough to block garbage
   return typeof v === "string" && /^[a-zA-Z0-9_-]{2,64}$/.test(v);
 }
 
-async function resolveSchoolByIdOrCode(key) {
+// ---- tiny in-memory cache (kills DB spam)
+const USER_CACHE = new Map();
+const SCHOOL_CACHE = new Map();
+const TTL_MS = 30_000;
+
+function cacheGet(map, key) {
+  const hit = map.get(key);
+  if (!hit) return null;
+  if (Date.now() > hit.exp) {
+    map.delete(key);
+    return null;
+  }
+  return hit.data;
+}
+function cacheSet(map, key, data, ttl = TTL_MS) {
+  map.set(key, { data, exp: Date.now() + ttl });
+  return data;
+}
+
+async function getUserDb(userId) {
+  const id = String(userId);
+  const cached = cacheGet(USER_CACHE, id);
+  if (cached) return cached;
+
+  const u = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      role: true,
+      schoolId: true,
+      email: true,
+      isActive: true,
+      teacher: { select: { id: true, schoolId: true } },
+      student: { select: { id: true, schoolId: true } },
+    },
+  });
+
+  return cacheSet(USER_CACHE, id, u);
+}
+
+async function resolveSchoolByIdOrCodeCached(key) {
   const k = String(key || "").trim();
   if (!k) return null;
 
-  return prisma.school.findFirst({
+  const cached = cacheGet(SCHOOL_CACHE, k);
+  if (cached) return cached;
+
+  const s = await prisma.school.findFirst({
     where: { OR: [{ id: k }, { code: k }] },
     select: { id: true, code: true, name: true, isActive: true },
   });
+
+  return cacheSet(SCHOOL_CACHE, k, s);
 }
 
 export async function tenantContext(req, res, next) {
@@ -33,29 +74,15 @@ export async function tenantContext(req, res, next) {
     const jwtSchoolRaw = req.user?.schoolId ?? null;
     const jwtSchoolKey = jwtSchoolRaw ? String(jwtSchoolRaw).trim() : null;
 
-    // ✅ DB truth: role/school/active + linked profiles
-    const userDb = await prisma.user.findUnique({
-      where: { id: String(userId) },
-      select: {
-        id: true,
-        role: true,
-        schoolId: true,
-        email: true,
-        isActive: true,
-        teacher: { select: { id: true, schoolId: true } },
-        student: { select: { id: true, schoolId: true } },
-      },
-    });
+    const userDb = await getUserDb(userId);
 
     if (!userDb || !userDb.isActive) {
       return res.status(401).json({ message: "User not found or inactive" });
     }
 
-    // ✅ Always prefer DB truth for role
     req.role = userDb.role;
     req.userEmail = userDb.email;
 
-    // ✅ Enrich req.user for downstream modules (EXAMS needs teacherId)
     req.user = {
       ...(req.user || {}),
       id: userDb.id,
@@ -65,13 +92,10 @@ export async function tenantContext(req, res, next) {
       studentId: userDb.student?.id ?? null,
     };
 
-    // Optional convenience (if you like)
     req.teacherId = req.user.teacherId;
     req.studentId = req.user.studentId;
 
-    // -----------------------------
-    // SYSTEM_ADMIN: may operate with or without tenant context
-    // -----------------------------
+    // ---- SYSTEM_ADMIN: platform or tenant mode
     if (userDb.role === "SYSTEM_ADMIN") {
       const headerSchoolKey =
         normalizeHeader(req.headers["x-school-id"]) ||
@@ -79,10 +103,9 @@ export async function tenantContext(req, res, next) {
         normalizeHeader(req.headers["x-tenant-id"]) ||
         null;
 
-      // Prefer token context, fallback to header
-      const effectiveKey = jwtSchoolKey || headerSchoolKey;
+      // ✅ Prefer header over token (header reflects live selection)
+      const effectiveKey = headerSchoolKey || jwtSchoolKey;
 
-      // Platform mode (no school selected)
       if (!effectiveKey) {
         req.schoolId = null;
         req.school = null;
@@ -94,7 +117,7 @@ export async function tenantContext(req, res, next) {
         return res.status(400).json({ message: "Invalid X-School-Id" });
       }
 
-      const school = await resolveSchoolByIdOrCode(effectiveKey);
+      const school = await resolveSchoolByIdOrCodeCached(effectiveKey);
 
       if (!school) return res.status(404).json({ message: "School not found" });
       if (!school.isActive) return res.status(403).json({ message: "School inactive" });
@@ -105,9 +128,7 @@ export async function tenantContext(req, res, next) {
       return next();
     }
 
-    // -----------------------------
-    // Non-system users MUST be tenant-bound (no headers accepted)
-    // -----------------------------
+    // ---- Non-system users: must be tenant-bound
     const effectiveSchoolId = userDb.schoolId;
     if (!effectiveSchoolId) {
       return res.status(403).json({ message: "No school linked to this account" });
@@ -121,7 +142,6 @@ export async function tenantContext(req, res, next) {
     if (!school) return res.status(404).json({ message: "School not found" });
     if (!school.isActive) return res.status(403).json({ message: "School inactive" });
 
-    // ✅ Hard enforce: teacher/student profile (if present) must belong to same school
     if (userDb.teacher && userDb.teacher.schoolId !== school.id) {
       return res.status(403).json({ message: "Teacher profile mismatch (wrong school)" });
     }
@@ -141,8 +161,9 @@ export async function tenantContext(req, res, next) {
 
 export function requireTenant(req, res, next) {
   if (!req.schoolId) {
-    return res.status(400).json({
+    return res.status(403).json({
       message: "Tenant required. Select a school (SYSTEM_ADMIN) or use a school user.",
+      code: "TENANT_REQUIRED",
     });
   }
   return next();

@@ -44,12 +44,6 @@ async function getAuditLogs(params = {}) {
   return data;
 }
 
-function clampStr(s, n = 48) {
-  const x = String(s || "");
-  if (x.length <= n) return x;
-  return x.slice(0, n) + "…";
-}
-
 export default function AuditLogsTab() {
   const { data: meData } = useMe();
   const role = String(meData?.user?.role || "").toUpperCase();
@@ -99,7 +93,6 @@ export default function AuditLogsTab() {
   const logs = data?.logs || [];
   const hasMore = !!data?.hasMore;
   const nextCursor = data?.nextCursor || null;
-
   const allowedCategories = data?.allowedCategories || [];
 
   const clearFilters = () => {
@@ -151,215 +144,257 @@ export default function AuditLogsTab() {
   };
 
   return (
-    <div className="space-y-4 min-w-0">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <div className="font-medium">Audit Logs</div>
-
-          <Badge variant="secondary" className="text-[10px] uppercase">
-            {role || "—"}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold">Audit Logs</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Server-enforced audit trail with search and export
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="font-normal">
+            {role}
           </Badge>
-
-          <div className="text-sm text-muted-foreground min-w-0 truncate">
-            Server-enforced scope • searchable • exportable
-          </div>
         </div>
+      </div>
 
-        <div className="flex flex-wrap items-center justify-start lg:justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => logsQ.refetch()}
-            disabled={logsQ.isFetching}
-            className="whitespace-nowrap"
-          >
-            {logsQ.isFetching ? "Refreshing…" : "Refresh"}
-          </Button>
+      {/* Actions */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          onClick={() => logsQ.refetch()}
+          disabled={logsQ.isFetching}
+          size="sm"
+        >
+          {logsQ.isFetching ? "Refreshing..." : "Refresh"}
+        </Button>
 
-          <Button variant="outline" size="sm" onClick={() => exportLogs("csv")} className="whitespace-nowrap">
-            Export CSV
-          </Button>
+        <Button variant="outline" onClick={() => exportLogs("csv")} size="sm">
+          Export CSV
+        </Button>
 
-          <Button variant="outline" size="sm" onClick={() => exportLogs("xlsx")} className="whitespace-nowrap">
-            Export XLSX
-          </Button>
+        <Button variant="outline" onClick={() => exportLogs("xlsx")} size="sm">
+          Export Excel
+        </Button>
 
-          <Button variant="outline" size="sm" onClick={clearFilters} className="whitespace-nowrap">
-            Clear filters
-          </Button>
-        </div>
+        <Button variant="outline" onClick={clearFilters} size="sm">
+          Clear Filters
+        </Button>
       </div>
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4 space-y-3 min-w-0">
-          <div className="text-sm font-medium">Filters</div>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <h3 className="font-medium">Filters</h3>
+            
+            {role === "SYSTEM_ADMIN" && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">School Scope (SYSTEM_ADMIN only)</div>
+                <Input
+                  placeholder="Enter school ID to scope logs"
+                  value={schoolId}
+                  onChange={(e) => {
+                    setSchoolId(e.target.value);
+                    resetPaging();
+                  }}
+                />
+              </div>
+            )}
 
-          {role === "SYSTEM_ADMIN" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <Input
-                placeholder="schoolId (SYSTEM_ADMIN only)"
-                value={schoolId}
-                onChange={(e) => {
-                  setSchoolId(e.target.value);
-                  resetPaging();
-                }}
-              />
-              <div className="text-xs text-muted-foreground flex items-center">
-                Tip: paste the schoolId to scope logs.
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Category</div>
+                <select
+                  value={category}
+                  onChange={(e) => {
+                    setCategory(e.target.value);
+                    resetPaging();
+                  }}
+                  className="w-full border rounded-md h-10 px-3 bg-background text-sm"
+                >
+                  <option value="">All Categories</option>
+                  {allowedCategories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Search</div>
+                <Input
+                  placeholder="Search across all fields"
+                  value={q}
+                  onChange={(e) => {
+                    setQ(e.target.value);
+                    resetPaging();
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Action</div>
+                <Input
+                  placeholder="Filter by action"
+                  value={action}
+                  onChange={(e) => {
+                    setAction(e.target.value);
+                    resetPaging();
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Actor ID</div>
+                <Input
+                  placeholder="Filter by actor ID"
+                  value={actorId}
+                  onChange={(e) => {
+                    setActorId(e.target.value);
+                    resetPaging();
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Target Type</div>
+                <Input
+                  placeholder="Filter by target type"
+                  value={targetType}
+                  onChange={(e) => {
+                    setTargetType(e.target.value);
+                    resetPaging();
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Target ID</div>
+                <Input
+                  placeholder="Filter by target ID"
+                  value={targetId}
+                  onChange={(e) => {
+                    setTargetId(e.target.value);
+                    resetPaging();
+                  }}
+                />
               </div>
             </div>
-          ) : null}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 min-w-0">
-            <select
-              value={category}
-              onChange={(e) => {
-                setCategory(e.target.value);
-                resetPaging();
-              }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-0"
-            >
-              <option value="">All categories</option>
-              {allowedCategories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-
-            <Input
-              placeholder="Search (q): action/email/target/id…"
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                resetPaging();
-              }}
-            />
-
-            <Input
-              placeholder="action (exact match)"
-              value={action}
-              onChange={(e) => {
-                setAction(e.target.value);
-                resetPaging();
-              }}
-            />
-
-            <Input
-              placeholder="actorId"
-              value={actorId}
-              onChange={(e) => {
-                setActorId(e.target.value);
-                resetPaging();
-              }}
-            />
-
-            <Input
-              placeholder="targetType"
-              value={targetType}
-              onChange={(e) => {
-                setTargetType(e.target.value);
-                resetPaging();
-              }}
-            />
-
-            <Input
-              placeholder="targetId"
-              value={targetId}
-              onChange={(e) => {
-                setTargetId(e.target.value);
-                resetPaging();
-              }}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm text-muted-foreground">Rows:</div>
-            {[25, 50, 100, 200].map((n) => (
-              <Button
-                key={n}
-                size="sm"
-                variant={take === n ? "default" : "outline"}
-                onClick={() => {
-                  setTake(n);
-                  resetPaging();
-                }}
-                className="whitespace-nowrap"
-              >
-                {n}
-              </Button>
-            ))}
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Rows per page</div>
+              <div className="flex gap-2">
+                {[25, 50, 100, 200].map((n) => (
+                  <Button
+                    key={n}
+                    size="sm"
+                    variant={take === n ? "default" : "outline"}
+                    onClick={() => {
+                      setTake(n);
+                      resetPaging();
+                    }}
+                  >
+                    {n}
+                  </Button>
+                ))}
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <Separator />
-
-      {/* Body */}
+      {/* Results */}
       {logsQ.isLoading ? (
-        <div className="text-sm text-muted-foreground">Loading logs…</div>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center text-muted-foreground">Loading audit logs...</div>
+          </CardContent>
+        </Card>
       ) : logsQ.isError ? (
-        <div className="text-sm text-destructive">
-          Failed to load logs. Check backend route:{" "}
-          <span className="font-medium">GET /api/settings/audit-logs</span>
-        </div>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-lg font-medium mb-2">Failed to load logs</div>
+            <div className="text-muted-foreground mb-4">
+              Check backend route: GET /api/settings/audit-logs
+            </div>
+            <Button onClick={() => logsQ.refetch()}>Try Again</Button>
+          </CardContent>
+        </Card>
       ) : logs.length === 0 ? (
-        <div className="text-sm text-muted-foreground">No logs found for this filter.</div>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-lg font-medium mb-2">No logs found</div>
+            <div className="text-muted-foreground">
+              Try adjusting your filters or check if logs exist for the selected scope.
+            </div>
+          </CardContent>
+        </Card>
       ) : (
-        <Card className="min-w-0">
-          <CardContent className="p-0 min-w-0">
-            {/* ✅ Table scrolls INSIDE card, not the whole page */}
-            <div className="w-full overflow-x-auto">
-              <table className="w-full text-sm min-w-[1100px]">
-                <thead className="sticky top-0 bg-background border-b z-10">
+        <div className="space-y-4">
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b">
                   <tr className="text-left">
-                    <th className="p-3 whitespace-nowrap">Time</th>
-                    <th className="p-3">Action</th>
-                    <th className="p-3">Actor</th>
-                    <th className="p-3">Target</th>
-                    <th className="p-3">School</th>
-                    <th className="p-3 w-[1%] whitespace-nowrap">More</th>
+                    <th className="p-3 font-medium">Time</th>
+                    <th className="p-3 font-medium">Action</th>
+                    <th className="p-3 font-medium">Actor</th>
+                    <th className="p-3 font-medium">Target</th>
+                    <th className="p-3 font-medium">School</th>
+                    <th className="p-3 font-medium">Details</th>
                   </tr>
                 </thead>
-
                 <tbody>
                   {logs.map((l) => (
-                    <tr key={l.id} className="border-b hover:bg-muted/40">
-                      <td className="p-3 whitespace-nowrap">{fmtDate(l.createdAt)}</td>
-
+                    <tr key={l.id} className="border-b hover:bg-muted/30">
                       <td className="p-3">
-                        <div className="font-medium break-words">{l.action || "-"}</div>
-                        {l.ip || l.userAgent ? (
-                          <div className="text-xs text-muted-foreground">
-                            {l.ip ? `IP: ${l.ip}` : null}
-                            {l.ip && l.userAgent ? " • " : null}
-                            {l.userAgent ? `UA: ${clampStr(l.userAgent, 56)}` : null}
+                        <div className="whitespace-nowrap">{fmtDate(l.createdAt)}</div>
+                      </td>
+                      <td className="p-3">
+                        <div className="font-medium">{l.action || "-"}</div>
+                        {(l.ip || l.userAgent) && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {l.ip && <div>IP: {l.ip}</div>}
+                            {l.userAgent && (
+                              <div className="truncate max-w-[200px]" title={l.userAgent}>
+                                UA: {l.userAgent}
+                              </div>
+                            )}
                           </div>
-                        ) : null}
+                        )}
                       </td>
-
                       <td className="p-3">
-                        <div className="text-muted-foreground break-words">
-                          {l.actorRole || "-"}
-                          {l.actorEmail ? ` • ${l.actorEmail}` : ""}
-                        </div>
-                        <div className="text-xs text-muted-foreground break-all">{l.actorId || "-"}</div>
+                        <div>{l.actorRole || "-"}</div>
+                        {l.actorEmail && (
+                          <div className="text-xs text-muted-foreground">{l.actorEmail}</div>
+                        )}
+                        {l.actorId && (
+                          <div className="text-xs text-muted-foreground truncate max-w-[150px]">
+                            ID: {l.actorId}
+                          </div>
+                        )}
                       </td>
-
                       <td className="p-3">
-                        <div className="text-muted-foreground break-words">{l.targetType || "-"}</div>
-                        <div className="text-xs text-muted-foreground break-all">{l.targetId || "-"}</div>
+                        <div>{l.targetType || "-"}</div>
+                        {l.targetId && (
+                          <div className="text-xs text-muted-foreground truncate max-w-[150px]">
+                            ID: {l.targetId}
+                          </div>
+                        )}
                       </td>
-
-                      <td className="p-3 text-muted-foreground break-all max-w-[220px]">
-                        {l.schoolId || "-"}
-                      </td>
-
                       <td className="p-3">
-                        <Button size="sm" variant="outline" onClick={() => openRowDetails(l)} className="whitespace-nowrap">
-                          Details
+                        <div className="truncate max-w-[150px]">{l.schoolId || "-"}</div>
+                      </td>
+                      <td className="p-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openRowDetails(l)}
+                        >
+                          View
                         </Button>
                       </td>
                     </tr>
@@ -367,28 +402,34 @@ export default function AuditLogsTab() {
                 </tbody>
               </table>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </Card>
 
-      {/* Pagination */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button variant="outline" size="sm" onClick={() => setCursor(null)} disabled={!cursor} className="whitespace-nowrap">
-          First page
-        </Button>
-
-        <div className="text-xs text-muted-foreground">
-          {logs.length} rows • {hasMore ? "More available" : "End"}
+          {/* Pagination */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Showing {logs.length} log{logs.length !== 1 ? 's' : ''}
+              {hasMore && " • More available"}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCursor(null)}
+                disabled={!cursor}
+              >
+                First Page
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setCursor(nextCursor)}
+                disabled={!hasMore || !nextCursor}
+              >
+                Next Page
+              </Button>
+            </div>
+          </div>
         </div>
-
-        <Button size="sm" onClick={() => setCursor(nextCursor)} disabled={!hasMore || !nextCursor} className="whitespace-nowrap">
-          Next
-        </Button>
-      </div>
-
-      <div className="text-xs text-muted-foreground">
-        Tip: SYSTEM_ADMIN can filter by <span className="font-medium text-foreground">schoolId</span>. ADMIN scope is enforced automatically.
-      </div>
+      )}
 
       {/* Details Dialog */}
       <Dialog open={openDetails} onOpenChange={setOpenDetails}>
@@ -397,56 +438,81 @@ export default function AuditLogsTab() {
             <DialogTitle>Audit Log Details</DialogTitle>
           </DialogHeader>
 
-          {!selected ? (
-            <div className="text-sm text-muted-foreground">No log selected.</div>
-          ) : (
-            <div className="space-y-3 min-w-0">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Time</div>
-                  <div className="font-medium">{fmtDate(selected.createdAt)}</div>
-                </div>
-
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Action</div>
-                  <div className="font-medium break-words">{selected.action || "-"}</div>
-                </div>
-
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Actor</div>
-                  <div className="font-medium break-words">
-                    {selected.actorEmail || selected.actorId || "-"}
+          {selected && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm font-medium mb-2">Basic Information</div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Time</div>
+                      <div>{fmtDate(selected.createdAt)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Action</div>
+                      <div className="font-medium">{selected.action || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">School</div>
+                      <div>{selected.schoolId || "-"}</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">{selected.actorRole || "-"}</div>
                 </div>
 
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Target</div>
-                  <div className="font-medium">{selected.targetType || "-"}</div>
-                  <div className="text-xs text-muted-foreground break-all">{selected.targetId || "-"}</div>
-                </div>
-
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">School</div>
-                  <div className="font-medium break-all">{selected.schoolId || "-"}</div>
-                </div>
-
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Client</div>
-                  <div className="text-sm">
-                    {selected.ip ? `IP: ${selected.ip}` : "IP: -"}
-                    {selected.userAgent ? (
-                      <div className="text-xs text-muted-foreground break-words mt-1">
-                        UA: {String(selected.userAgent)}
+                <div>
+                  <div className="text-sm font-medium mb-2">Client Information</div>
+                  <div className="space-y-2">
+                    {selected.ip && (
+                      <div>
+                        <div className="text-xs text-muted-foreground">IP Address</div>
+                        <div>{selected.ip}</div>
                       </div>
-                    ) : null}
+                    )}
+                    {selected.userAgent && (
+                      <div>
+                        <div className="text-xs text-muted-foreground">User Agent</div>
+                        <div className="text-sm break-words">{selected.userAgent}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium mb-2">Actor Information</div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Role</div>
+                      <div>{selected.actorRole || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Email</div>
+                      <div>{selected.actorEmail || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">ID</div>
+                      <div className="font-mono text-sm">{selected.actorId || "-"}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium mb-2">Target Information</div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Type</div>
+                      <div>{selected.targetType || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">ID</div>
+                      <div className="font-mono text-sm">{selected.targetId || "-"}</div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-1 min-w-0">
-                <div className="text-sm font-medium">Metadata</div>
-                <pre className="text-xs bg-muted/30 border rounded-lg p-3 overflow-auto max-h-[45vh]">
+              <div>
+                <div className="text-sm font-medium mb-2">Metadata</div>
+                <pre className="text-sm bg-muted/20 p-3 rounded-md overflow-auto max-h-[40vh]">
                   {JSON.stringify(selected.metadata ?? {}, null, 2)}
                 </pre>
               </div>

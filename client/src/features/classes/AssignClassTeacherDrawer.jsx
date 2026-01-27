@@ -1,5 +1,5 @@
 // client/src/features/classes/AssignClassTeacherDrawer.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -24,30 +24,49 @@ import {
 // ---------------------------
 // helpers
 // ---------------------------
-function asStr(v) {
-  return String(v ?? "").trim();
+const asStr = (v) => String(v ?? "").trim();
+const normalize = (v) => asStr(v).toLowerCase();
+
+function niceFromEmail(email) {
+  const raw = String(email || "").split("@")[0] || "";
+  if (!raw) return "";
+  // kalunde.kmt_12 -> Kalunde Kmt 12
+  return raw
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
-function normalize(v) {
-  return asStr(v).toLowerCase();
+
+/**
+ * We are listing TEACHERS from /api/users?role=TEACHER (User records).
+ * Shape (from your response):
+ * { id, email, role, isActive, schoolId, ... }
+ */
+function userTeacherLabel(u) {
+  const first = u?.firstName || "";
+  const last = u?.lastName || "";
+  const full = `${first} ${last}`.trim();
+  const email = u?.email || "";
+  return full || niceFromEmail(email) || email || "Teacher";
 }
-function teacherLabel(t) {
-  const full = `${t?.firstName || ""} ${t?.lastName || ""}`.trim();
-  return full || t?.name || t?.user?.email || t?.email || "Teacher";
-}
-function teacherMeta(t) {
-  const email = t?.user?.email || t?.email || "";
-  const phone = t?.phone || "";
-  return [email, phone].filter(Boolean).join(" • ") || "—";
+
+function userTeacherMeta(u) {
+  const email = u?.email || "";
+  const phone = u?.phone || "";
+  const inactive = u?.isActive === false ? "Inactive" : "";
+  return [email, phone, inactive].filter(Boolean).join(" • ") || "—";
 }
 
 // ---------------------------
 // API helpers
 // ---------------------------
-async function listTeachers() {
-  const { data } = await api.get("/api/teachers");
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.teachers)) return data.teachers;
-  return [];
+
+// Teachers list = USERS with role TEACHER (this matches your actual data)
+async function listTeacherUsers() {
+  const { data } = await api.get("/api/users", { params: { role: "TEACHER" } });
+  const users = data?.users ?? data;
+  return Array.isArray(users) ? users : [];
 }
 
 async function listClassTeachers() {
@@ -57,88 +76,92 @@ async function listClassTeachers() {
   return [];
 }
 
-// ✅ Backend: POST /api/class-teachers { classId, teacherId }
+// Backend now accepts teacherId as:
+// - Teacher.id OR Teacher.userId OR User.id(role=TEACHER) (auto-create teacher profile)
 async function assignClassTeacher({ classId, teacherId }) {
   const { data } = await api.post("/api/class-teachers", { classId, teacherId });
   return data;
 }
 
-export default function AssignClassTeacherDrawer({
-  classId,
-  classLabel,
-  children,
-}) {
+export default function AssignClassTeacherDrawer({ classId, classLabel, children }) {
   const qc = useQueryClient();
-
-  // Hooks must ALWAYS run
   const { data: meData, isLoading: meLoading } = useMe();
 
-  const role = useMemo(() => {
-    return String(meData?.user?.role || "").toUpperCase();
-  }, [meData?.user?.role]);
-
+  const role = String(meData?.user?.role || meData?.role || "").toUpperCase();
+  const tenantId = asStr(meData?.user?.schoolId || meData?.schoolId || "");
   const canUse = role === "ADMIN";
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedTeacherId, setSelectedTeacherId] = useState("");
 
-  // Only fetch when:
-  // - drawer is open
-  // - user is ADMIN
-  const canFetch = open && canUse;
+  const canFetch = open && canUse && !!tenantId;
 
   const teachersQ = useQuery({
-    queryKey: ["teachers"],
-    queryFn: listTeachers,
+    queryKey: ["teacher-users", tenantId],
+    queryFn: listTeacherUsers,
     enabled: canFetch,
     retry: false,
     staleTime: 60_000,
   });
 
   const classTeachersQ = useQuery({
-    queryKey: ["class-teachers"],
+    queryKey: ["class-teachers", tenantId],
     queryFn: listClassTeachers,
     enabled: canFetch,
     retry: false,
     staleTime: 60_000,
   });
 
+  // current assignment (from /api/class-teachers)
   const currentAssignment = useMemo(() => {
     const rows = Array.isArray(classTeachersQ.data) ? classTeachersQ.data : [];
-    const cid = String(classId || "");
+    const cid = asStr(classId);
     if (!cid) return null;
-    return rows.find((r) => String(r?.classId) === cid) || null;
+    return rows.find((r) => asStr(r?.classId) === cid) || null;
   }, [classTeachersQ.data, classId]);
 
-  const currentTeacherId = useMemo(() => {
-    return currentAssignment?.teacherId ? String(currentAssignment.teacherId) : "";
-  }, [currentAssignment?.teacherId]);
+  /**
+   * IMPORTANT:
+   * In DB, ClassTeacher.teacherId stores Teacher.id.
+   * Your UI list is User.id.
+   *
+   * But backend includes: { teacher: { user: { email } } }
+   * So we can match "current teacher" by comparing email against the teacher user email.
+   */
+  const currentTeacherEmail =
+    currentAssignment?.teacher?.user?.email ||
+    currentAssignment?.teacher?.email || // just in case
+    "";
+
+  // Find current teacher user id (User.id) by email match
+  const currentTeacherUserId = useMemo(() => {
+    const list = Array.isArray(teachersQ.data) ? teachersQ.data : [];
+    if (!currentTeacherEmail) return "";
+    const hit = list.find((u) => normalize(u?.email) === normalize(currentTeacherEmail));
+    return hit?.id ? asStr(hit.id) : "";
+  }, [teachersQ.data, currentTeacherEmail]);
 
   const currentTeacherName = useMemo(() => {
+    // Prefer teacher profile names if present, else email-derived
     const t = currentAssignment?.teacher;
-    return t ? teacherLabel(t) : null;
+    const first = t?.firstName || "";
+    const last = t?.lastName || "";
+    const full = `${first} ${last}`.trim();
+    const email = t?.user?.email || "";
+    return full || niceFromEmail(email) || email || null;
   }, [currentAssignment]);
 
-  // When opened, preselect current teacher
-  useEffect(() => {
-    if (!open) return;
-    if (!canUse) return;
-
-    if (currentTeacherId) setSelectedTeacherId(currentTeacherId);
-    else setSelectedTeacherId("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, canUse, currentTeacherId]);
+  // Effective selection: user click overrides, otherwise show current user id (mapped)
+  const effectiveTeacherId = selectedTeacherId || currentTeacherUserId;
 
   const filteredTeachers = useMemo(() => {
     const list = Array.isArray(teachersQ.data) ? teachersQ.data : [];
     const needle = normalize(search);
     if (!needle) return list;
 
-    return list.filter((t) => {
-      const blob = normalize(
-        `${teacherLabel(t)} ${t?.email || ""} ${t?.user?.email || ""} ${t?.phone || ""}`
-      );
+    return list.filter((u) => {
+      const blob = normalize(`${userTeacherLabel(u)} ${u?.email || ""} ${u?.phone || ""}`);
       return blob.includes(needle);
     });
   }, [teachersQ.data, search]);
@@ -146,11 +169,11 @@ export default function AssignClassTeacherDrawer({
   const assignMut = useMutation({
     mutationFn: assignClassTeacher,
     onSuccess: () => {
-      toast.success("Class teacher updated");
+      toast.success(currentTeacherUserId ? "Class teacher updated" : "Class teacher assigned");
 
       qc.invalidateQueries({ queryKey: ["classes"] });
-      qc.invalidateQueries({ queryKey: ["class-teachers"] });
-      qc.invalidateQueries({ queryKey: ["teachers"] });
+      qc.invalidateQueries({ queryKey: ["class-teachers", tenantId] });
+      qc.invalidateQueries({ queryKey: ["teacher-users", tenantId] });
 
       setOpen(false);
       setSearch("");
@@ -168,11 +191,17 @@ export default function AssignClassTeacherDrawer({
 
   const onAssign = () => {
     if (!canUse) return toast.error("Forbidden");
-    const tId = asStr(selectedTeacherId);
+
     const cId = asStr(classId);
+    const tId = asStr(effectiveTeacherId); // ✅ this is User.id today
 
     if (!cId) return toast.error("Missing classId");
     if (!tId) return toast.error("Select a teacher first");
+
+    if (tId === currentTeacherUserId) {
+      toast.message("No changes to save.");
+      return;
+    }
 
     assignMut.mutate({ classId: cId, teacherId: tId });
   };
@@ -183,10 +212,15 @@ export default function AssignClassTeacherDrawer({
     setSelectedTeacherId("");
   };
 
-  // ✅ No early returns before hooks.
-  // UI hiding happens down here, safely.
+  const onOpenChange = (next) => {
+    setOpen(next);
+    if (next) {
+      setSearch("");
+      setSelectedTeacherId(""); // resets so default uses current
+    }
+  };
+
   if (meLoading) {
-    // Still render trigger for layout stability, but disable it
     return children ? (
       <span className="inline-block opacity-60 pointer-events-none">{children}</span>
     ) : (
@@ -196,26 +230,34 @@ export default function AssignClassTeacherDrawer({
     );
   }
 
-  if (!canUse) {
-    // Not admin → render nothing (or children if you want)
-    return null;
+  if (!canUse) return null;
+
+  if (!tenantId) {
+    return (
+      <Button
+        variant="outline"
+        onClick={() => toast.error("Missing school context (tenantId).")}
+      >
+        Assign class teacher
+      </Button>
+    );
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetTrigger asChild>
         {children || <Button variant="outline">Assign class teacher</Button>}
       </SheetTrigger>
 
-      <SheetContent side="right" className="w-full sm:w-[520px]">
+      <SheetContent side="right" className="w-full sm:w-[520px] flex flex-col">
         <SheetHeader>
           <SheetTitle>Assign Class Teacher</SheetTitle>
           <SheetDescription>
-            Pick one teacher for this class (tenant-safe). This updates the current assignment.
+            Pick one teacher user (role=TEACHER) for this class.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-5 space-y-4">
+        <div className="flex-1 overflow-y-auto mt-5 space-y-4">
           {/* Class summary */}
           <Card>
             <CardContent className="p-4 space-y-2">
@@ -234,7 +276,9 @@ export default function AssignClassTeacherDrawer({
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Current teacher</span>
                 <span className="font-medium">
-                  {classTeachersQ.isLoading ? "Loading…" : currentTeacherName || "None assigned"}
+                  {classTeachersQ.isLoading
+                    ? "Loading…"
+                    : currentTeacherName || "None assigned"}
                 </span>
               </div>
             </CardContent>
@@ -276,32 +320,43 @@ export default function AssignClassTeacherDrawer({
                   No teachers match your search.
                 </div>
               ) : (
-                filteredTeachers.map((t) => {
-                  const id = String(t?.id || "");
-                  const isSelected = id === String(selectedTeacherId);
-                  const isCurrent = id && id === currentTeacherId;
+                filteredTeachers.map((u) => {
+                  const id = asStr(u?.id); // ✅ User.id
+                  const isSelected = id && id === asStr(effectiveTeacherId);
+                  const isCurrent = id && id === asStr(currentTeacherUserId);
+                  const inactive = u?.isActive === false;
 
                   return (
                     <button
                       key={id}
                       type="button"
-                      onClick={() => setSelectedTeacherId(id)}
+                      disabled={inactive}
+                      onClick={() => {
+                        if (inactive) return;
+                        setSelectedTeacherId(id);
+                      }}
                       className={[
                         "w-full text-left p-3 border-b last:border-b-0 flex items-start justify-between gap-3",
+                        inactive ? "opacity-60 cursor-not-allowed" : "",
                         isSelected ? "bg-muted" : "hover:bg-muted/50",
                       ].join(" ")}
                     >
                       <div className="min-w-0">
                         <div className="font-medium flex items-center gap-2">
-                          <span className="truncate">{teacherLabel(t)}</span>
+                          <span className="truncate">{userTeacherLabel(u)}</span>
                           {isCurrent ? (
                             <Badge variant="secondary" className="text-[10px]">
                               CURRENT
                             </Badge>
                           ) : null}
+                          {inactive ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              INACTIVE
+                            </Badge>
+                          ) : null}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1 break-words">
-                          {teacherMeta(t)}
+                          {userTeacherMeta(u)}
                         </div>
                       </div>
 
@@ -312,23 +367,32 @@ export default function AssignClassTeacherDrawer({
               )}
             </div>
 
-            {currentTeacherId &&
-            selectedTeacherId &&
-            selectedTeacherId !== currentTeacherId ? (
+            {currentTeacherUserId &&
+            effectiveTeacherId &&
+            effectiveTeacherId !== currentTeacherUserId ? (
               <div className="text-xs text-muted-foreground">
                 You’re changing the current assignment.
               </div>
             ) : null}
           </div>
+        </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-2">
+        {/* Actions */}
+        <div className="border-t pt-4 mt-4">
+          <div className="flex items-center justify-end gap-2">
             <Button variant="outline" onClick={onClose} disabled={busy}>
-              Cancel
+              Close
             </Button>
 
-            <Button onClick={onAssign} disabled={busy || !selectedTeacherId}>
-              {assignMut.isPending ? "Saving…" : currentTeacherId ? "Update teacher" : "Assign teacher"}
+            <Button
+              onClick={onAssign}
+              disabled={busy || !effectiveTeacherId || effectiveTeacherId === currentTeacherUserId}
+            >
+              {assignMut.isPending
+                ? "Saving…"
+                : currentTeacherUserId
+                ? "Update teacher"
+                : "Assign teacher"}
             </Button>
           </div>
         </div>

@@ -1,12 +1,14 @@
 export function normalizeHex(v) {
-  const s = (v || "").trim();
+  const s = String(v ?? "").trim();
   if (!s) return "";
   return s.startsWith("#") ? s : `#${s}`;
 }
 
 export function isValidHex(v) {
-  if (!v) return true;
-  return /^#([0-9a-fA-F]{6})$/.test(String(v).trim());
+  if (v == null) return true; // null allowed (means clear)
+  const s = String(v).trim();
+  if (!s) return true; // empty allowed
+  return /^#([0-9a-fA-F]{6})$/.test(s.startsWith("#") ? s : `#${s}`);
 }
 
 // ---- HEX -> HSL (returns "H S% L%" triplet) ----
@@ -38,8 +40,6 @@ function hexToHslTriplet(hex) {
       case b:
         hh = (r - g) / d + 4;
         break;
-      default:
-        break;
     }
     hh = Math.round(hh * 60);
     if (hh < 0) hh += 360;
@@ -50,20 +50,52 @@ function hexToHslTriplet(hex) {
   return `${hh} ${S}% ${L}%`;
 }
 
-export function applyBrandingVars(branding) {
+/**
+ * Smart apply:
+ * - undefined => do nothing (lets preset/theme decide)
+ * - null/""   => clear (revert to CSS defaults)
+ * - "#rrggbb" => set and compute HSL vars
+ */
+export function applyBrandingVars(branding = {}) {
   const root = document.documentElement;
 
-  const primaryHex = branding?.brandPrimaryColor || "#111827";
-  const secondaryHex = branding?.brandSecondaryColor || "#2563eb";
+  const primary = branding.brandPrimaryColor;
+  const secondary = branding.brandSecondaryColor;
 
-  root.style.setProperty("--brand-primary", primaryHex);
-  root.style.setProperty("--brand-secondary", secondaryHex);
+  // Primary
+  if (primary === undefined) {
+    // do nothing
+  } else {
+    const p = normalizeHex(primary);
+    if (!p) {
+      root.style.removeProperty("--brand-primary");
+      root.style.removeProperty("--brand-primary-hsl");
+    } else {
+      root.style.setProperty("--brand-primary", p);
+      const hsl = hexToHslTriplet(p);
+      if (hsl) root.style.setProperty("--brand-primary-hsl", hsl);
+    }
+  }
 
-  const primaryHsl = hexToHslTriplet(primaryHex);
-  const secondaryHsl = hexToHslTriplet(secondaryHex);
-
-  if (primaryHsl) root.style.setProperty("--brand-primary-hsl", primaryHsl);
-  if (secondaryHsl) root.style.setProperty("--brand-secondary-hsl", secondaryHsl);
+  // Secondary
+  if (secondary === undefined) {
+    // do nothing
+  } else {
+    const s = normalizeHex(secondary);
+    if (!s) {
+      root.style.removeProperty("--brand-secondary");
+      root.style.removeProperty("--brand-secondary-hsl");
+      // ring usually tracks secondary
+      root.style.removeProperty("--ring");
+    } else {
+      root.style.setProperty("--brand-secondary", s);
+      const hsl = hexToHslTriplet(s);
+      if (hsl) {
+        root.style.setProperty("--brand-secondary-hsl", hsl);
+        root.style.setProperty("--ring", hsl);
+      }
+    }
+  }
 }
 
 export function resetBrandingVars() {
@@ -72,4 +104,5 @@ export function resetBrandingVars() {
   root.style.removeProperty("--brand-secondary");
   root.style.removeProperty("--brand-primary-hsl");
   root.style.removeProperty("--brand-secondary-hsl");
+  root.style.removeProperty("--ring");
 }

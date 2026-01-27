@@ -8,16 +8,17 @@ import { listUsers } from "./users.api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import NewUserDialog from "./components/NewUserDialog";
 import ManageUserDialog from "./components/ManageUserDialog";
 
 function RoleBadge({ role }) {
   const r = String(role || "").toUpperCase();
-  const variant = r === "SYSTEM_ADMIN" ? "default" : r === "ADMIN" ? "secondary" : "outline";
+  const variant = r === "SYSTEM_ADMIN" ? "default" : 
+                 r === "ADMIN" ? "secondary" : "outline";
   return (
-    <Badge variant={variant} className="text-[10px] uppercase">
+    <Badge variant={variant} className="font-normal">
       {r || "—"}
     </Badge>
   );
@@ -25,14 +26,14 @@ function RoleBadge({ role }) {
 
 function StatusBadge({ active }) {
   return active ? (
-    <Badge className="text-[10px]" variant="secondary">Active</Badge>
+    <Badge variant="default" className="font-normal">Active</Badge>
   ) : (
-    <Badge className="text-[10px]" variant="destructive">Suspended</Badge>
+    <Badge variant="destructive" className="font-normal">Suspended</Badge>
   );
 }
 
 export default function UsersSettingsTab() {
-  const [q, setQ] = useState("");
+  const [search, setSearch] = useState("");
 
   const meQ = useQuery({
     queryKey: ["me"],
@@ -46,17 +47,15 @@ export default function UsersSettingsTab() {
 
   const usersQ = useQuery({
     queryKey: ["users"],
-    // ✅ wrap so listUsers DOESN'T receive React Query context object
     queryFn: () => listUsers(),
     staleTime: 30 * 1000,
     retry: false,
-    // ✅ /api/users is SYSTEM_ADMIN only
     enabled: actorRole === "SYSTEM_ADMIN",
   });
 
   const filtered = useMemo(() => {
     const items = usersQ.data || [];
-    const s = q.trim().toLowerCase();
+    const s = search.trim().toLowerCase();
     if (!s) return items;
 
     return items.filter((u) => {
@@ -65,34 +64,54 @@ export default function UsersSettingsTab() {
       const schoolId = String(u.schoolId || "").toLowerCase();
       return email.includes(s) || role.includes(s) || schoolId.includes(s);
     });
-  }, [usersQ.data, q]);
+  }, [usersQ.data, search]);
 
   const total = (usersQ.data || []).length;
 
-  if (meQ.isLoading) return <div className="p-4">Loading…</div>;
-  if (meQ.isError) return <div className="p-4">Failed to load identity.</div>;
+  if (meQ.isLoading) return (
+    <div className="flex items-center justify-center min-h-[200px]">
+      <div className="text-muted-foreground">Loading...</div>
+    </div>
+  );
 
-  // ✅ Non-system admins shouldn't even try to fetch /api/users
+  if (meQ.isError) return (
+    <Card>
+      <CardContent className="pt-6 text-center">
+        <div className="text-lg font-medium mb-2">Failed to load identity</div>
+        <Button onClick={() => meQ.refetch()}>Try Again</Button>
+      </CardContent>
+    </Card>
+  );
+
   if (actorRole !== "SYSTEM_ADMIN") {
     return (
-      <div className="p-4 space-y-2">
-        <div className="font-medium">Users</div>
-        <div className="text-sm text-muted-foreground">
-          This section is platform-level and is available to{" "}
-          <span className="font-medium">SYSTEM_ADMIN</span> only.
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">Users Management</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Access control and account governance
+          </p>
         </div>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-lg font-medium mb-2">Access Restricted</div>
+            <p className="text-muted-foreground mb-4">
+              This section is platform-level and is available to <span className="font-medium">SYSTEM_ADMIN</span> only.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <div className="font-medium">Users</div>
-          <div className="text-sm text-muted-foreground">
-            Access control and account governance.
-          </div>
+          <h2 className="text-lg font-semibold">Users Management</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Platform-level user accounts and access control
+          </p>
         </div>
 
         <div className="flex gap-2">
@@ -108,59 +127,81 @@ export default function UsersSettingsTab() {
         </div>
       </div>
 
-      <Separator />
-
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="text-sm">
+          Showing <span className="font-medium">{filtered.length}</span> of{" "}
+          <span className="font-medium">{total}</span> users
+        </div>
         <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by email, role, schoolId…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by email, role, or school ID..."
           className="sm:max-w-sm"
         />
-        <div className="text-xs text-muted-foreground">
-          {usersQ.isLoading ? "Loading…" : `${filtered.length}/${total} user(s)`}
-        </div>
       </div>
 
       {usersQ.isError ? (
-        <div className="text-sm text-red-600">
-          Failed to load users. Confirm token + role + /api/users.
-        </div>
-      ) : null}
-
-      <div className="divide-y rounded-lg border bg-background">
-        {usersQ.isLoading ? (
-          <div className="p-4 text-sm text-muted-foreground">Loading users…</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">No users found.</div>
-        ) : (
-          filtered.map((u) => (
-            <div key={u.id} className="p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-medium truncate">{u.email}</div>
-                <div className="text-xs text-muted-foreground truncate">
-                  ID: <span className="font-medium">{u.id}</span>
-                </div>
-                <div className="mt-1 flex items-center gap-2 flex-wrap">
-                  <RoleBadge role={u.role} />
-                  <StatusBadge active={!!u.isActive} />
-                  <Badge variant="outline" className="text-[10px]">
-                    {u.schoolId || "platform"}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <ManageUserDialog
-                  actor={actor}
-                  user={u}
-                  onChanged={() => usersQ.refetch()}
-                />
-              </div>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-lg font-medium mb-2">Failed to load users</div>
+            <div className="text-muted-foreground mb-4">
+              Please check your permissions and try again.
             </div>
-          ))
-        )}
-      </div>
+            <Button onClick={() => usersQ.refetch()}>
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      ) : usersQ.isLoading ? (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center text-muted-foreground">Loading users...</div>
+          </CardContent>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-lg font-medium mb-2">No users found</div>
+            <p className="text-muted-foreground mb-4">
+              {search ? "Try a different search term" : "Create your first user account"}
+            </p>
+            {!search && (
+              <NewUserDialog actor={actor} onCreated={() => usersQ.refetch()} />
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3">
+          {filtered.map((u) => (
+            <Card key={u.id}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <div>
+                      <div className="font-medium">{u.email}</div>
+                      <div className="text-sm text-muted-foreground">
+                        ID: <span className="font-medium">{u.id}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <RoleBadge role={u.role} />
+                      <StatusBadge active={!!u.isActive} />
+                      <Badge variant="outline" className="font-normal">
+                        {u.schoolId || "Platform"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <ManageUserDialog
+                    actor={actor}
+                    user={u}
+                    onChanged={() => usersQ.refetch()}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

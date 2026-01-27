@@ -6,18 +6,39 @@ import { prisma } from "../lib/prisma.js";
 const CACHE_TTL_MS = 30_000;
 const subCache = new Map(); // schoolId -> { exp: number, sub: { status, entitlements } }
 
+function normSchoolId(schoolId) {
+  return String(schoolId || "").trim();
+}
+
 function getCachedSub(schoolId) {
-  const hit = subCache.get(schoolId);
+  const sid = normSchoolId(schoolId);
+  const hit = subCache.get(sid);
   if (!hit) return null;
   if (Date.now() > hit.exp) {
-    subCache.delete(schoolId);
+    subCache.delete(sid);
     return null;
   }
   return hit.sub;
 }
 
 function setCachedSub(schoolId, sub) {
-  subCache.set(schoolId, { exp: Date.now() + CACHE_TTL_MS, sub });
+  const sid = normSchoolId(schoolId);
+  subCache.set(sid, { exp: Date.now() + CACHE_TTL_MS, sub });
+}
+
+/**
+ * ✅ IMPORTANT:
+ * Call this after updating subscription entitlements/plan/status for a school
+ * so changes apply immediately (no 30s stale cache).
+ */
+export function invalidateEntitlementsCache(schoolId) {
+  const sid = normSchoolId(schoolId);
+  if (!sid) return;
+  subCache.delete(sid);
+}
+
+export function invalidateAllEntitlementsCache() {
+  subCache.clear();
 }
 
 /**
@@ -62,8 +83,7 @@ export function requireEntitlement(key) {
       // Cached subscription
       let sub = getCachedSub(schoolId);
 
-      if (sub === undefined) sub = null; // just in case (not required)
-
+      // (no need for sub === undefined, Map never returns undefined via our getter)
       if (!sub) {
         sub = await prisma.subscription.findFirst({
           where: { schoolId },

@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { api } from "@/api/axios";
 import { useMe } from "@/hooks/useMe";
 import { getBranding, patchBranding, uploadBrandLogo } from "@/api/settingsBranding.api";
 
-import { applyBrandingVars, resetBrandingVars, normalizeHex, isValidHex } from "@/lib/branding";
+import { normalizeHex, isValidHex } from "@/lib/branding";
+import { applyAppearance } from "@/lib/appearance";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,30 +23,110 @@ function isSysAdmin(meData) {
   return role === "SYSTEM_ADMIN";
 }
 
-function getApiBase() {
-  return (api?.defaults?.baseURL || "http://localhost:5000").replace(/\/$/, "");
+const THEME_OPTIONS = [
+  { value: "royal-blue", label: "Royal Blue" },
+  { value: "emerald", label: "Emerald" },
+  { value: "maroon", label: "Maroon" },
+  { value: "amber", label: "Amber" },
+  { value: "slate", label: "Slate" },
+];
+
+const MODE_OPTIONS = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
+const DENSITY_OPTIONS = [
+  { value: "normal", label: "Normal" },
+  { value: "compact", label: "Compact" },
+  { value: "comfortable", label: "Comfortable" },
+];
+
+const RADIUS_OPTIONS = [
+  { value: "sharp", label: "Sharp" },
+  { value: "rounded", label: "Rounded" },
+  { value: "pill", label: "Pill" },
+];
+
+function safeOpt(options, value, fallback) {
+  const v = String(value || "").trim();
+  return options.some((o) => o.value === v) ? v : fallback;
 }
 
-function toAbsUrl(p) {
-  if (!p) return null;
-  const s = String(p);
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  return `${getApiBase()}${s.startsWith("/") ? "" : "/"}${s}`;
+// ✅ one canonical query key
+function brandingKey(schoolId) {
+  return ["settings", "branding", schoolId || "tenant"];
 }
 
-function buildPatchNormalized(original, form) {
-  // normalize to either "#xxxxxx" or null
+function toUiForm(b = {}) {
+  return {
+    brandLogoUrl: b.brandLogoUrl || null,
+    brandPrimaryColor: b.brandPrimaryColor || "",
+    brandSecondaryColor: b.brandSecondaryColor || "",
+    themeKey: safeOpt(THEME_OPTIONS, b.themeKey, "royal-blue"),
+    mode: safeOpt(MODE_OPTIONS, b.mode, "light"),
+    density: safeOpt(DENSITY_OPTIONS, b.density, "normal"),
+    radius: safeOpt(RADIUS_OPTIONS, b.radius, "rounded"),
+  };
+}
+
+/**
+ * Patch rules:
+ * - colors: send null to clear override (use preset)
+ * - knobs: send string values
+ */
+function buildPatch(original, form) {
+  const patch = {};
+
   const origPrimary = normalizeHex(original?.brandPrimaryColor || "") || null;
   const origSecondary = normalizeHex(original?.brandSecondaryColor || "") || null;
 
   const curPrimary = normalizeHex(form?.brandPrimaryColor || "") || null;
   const curSecondary = normalizeHex(form?.brandSecondaryColor || "") || null;
 
-  const patch = {};
   if (origPrimary !== curPrimary) patch.brandPrimaryColor = curPrimary;
   if (origSecondary !== curSecondary) patch.brandSecondaryColor = curSecondary;
 
+  const origThemeKey = safeOpt(THEME_OPTIONS, original?.themeKey, "royal-blue");
+  const origMode = safeOpt(MODE_OPTIONS, original?.mode, "light");
+  const origDensity = safeOpt(DENSITY_OPTIONS, original?.density, "normal");
+  const origRadius = safeOpt(RADIUS_OPTIONS, original?.radius, "rounded");
+
+  const curThemeKey = safeOpt(THEME_OPTIONS, form?.themeKey, "royal-blue");
+  const curMode = safeOpt(MODE_OPTIONS, form?.mode, "light");
+  const curDensity = safeOpt(DENSITY_OPTIONS, form?.density, "normal");
+  const curRadius = safeOpt(RADIUS_OPTIONS, form?.radius, "rounded");
+
+  if (curThemeKey !== origThemeKey) patch.themeKey = curThemeKey;
+  if (curMode !== origMode) patch.mode = curMode;
+  if (curDensity !== origDensity) patch.density = curDensity;
+  if (curRadius !== origRadius) patch.radius = curRadius;
+
   return patch;
+}
+
+function applyFromBranding(b) {
+  // applyAppearance is the only DOM writer (theme + optional overrides)
+  applyAppearance({
+    themeKey: b?.themeKey,
+    mode: b?.mode,
+    density: b?.density,
+    radius: b?.radius,
+    brandPrimaryColor: b?.brandPrimaryColor,     // can be null
+    brandSecondaryColor: b?.brandSecondaryColor, // can be null
+  });
+}
+
+function applyFromForm(form) {
+  // Convert "" to null so presets show
+  applyAppearance({
+    themeKey: form?.themeKey,
+    mode: form?.mode,
+    density: form?.density,
+    radius: form?.radius,
+    brandPrimaryColor: normalizeHex(form?.brandPrimaryColor) || null,
+    brandSecondaryColor: normalizeHex(form?.brandSecondaryColor) || null,
+  });
 }
 
 /* =========================
@@ -58,7 +138,7 @@ export default function BrandingPrintTab() {
   const meQ = useMe();
   const sys = isSysAdmin(meQ?.data);
 
-  // SYSTEM_ADMIN needs a school scope
+  // SYS admin edits by chosen schoolId in this tab
   const [schoolId, setSchoolId] = useState(
     () => localStorage.getItem("settings.branding.schoolId") || "school_demo_001"
   );
@@ -68,32 +148,41 @@ export default function BrandingPrintTab() {
   }, [sys, schoolId]);
 
   const scopeReady = !sys || !!schoolId?.trim();
-  const scopeParams = useMemo(() => (sys ? { schoolId: schoolId.trim() } : {}), [sys, schoolId]);
+  const scopeParams = useMemo(
+    () => (sys ? { schoolId: schoolId.trim() } : {}),
+    [sys, schoolId]
+  );
+
+  const key = brandingKey(sys ? scopeParams.schoolId : null);
 
   const brandingQ = useQuery({
-    queryKey: ["settings", "branding", sys ? scopeParams.schoolId : "tenant"],
-    queryFn: () => getBranding(scopeParams),
+    queryKey: key,
+    queryFn: () => getBranding(scopeParams), // returns FLAT branding object
     enabled: scopeReady,
+    staleTime: 60_000,
   });
 
   const [form, setForm] = useState({
     brandLogoUrl: null,
     brandPrimaryColor: "",
     brandSecondaryColor: "",
+    themeKey: "royal-blue",
+    mode: "light",
+    density: "normal",
+    radius: "rounded",
   });
 
-  // Cache-bust nonce (avoid Date.now() inside render)
+  // logo cache bust
   const [logoNonce, setLogoNonce] = useState(1);
+  const fileRef = useRef(null);
 
+  // Load branding -> form + apply (so refresh keeps theme)
   useEffect(() => {
     if (!brandingQ.data) return;
-    setForm({
-      brandLogoUrl: brandingQ.data.brandLogoUrl || null,
-      brandPrimaryColor: brandingQ.data.brandPrimaryColor || "",
-      brandSecondaryColor: brandingQ.data.brandSecondaryColor || "",
-    });
-    // bump nonce when fresh data arrives (forces <img> refresh)
+    const next = toUiForm(brandingQ.data);
+    setForm(next);
     setLogoNonce((n) => n + 1);
+    applyFromBranding(brandingQ.data);
   }, [brandingQ.data]);
 
   const colorsValid = useMemo(() => {
@@ -104,86 +193,89 @@ export default function BrandingPrintTab() {
 
   const dirty = useMemo(() => {
     if (!brandingQ.data) return false;
-    const patch = buildPatchNormalized(brandingQ.data, form);
-    return Object.keys(patch).length > 0;
+    return Object.keys(buildPatch(brandingQ.data, form)).length > 0;
   }, [brandingQ.data, form]);
 
-  const saveColors = useMutation({
+  const saveBranding = useMutation({
     mutationFn: (payload) => patchBranding(payload, scopeParams),
-    onSuccess: (data) => {
-      qc.setQueryData(["settings", "branding", sys ? scopeParams.schoolId : "tenant"], data);
+    onSuccess: (saved) => {
+      // saved is flat branding object
+      qc.setQueryData(key, saved);
 
-      setForm({
-        brandLogoUrl: data.brandLogoUrl || null,
-        brandPrimaryColor: data.brandPrimaryColor || "",
-        brandSecondaryColor: data.brandSecondaryColor || "",
-      });
+      const next = toUiForm(saved);
+      setForm(next);
 
-      applyBrandingVars({
-        brandPrimaryColor: data.brandPrimaryColor || "#111827",
-        brandSecondaryColor: data.brandSecondaryColor || "#2563eb",
-      });
-
-      toast.success("Brand colors saved");
+      applyFromBranding(saved);
+      toast.success("Branding saved");
     },
-    onError: (err) => toast.error(err?.response?.data?.message || "Failed to save colors"),
+    onError: (err) => toast.error(err?.response?.data?.message || "Failed to save branding"),
   });
-
-  const fileRef = useRef(null);
 
   const uploadLogo = useMutation({
     mutationFn: (file) => uploadBrandLogo(file, scopeParams),
-    onSuccess: (data) => {
-      qc.setQueryData(["settings", "branding", sys ? scopeParams.schoolId : "tenant"], data);
-      setForm((prev) => ({ ...prev, brandLogoUrl: data.brandLogoUrl || null }));
+    onSuccess: (saved) => {
+      qc.setQueryData(key, saved);
+
+      setForm((prev) => ({ ...prev, brandLogoUrl: saved.brandLogoUrl || null }));
       setLogoNonce((n) => n + 1);
+
       toast.success("Logo uploaded");
     },
     onError: (err) => toast.error(err?.response?.data?.message || "Logo upload failed"),
   });
 
-  const onSave = () => {
+  const onSave = useCallback(() => {
     if (!brandingQ.data) return;
+
     if (!colorsValid) {
       toast.error("Colors must be valid hex like #111827");
       return;
     }
 
-    const patch = buildPatchNormalized(brandingQ.data, form);
+    const patch = buildPatch(brandingQ.data, form);
     if (Object.keys(patch).length === 0) return;
 
-    saveColors.mutate(patch);
-  };
+    saveBranding.mutate(patch);
+  }, [brandingQ.data, colorsValid, form, saveBranding]);
 
   const onReset = () => {
     if (!brandingQ.data) return;
-    setForm({
-      brandLogoUrl: brandingQ.data.brandLogoUrl || null,
-      brandPrimaryColor: brandingQ.data.brandPrimaryColor || "",
-      brandSecondaryColor: brandingQ.data.brandSecondaryColor || "",
-    });
+    const next = toUiForm(brandingQ.data);
+    setForm(next);
+    applyFromBranding(brandingQ.data);
+    toast.message("Reset to saved values");
   };
 
-  // Option A preview
   const applyPreview = () => {
     if (!colorsValid) {
-      toast.error("Fix your color hex values first");
+      toast.error("Fix invalid hex values first");
       return;
     }
-    applyBrandingVars({
-      brandPrimaryColor: normalizeHex(form?.brandPrimaryColor) || "#111827",
-      brandSecondaryColor: normalizeHex(form?.brandSecondaryColor) || "#2563eb",
-    });
+    applyFromForm(form);
     toast.success("Preview applied (not saved)");
   };
 
   const resetPreview = () => {
-    resetBrandingVars();
+    if (!brandingQ.data) return;
+    applyFromBranding(brandingQ.data);
     toast.message("Preview reset");
   };
 
-  const logoAbs = toAbsUrl(form?.brandLogoUrl);
-  const logoSrc = logoAbs ? `${logoAbs}?v=${brandingQ.data?.updatedAt || logoNonce}` : null;
+  const usePresetColors = () => {
+    // clear overrides in UI (shows preset instantly)
+    const next = { ...form, brandPrimaryColor: "", brandSecondaryColor: "" };
+    setForm(next);
+
+    // apply immediately (null => clear overrides)
+    applyFromForm(next);
+
+    toast.message("Custom colors cleared. Click Save to persist preset colors.");
+  };
+
+  const logoSrc =
+    form?.brandLogoUrl
+      ? `${form.brandLogoUrl}?v=${brandingQ.data?.updatedAt || logoNonce}`
+      : null;
 
   /* =========================
      UI states
@@ -192,14 +284,24 @@ export default function BrandingPrintTab() {
   if (sys && !schoolId?.trim()) {
     return (
       <div className="space-y-3">
-        <div className="text-sm text-muted-foreground">SYSTEM_ADMIN: select a school to edit branding.</div>
+        <div className="text-sm text-muted-foreground">
+          SYSTEM_ADMIN: select a school to edit branding.
+        </div>
         <Card>
           <CardContent className="p-6 space-y-3">
             <div className="text-sm font-medium">School scope</div>
             <div className="max-w-sm space-y-2">
               <Label className="text-xs">schoolId</Label>
-              <Input value={schoolId} placeholder="school_demo_001" onChange={(e) => setSchoolId(e.target.value)} />
-              <Button size="sm" disabled={!schoolId.trim()} onClick={() => setSchoolId((x) => x.trim())}>
+              <Input
+                value={schoolId}
+                placeholder="school_demo_001"
+                onChange={(e) => setSchoolId(e.target.value)}
+              />
+              <Button
+                size="sm"
+                disabled={!schoolId.trim()}
+                onClick={() => setSchoolId((x) => x.trim())}
+              >
                 Load
               </Button>
             </div>
@@ -209,7 +311,9 @@ export default function BrandingPrintTab() {
     );
   }
 
-  if (brandingQ.isLoading) return <div className="text-sm text-muted-foreground">Loading branding…</div>;
+  if (brandingQ.isLoading) {
+    return <div className="text-sm text-muted-foreground">Loading branding…</div>;
+  }
 
   if (brandingQ.isError) {
     const msg = brandingQ.error?.response?.data?.message || "Failed to load branding";
@@ -245,7 +349,7 @@ export default function BrandingPrintTab() {
             <div>
               <CardTitle className="text-sm">Branding</CardTitle>
               <div className="text-xs text-muted-foreground mt-1">
-                Upload logo + set colors used in dashboard accents and print headers.
+                Preset theme + optional color overrides. Clear overrides to let presets shine.
               </div>
               {sys ? (
                 <div className="text-[11px] text-muted-foreground mt-1">
@@ -254,25 +358,42 @@ export default function BrandingPrintTab() {
               ) : null}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               <Button size="sm" variant="outline" onClick={() => brandingQ.refetch()}>
                 Reload
               </Button>
 
-              <Button size="sm" variant="outline" disabled={!dirty || saveColors.isLoading} onClick={onReset}>
+              <Button size="sm" variant="outline" onClick={usePresetColors}>
+                Use preset colors
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!dirty || saveBranding.isPending}
+                onClick={onReset}
+              >
                 Reset
               </Button>
 
-              <Button size="sm" disabled={!dirty || !colorsValid || saveColors.isLoading} onClick={onSave}>
-                {saveColors.isLoading ? "Saving…" : "Save"}
+              <Button
+                size="sm"
+                disabled={!dirty || !colorsValid || saveBranding.isPending}
+                onClick={onSave}
+              >
+                {saveBranding.isPending ? "Saving…" : "Save"}
               </Button>
             </div>
           </div>
 
           {!dirty ? (
-            <div className="text-[11px] text-muted-foreground mt-2">No changes to save.</div>
+            <div className="text-[11px] text-muted-foreground mt-2">
+              No changes to save.
+            </div>
           ) : !colorsValid ? (
-            <div className="text-[11px] text-destructive mt-2">Fix invalid hex values first.</div>
+            <div className="text-[11px] text-destructive mt-2">
+              Fix invalid hex values first.
+            </div>
           ) : null}
         </CardHeader>
 
@@ -281,7 +402,9 @@ export default function BrandingPrintTab() {
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium">School logo</div>
-              <div className="text-xs text-muted-foreground">PNG/JPG/WEBP • max 2MB</div>
+              <div className="text-xs text-muted-foreground">
+                PNG/JPG/WEBP • max 2MB
+              </div>
 
               <input
                 ref={fileRef}
@@ -297,19 +420,13 @@ export default function BrandingPrintTab() {
               />
 
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => fileRef.current?.click()} disabled={uploadLogo.isLoading}>
-                  {uploadLogo.isLoading ? "Uploading…" : "Upload logo"}
+                <Button
+                  size="sm"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploadLogo.isPending}
+                >
+                  {uploadLogo.isPending ? "Uploading…" : "Upload logo"}
                 </Button>
-
-                {form?.brandLogoUrl ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => window.open(toAbsUrl(form.brandLogoUrl), "_blank", "noopener,noreferrer")}
-                  >
-                    View
-                  </Button>
-                ) : null}
               </div>
             </div>
 
@@ -324,15 +441,52 @@ export default function BrandingPrintTab() {
 
           <Separator />
 
+          {/* Theme controls */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <SelectField
+              label="Theme preset"
+              value={form.themeKey}
+              onChange={(v) => setForm((p) => ({ ...p, themeKey: v }))}
+              options={THEME_OPTIONS}
+              hint="Presets change the overall skin. Custom colors override preset accents."
+            />
+
+            <SelectField
+              label="Mode"
+              value={form.mode}
+              onChange={(v) => setForm((p) => ({ ...p, mode: v }))}
+              options={MODE_OPTIONS}
+              hint="Dark mode is optional. Light mode is safest for printing."
+            />
+
+            <SelectField
+              label="Density"
+              value={form.density}
+              onChange={(v) => setForm((p) => ({ ...p, density: v }))}
+              options={DENSITY_OPTIONS}
+              hint="Compact = more data per screen."
+            />
+
+            <SelectField
+              label="Corner radius"
+              value={form.radius}
+              onChange={(v) => setForm((p) => ({ ...p, radius: v }))}
+              options={RADIUS_OPTIONS}
+              hint="Sharp is corporate. Rounded is modern. Pill is playful."
+            />
+          </div>
+
+          <Separator />
+
           {/* Colors */}
           <div className="grid md:grid-cols-2 gap-4">
             <ColorField
-              label="Primary color"
+              label="Primary color override (optional)"
               value={form.brandPrimaryColor}
               onChange={(v) => setForm((p) => ({ ...p, brandPrimaryColor: v }))}
             />
             <ColorField
-              label="Secondary color"
+              label="Secondary color override (optional)"
               value={form.brandSecondaryColor}
               onChange={(v) => setForm((p) => ({ ...p, brandSecondaryColor: v }))}
             />
@@ -341,24 +495,17 @@ export default function BrandingPrintTab() {
           {/* Preview */}
           <div className="rounded-xl border p-4 space-y-2">
             <div className="text-sm font-medium">Preview</div>
-            <div
-              className="rounded-lg border p-4 flex items-center justify-between gap-3"
-              style={{ borderColor: normalizeHex(form?.brandSecondaryColor) || undefined }}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className="h-8 w-8 rounded-md"
-                  style={{ background: normalizeHex(form?.brandPrimaryColor) || "#111827" }}
-                />
-                <div>
-                  <div className="text-sm font-medium">Dashboard Accent</div>
-                  <div className="text-xs text-muted-foreground">Apply preview instantly (not saved).</div>
+            <div className="rounded-lg border p-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium">UI Theme + Brand</div>
+                <div className="text-xs text-muted-foreground">
+                  Preview applies instantly (not saved).
                 </div>
               </div>
 
               <div className="flex gap-2">
                 <Button size="sm" onClick={applyPreview} disabled={!colorsValid}>
-                  Preview theme
+                  Preview
                 </Button>
                 <Button size="sm" variant="outline" onClick={resetPreview}>
                   Reset
@@ -366,15 +513,19 @@ export default function BrandingPrintTab() {
               </div>
             </div>
           </div>
+
+          <div className="text-[11px] text-muted-foreground">
+            Tip: If presets don’t look different after Save, your school has color overrides saved.
+            Click <span className="font-medium">Use preset colors</span> then Save.
+          </div>
         </CardContent>
       </Card>
 
-      {/* Next phase */}
       <Card>
         <CardContent className="p-6">
           <div className="text-sm font-medium">Print Settings</div>
           <div className="text-xs text-muted-foreground mt-1">
-            Next: letterhead (show logo, header text, footer text) + apply on receipts/reports.
+            Next: letterhead (logo, header text, footer text) + apply on receipts/reports.
           </div>
         </CardContent>
       </Card>
@@ -383,7 +534,7 @@ export default function BrandingPrintTab() {
 }
 
 /* =========================
-   Color Field (pure + controlled)
+   Fields
 ========================= */
 
 function ColorField({ label, value, onChange }) {
@@ -407,8 +558,28 @@ function ColorField({ label, value, onChange }) {
         />
       </div>
       <div className="text-[11px] text-muted-foreground">
-        Use hex like <span className="font-mono">#111827</span>
+        Leave blank to use preset colors (recommended).
       </div>
+    </div>
+  );
+}
+
+function SelectField({ label, value, onChange, options, hint }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      <select
+        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <div className="text-[11px] text-muted-foreground">{hint}</div>
     </div>
   );
 }

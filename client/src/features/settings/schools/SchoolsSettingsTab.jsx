@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -24,11 +24,11 @@ import {
 
 function StatusBadge({ active }) {
   return active ? (
-    <Badge className="text-[10px]" variant="secondary">
+    <Badge variant="default" className="font-normal">
       Active
     </Badge>
   ) : (
-    <Badge className="text-[10px]" variant="destructive">
+    <Badge variant="destructive" className="font-normal">
       Suspended
     </Badge>
   );
@@ -95,24 +95,18 @@ function NewSchoolDialog({ existing = [], onCreated }) {
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v);
-        if (!v) reset();
-      }}
-    >
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>New school</Button>
+        <Button>New School</Button>
       </DialogTrigger>
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create school</DialogTitle>
+          <DialogTitle>Create New School</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <div className="text-sm font-medium">School ID</div>
             <Input
               value={schoolId}
@@ -121,29 +115,24 @@ function NewSchoolDialog({ existing = [], onCreated }) {
               autoFocus
               disabled={saving}
             />
-
             <div className="text-xs text-muted-foreground">
-              Allowed: letters, numbers, <span className="font-medium">_</span> and{" "}
-              <span className="font-medium">-</span> (3–40 chars).
-              {cleanId ? (
-                <>
-                  {" "}
-                  Normalized: <span className="font-medium">{cleanId}</span>
-                </>
-              ) : null}
+              Allowed: letters, numbers, underscore and hyphen (3–40 characters).
             </div>
-
-            {cleanId && !isValidId(cleanId) ? (
-              <div className="text-xs text-red-600">Invalid ID format.</div>
-            ) : null}
-
-            {duplicate ? (
-              <div className="text-xs text-red-600">School ID already exists.</div>
-            ) : null}
+            {cleanId && (
+              <div className="text-xs">
+                Normalized ID: <span className="font-medium">{cleanId}</span>
+              </div>
+            )}
+            {cleanId && !isValidId(cleanId) && (
+              <div className="text-xs text-destructive">Invalid ID format</div>
+            )}
+            {duplicate && (
+              <div className="text-xs text-destructive">School ID already exists</div>
+            )}
           </div>
 
-          <div className="space-y-1">
-            <div className="text-sm font-medium">School name</div>
+          <div className="space-y-2">
+            <div className="text-sm font-medium">School Name</div>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -152,12 +141,12 @@ function NewSchoolDialog({ existing = [], onCreated }) {
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={close} disabled={saving}>
               Cancel
             </Button>
             <Button disabled={!canSubmit} onClick={submit}>
-              {saving ? "Creating..." : "Create"}
+              {saving ? "Creating..." : "Create School"}
             </Button>
           </div>
         </div>
@@ -214,13 +203,10 @@ function ManageSchoolDialog({ school, onChanged }) {
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v);
-        if (v) setName(currentName);
-      }}
-    >
+    <Dialog open={open} onOpenChange={(v) => {
+      setOpen(v);
+      if (v) setName(currentName);
+    }}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           Manage
@@ -229,53 +215,53 @@ function ManageSchoolDialog({ school, onChanged }) {
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Manage school</DialogTitle>
+          <DialogTitle>Manage School</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-lg border p-3 bg-muted/20">
-            <div className="font-medium">{currentName || "Unnamed School"}</div>
-            <div className="text-xs text-muted-foreground">
-              ID: <span className="font-medium">{id}</span>
-            </div>
-            <div className="mt-2">
-              <StatusBadge active={!!school.isActive} />
+          <div className="rounded-lg border p-4 bg-muted/10">
+            <div className="space-y-2">
+              <div>
+                <div className="text-sm text-muted-foreground">ID</div>
+                <div className="font-medium">{id}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Current Name</div>
+                <div className="font-medium">{currentName || "Unnamed School"}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Status</div>
+                <StatusBadge active={!!school.isActive} />
+              </div>
             </div>
           </div>
 
-          <div className="space-y-1">
-            <div className="text-sm font-medium">School name</div>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={saving}
-              placeholder="School name"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setOpen(false)}
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">School Name</div>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 disabled={saving}
-              >
-                Close
-              </Button>
+                placeholder="School name"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
               <Button onClick={doRename} disabled={!canRename}>
-                {saving ? "Saving..." : "Save"}
+                {saving ? "Saving..." : "Save Changes"}
               </Button>
             </div>
           </div>
 
-          <Separator />
-
-          <div className="flex items-center justify-between gap-3">
+          <div className="space-y-3 pt-4 border-t">
             <div className="space-y-1">
               <div className="text-sm font-medium">
-                {school.isActive ? "Suspend school" : "Activate school"}
+                {school.isActive ? "Suspend School" : "Activate School"}
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-sm text-muted-foreground">
                 {school.isActive
                   ? "Blocks logins and school operations."
-                  : "Re-enables operations."}
+                  : "Re-enables operations for this school."}
               </div>
             </div>
 
@@ -283,8 +269,9 @@ function ManageSchoolDialog({ school, onChanged }) {
               variant={school.isActive ? "destructive" : "default"}
               onClick={toggleStatus}
               disabled={saving}
+              className="w-full"
             >
-              {school.isActive ? "Suspend" : "Activate"}
+              {school.isActive ? "Suspend School" : "Activate School"}
             </Button>
           </div>
         </div>
@@ -294,7 +281,7 @@ function ManageSchoolDialog({ school, onChanged }) {
 }
 
 export default function SchoolsSettingsTab() {
-  const [q, setQ] = useState("");
+  const [search, setSearch] = useState("");
 
   const schoolsQ = useQuery({
     queryKey: ["schools"],
@@ -305,7 +292,7 @@ export default function SchoolsSettingsTab() {
 
   const filtered = useMemo(() => {
     const items = schoolsQ.data || [];
-    const s = q.trim().toLowerCase();
+    const s = search.trim().toLowerCase();
     if (!s) return items;
 
     return items.filter((x) => {
@@ -313,18 +300,18 @@ export default function SchoolsSettingsTab() {
       const name = String(x.name || "").toLowerCase();
       return id.includes(s) || name.includes(s);
     });
-  }, [schoolsQ.data, q]);
+  }, [schoolsQ.data, search]);
 
   const total = (schoolsQ.data || []).length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <div className="font-medium">Schools</div>
-          <div className="text-sm text-muted-foreground">
-            Platform-level tenant registry.
-          </div>
+          <h2 className="text-lg font-semibold">Schools Management</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Platform-level tenant registry and management
+          </p>
         </div>
 
         <div className="flex gap-2">
@@ -343,49 +330,74 @@ export default function SchoolsSettingsTab() {
         </div>
       </div>
 
-      <Separator />
-
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="text-sm">
+          Showing <span className="font-medium">{filtered.length}</span> of{" "}
+          <span className="font-medium">{total}</span> schools
+        </div>
         <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by id or name…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by ID or name..."
           className="sm:max-w-sm"
         />
-        <div className="text-xs text-muted-foreground">
-          {schoolsQ.isLoading ? "Loading…" : `${filtered.length}/${total} school(s)`}
-        </div>
       </div>
 
       {schoolsQ.isError ? (
-        <div className="text-sm text-red-600">
-          Failed to load schools. Confirm token + role + /api/schools.
-        </div>
-      ) : null}
-
-      <div className="divide-y rounded-lg border bg-background">
-        {schoolsQ.isLoading ? (
-          <div className="p-4 text-sm text-muted-foreground">Loading schools…</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">No schools found.</div>
-        ) : (
-          filtered.map((s) => (
-            <div key={s.id} className="p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-medium truncate">{s.name || "Unnamed School"}</div>
-                <div className="text-xs text-muted-foreground truncate">
-                  ID: <span className="font-medium">{s.id}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <StatusBadge active={!!s.isActive} />
-                <ManageSchoolDialog school={s} onChanged={() => schoolsQ.refetch()} />
-              </div>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-lg font-medium mb-2">Failed to load schools</div>
+            <div className="text-muted-foreground mb-4">
+              Please check your permissions and try again.
             </div>
-          ))
-        )}
-      </div>
+            <Button onClick={() => schoolsQ.refetch()}>
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      ) : schoolsQ.isLoading ? (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center text-muted-foreground">Loading schools...</div>
+          </CardContent>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-lg font-medium mb-2">No schools found</div>
+            <p className="text-muted-foreground mb-4">
+              {search ? "Try a different search term" : "Create your first school to get started"}
+            </p>
+            {!search && (
+              <NewSchoolDialog
+                existing={schoolsQ.data || []}
+                onCreated={() => schoolsQ.refetch()}
+              />
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3">
+          {filtered.map((s) => (
+            <Card key={s.id}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <div>
+                      <div className="font-medium">{s.name || "Unnamed School"}</div>
+                      <div className="text-sm text-muted-foreground">
+                        ID: <span className="font-medium">{s.id}</span>
+                      </div>
+                    </div>
+                    <StatusBadge active={!!s.isActive} />
+                  </div>
+                  <ManageSchoolDialog school={s} onChanged={() => schoolsQ.refetch()} />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

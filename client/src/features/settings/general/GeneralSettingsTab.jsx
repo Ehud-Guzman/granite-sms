@@ -11,16 +11,13 @@ import {
 
 import { useMe } from "@/hooks/useMe";
 
-// UI
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
-// If you already have a school selector pattern in Backups tab, reuse it here.
-// This version provides a simple fallback select input.
-// (You can later swap this for your existing <Select> component.)
 function isSysAdmin(me) {
   const role = String(me?.role || me?.me?.role || "").toUpperCase();
   return role === "SYSTEM_ADMIN";
@@ -50,9 +47,6 @@ export default function GeneralSettingsTab() {
   const meQ = useMe();
   const sys = isSysAdmin(meQ);
 
-  // ====== School scope (SYSTEM_ADMIN only) ======
-  // You can replace this with your own “school scope selector” later.
-  // For now we store last selection so the tab doesn’t reset every refresh.
   const [schoolId, setSchoolId] = useState(() => {
     const v = localStorage.getItem("settings.general.schoolId");
     return v || "";
@@ -63,7 +57,6 @@ export default function GeneralSettingsTab() {
   }, [sys, schoolId]);
 
   const scopeParams = useMemo(() => {
-    // ADMIN relies on tenant header; SYSTEM_ADMIN must pass ?schoolId=
     return sys ? { schoolId } : {};
   }, [sys, schoolId]);
 
@@ -106,7 +99,6 @@ export default function GeneralSettingsTab() {
   const onSaveSchool = () => {
     if (!schoolQ.data || !schoolForm) return;
 
-    // PATCH only changed fields (safer)
     const patch = buildPatch(
       schoolQ.data,
       schoolForm,
@@ -178,29 +170,37 @@ export default function GeneralSettingsTab() {
 
   if (sys && !schoolId) {
     return (
-      <div className="space-y-3">
-        <div className="text-sm text-muted-foreground">
-          Select a school to edit General Settings (SYSTEM_ADMIN scope).
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold">General Settings</h3>
+          <p className="text-muted-foreground mt-1">
+            Select a school to edit general settings.
+          </p>
         </div>
 
         <Card>
-          <CardContent className="p-6 space-y-2">
-            <div className="text-sm font-medium">School scope</div>
-            <div className="text-xs text-muted-foreground">
-              Enter the tenant schoolId (e.g. <span className="font-mono">school_demo_001</span>).
-              You can upgrade this to a searchable school picker later.
-            </div>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium mb-2">School Scope Required</h4>
+                <p className="text-sm text-muted-foreground">
+                  Enter a school ID to manage its general settings.
+                </p>
+              </div>
 
-            <div className="max-w-sm space-y-2">
-              <Label className="text-xs">schoolId</Label>
-              <Input
-                value={schoolId}
-                placeholder="school_demo_001"
-                onChange={(e) => setSchoolId(e.target.value.trim())}
-              />
-              <Button size="sm" onClick={() => setSchoolId((x) => x.trim())} disabled={!schoolId}>
-                Load settings
-              </Button>
+              <div className="max-w-md space-y-3">
+                <div className="space-y-1.5">
+                  <Label>School ID</Label>
+                  <Input
+                    value={schoolId}
+                    placeholder="school_demo_001"
+                    onChange={(e) => setSchoolId(e.target.value.trim())}
+                  />
+                </div>
+                <Button onClick={() => setSchoolId((x) => x.trim())} disabled={!schoolId}>
+                  Load Settings
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -209,10 +209,13 @@ export default function GeneralSettingsTab() {
   }
 
   if (schoolQ.isLoading || academicsQ.isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading settings…</div>;
+    return (
+      <div className="flex items-center justify-center min-h-[200px]">
+        <div className="text-muted-foreground">Loading settings...</div>
+      </div>
+    );
   }
 
-  // If either query failed, show a unified error panel (still allow retry)
   const anyError = schoolQ.isError || academicsQ.isError;
   if (anyError) {
     const msg =
@@ -222,22 +225,23 @@ export default function GeneralSettingsTab() {
 
     return (
       <Card>
-        <CardContent className="p-6 space-y-3">
-          <div className="text-sm font-medium">Couldn’t load General Settings</div>
-          <div className="text-xs text-muted-foreground">{msg}</div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => { schoolQ.refetch(); academicsQ.refetch(); }}>
+        <CardContent className="pt-6 text-center">
+          <div className="text-lg font-medium mb-2">Failed to load settings</div>
+          <div className="text-muted-foreground mb-4">{msg}</div>
+          <div className="flex justify-center gap-2">
+            <Button
+              onClick={() => {
+                schoolQ.refetch();
+                academicsQ.refetch();
+              }}
+            >
               Retry
             </Button>
-            {sys ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setSchoolId("")}
-              >
-                Change school
+            {sys && (
+              <Button variant="outline" onClick={() => setSchoolId("")}>
+                Change School
               </Button>
-            ) : null}
+            )}
           </div>
         </CardContent>
       </Card>
@@ -245,77 +249,98 @@ export default function GeneralSettingsTab() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">General Settings</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            School profile and academic configuration
+          </p>
+        </div>
+        {sys && schoolId && (
+          <Button variant="outline" size="sm" onClick={() => setSchoolId("")}>
+            Change School
+          </Button>
+        )}
+      </div>
+
       {/* School Profile */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
+        <CardHeader>
+          <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-sm">School Profile</CardTitle>
-              <div className="text-xs text-muted-foreground mt-1">
-                Identity and contact details used across printed documents and system headers.
-              </div>
+              <CardTitle className="text-base">School Profile</CardTitle>
+              <CardDescription>
+                Identity and contact details used across the system
+              </CardDescription>
             </div>
-
             <div className="flex items-center gap-2">
-              {sys ? (
-                <Button size="sm" variant="outline" onClick={() => setSchoolId("")}>
-                  Change school
+              {schoolDirty && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={saveSchool.isLoading}
+                  onClick={onResetSchool}
+                >
+                  Reset
                 </Button>
-              ) : null}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!schoolDirty || saveSchool.isLoading}
-                onClick={onResetSchool}
-              >
-                Reset
-              </Button>
+              )}
               <Button
                 size="sm"
                 disabled={!schoolDirty || saveSchool.isLoading}
                 onClick={onSaveSchool}
               >
-                {saveSchool.isLoading ? "Saving…" : "Save"}
+                {saveSchool.isLoading ? "Saving..." : "Save"}
               </Button>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-3">
-          <div className="grid md:grid-cols-2 gap-3">
-            <Field
-              label="School name"
-              value={schoolForm?.name || ""}
-              onChange={(v) => setSchoolForm({ ...schoolForm, name: v })}
-            />
-            <Field
-              label="Short name"
-              placeholder="e.g. St. Mary"
-              value={schoolForm?.shortName || ""}
-              onChange={(v) => setSchoolForm({ ...schoolForm, shortName: v })}
-            />
-            <Field
-              label="Code"
-              placeholder="e.g. SMHS"
-              value={schoolForm?.code || ""}
-              onChange={(v) => setSchoolForm({ ...schoolForm, code: v })}
-            />
-            <Field
-              label="Contact email"
-              placeholder="school@example.com"
-              value={schoolForm?.contactEmail || ""}
-              onChange={(v) => setSchoolForm({ ...schoolForm, contactEmail: v })}
-            />
-            <Field
-              label="Contact phone"
-              placeholder="07xx xxx xxx"
-              value={schoolForm?.contactPhone || ""}
-              onChange={(v) => setSchoolForm({ ...schoolForm, contactPhone: v })}
-            />
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>School Name</Label>
+              <Input
+                value={schoolForm?.name || ""}
+                onChange={(e) => setSchoolForm({ ...schoolForm, name: e.target.value })}
+                placeholder="Enter school name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Short Name</Label>
+              <Input
+                value={schoolForm?.shortName || ""}
+                onChange={(e) => setSchoolForm({ ...schoolForm, shortName: e.target.value })}
+                placeholder="e.g. St. Mary"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>School Code</Label>
+              <Input
+                value={schoolForm?.code || ""}
+                onChange={(e) => setSchoolForm({ ...schoolForm, code: e.target.value })}
+                placeholder="e.g. SMHS"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contact Email</Label>
+              <Input
+                value={schoolForm?.contactEmail || ""}
+                onChange={(e) => setSchoolForm({ ...schoolForm, contactEmail: e.target.value })}
+                placeholder="school@example.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contact Phone</Label>
+              <Input
+                value={schoolForm?.contactPhone || ""}
+                onChange={(e) => setSchoolForm({ ...schoolForm, contactPhone: e.target.value })}
+                placeholder="07xx xxx xxx"
+              />
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-sm text-muted-foreground mt-6 pt-4 border-t">
             <div>
               Created <span className="font-medium">{safeDate(schoolForm?.createdAt)}</span>
             </div>
@@ -326,74 +351,81 @@ export default function GeneralSettingsTab() {
         </CardContent>
       </Card>
 
-      <Separator />
-
       {/* Academics */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
+        <CardHeader>
+          <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-sm">Academic Defaults</CardTitle>
-              <div className="text-xs text-muted-foreground mt-1">
-                Defaults used across reports and term-based workflows.
-              </div>
+              <CardTitle className="text-base">Academic Defaults</CardTitle>
+              <CardDescription>
+                Defaults used across reports and term-based workflows
+              </CardDescription>
             </div>
-
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!academicsDirty || saveAcademics.isLoading}
-                onClick={onResetAcademics}
-              >
-                Reset
-              </Button>
+              {academicsDirty && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={saveAcademics.isLoading}
+                  onClick={onResetAcademics}
+                >
+                  Reset
+                </Button>
+              )}
               <Button
                 size="sm"
                 disabled={!academicsDirty || saveAcademics.isLoading}
                 onClick={onSaveAcademics}
               >
-                {saveAcademics.isLoading ? "Saving…" : "Save"}
+                {saveAcademics.isLoading ? "Saving..." : "Save"}
               </Button>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-3">
-          <div className="grid md:grid-cols-2 gap-3">
-            <Field
-              label="Current academic year"
-              placeholder="2025/2026"
-              value={academicsForm?.currentAcademicYear || ""}
-              onChange={(v) =>
-                setAcademicsForm({ ...academicsForm, currentAcademicYear: v })
-              }
-              helper="Format: 2026 or 2025/2026"
-            />
-            <Field
-              label="Term 1 label"
-              value={academicsForm?.term1Label || ""}
-              onChange={(v) =>
-                setAcademicsForm({ ...academicsForm, term1Label: v })
-              }
-            />
-            <Field
-              label="Term 2 label"
-              value={academicsForm?.term2Label || ""}
-              onChange={(v) =>
-                setAcademicsForm({ ...academicsForm, term2Label: v })
-              }
-            />
-            <Field
-              label="Term 3 label"
-              value={academicsForm?.term3Label || ""}
-              onChange={(v) =>
-                setAcademicsForm({ ...academicsForm, term3Label: v })
-              }
-            />
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Current Academic Year</Label>
+              <Input
+                value={academicsForm?.currentAcademicYear || ""}
+                onChange={(e) =>
+                  setAcademicsForm({ ...academicsForm, currentAcademicYear: e.target.value })
+                }
+                placeholder="2025/2026"
+              />
+              <p className="text-xs text-muted-foreground">Format: 2026 or 2025/2026</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Term 1 Label</Label>
+              <Input
+                value={academicsForm?.term1Label || ""}
+                onChange={(e) =>
+                  setAcademicsForm({ ...academicsForm, term1Label: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Term 2 Label</Label>
+              <Input
+                value={academicsForm?.term2Label || ""}
+                onChange={(e) =>
+                  setAcademicsForm({ ...academicsForm, term2Label: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Term 3 Label</Label>
+              <Input
+                value={academicsForm?.term3Label || ""}
+                onChange={(e) =>
+                  setAcademicsForm({ ...academicsForm, term3Label: e.target.value })
+                }
+              />
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-sm text-muted-foreground mt-6 pt-4 border-t">
             <div>
               Created <span className="font-medium">{safeDate(academicsForm?.createdAt)}</span>
             </div>
@@ -403,41 +435,6 @@ export default function GeneralSettingsTab() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Tiny quality-of-life: link to subscription tab */}
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            // keep it simple: SettingsPage uses search param tab
-            const url = new URL(window.location.href);
-            url.searchParams.set("tab", "subs");
-            window.location.assign(url.toString());
-          }}
-        >
-          View Subscription & Limits →
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/* =========================
-   Field helper
-========================= */
-function Field({ label, value, onChange, placeholder, helper }) {
-  return (
-    <div className="space-y-1">
-      <Label className="text-xs">{label}</Label>
-      <Input
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {helper ? (
-        <div className="text-[11px] text-muted-foreground">{helper}</div>
-      ) : null}
     </div>
   );
 }

@@ -2,18 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- Base ---------- */
-html, body, #root { height: 100%; }
+/* =========================================================
+   GLOBAL BASE
+   ========================================================= */
+html,
+body,
+#root {
+  height: 100%;
+}
 
+/* =========================================================
+   DESIGN TOKENS (SHADCN-STYLE) + MULTI-SCHOOL THEMES
+   - Brand is driven by: --brand-primary-hsl, --brand-secondary-hsl
+   - App tokens map to brand via: --primary, --ring, etc
+   - Switch theme with:
+       document.documentElement.dataset.theme = "emerald"
+       document.documentElement.dataset.density = "comfortable"
+       document.documentElement.dataset.radius = "rounded"
+       document.documentElement.classList.toggle("dark", true/false)
+   ========================================================= */
 @layer base {
   :root {
+    /* ---------- Core surfaces ---------- */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
+
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
+
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
+    /* ---------- Semantic tokens ---------- */
+    /* Brand drives primary + ring (safe + consistent) */
     --primary: var(--brand-secondary-hsl);
     --primary-foreground: 210 40% 98%;
 
@@ -23,6 +44,7 @@ html, body, #root { height: 100%; }
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
+    /* Accent remains neutral for V1 safety (don’t “brand-bomb” the UI) */
     --accent: 210 40% 96.1%;
     --accent-foreground: var(--brand-primary-hsl);
 
@@ -33,43 +55,138 @@ html, body, #root { height: 100%; }
     --input: 214.3 31.8% 91.4%;
 
     --ring: var(--brand-secondary-hsl);
-    --radius: 0.5rem;
 
-    /* ---------- Branding (defaults) ---------- */
+    /* ---------- Shape + density knobs ---------- */
+    --radius: 0.75rem; /* slightly more premium than 0.5rem */
+    --density: 1;      /* 0.92 compact, 1 normal, 1.08 comfy */
+
+    /* ---------- Branding defaults ---------- */
     --brand-primary: #111827;
     --brand-secondary: #2563eb;
 
-    /* HSL equivalents (must be set for theming tokens) */
+    /* HSL equivalents (actual theming drivers) */
+    --brand-primary-hsl: 222 47% 11%;
+    --brand-secondary-hsl: 221 83% 53%;
+
+    /* Optional chart tokens (safe defaults) */
+    --chart-1: 221 83% 53%;
+    --chart-2: 160 84% 39%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 350 74% 35%;
+    --chart-5: 215 16% 47%;
+  }
+
+  /* ---------- Dark mode ---------- */
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 6.5%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 6.5%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Keep brand driving primary; just adjust contrasts */
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+  }
+
+  /* ---------- Theme presets (multi-school skins) ---------- */
+  /* Switch by: document.documentElement.dataset.theme = "emerald" */
+  :root[data-theme="royal-blue"] {
     --brand-primary-hsl: 222 47% 11%;
     --brand-secondary-hsl: 221 83% 53%;
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+  :root[data-theme="emerald"] {
+    --brand-primary-hsl: 222 47% 11%;
+    --brand-secondary-hsl: 160 84% 39%;
+  }
+
+  :root[data-theme="maroon"] {
+    --brand-primary-hsl: 222 47% 11%;
+    --brand-secondary-hsl: 350 74% 35%;
+  }
+
+  :root[data-theme="amber"] {
+    --brand-primary-hsl: 222 47% 11%;
+    --brand-secondary-hsl: 38 92% 50%;
+  }
+
+  :root[data-theme="slate"] {
+    --brand-primary-hsl: 222 47% 11%;
+    --brand-secondary-hsl: 215 16% 47%;
+  }
+
+  /* ---------- Density presets ---------- */
+  :root[data-density="compact"] {
+    --density: 0.92;
+  }
+  :root[data-density="comfortable"] {
+    --density: 1.08;
+  }
+
+  /* ---------- Radius presets ---------- */
+  :root[data-radius="sharp"] {
+    --radius: 0.4rem;
+  }
+  :root[data-radius="rounded"] {
+    --radius: 0.9rem;
+  }
+  :root[data-radius="pill"] {
+    --radius: 1.25rem;
   }
 }
 
 @layer base {
-  * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* =========================================================
+   SMART UX UTILITIES (OPTIONAL BUT HIGH ROI)
+   Use on page shells / wrappers so density works without refactors.
+   ========================================================= */
+@layer utilities {
+  .ui-pad {
+    padding: calc(1rem * var(--density));
+  }
+  .ui-pad-lg {
+    padding: calc(1.5rem * var(--density));
+  }
+  .ui-gap {
+    gap: calc(0.75rem * var(--density));
+  }
+  .ui-gap-lg {
+    gap: calc(1.25rem * var(--density));
+  }
+
+  /* Subtle premium surface helpers (safe defaults) */
+  .surface {
+    @apply bg-card text-card-foreground border rounded-2xl shadow-sm;
+  }
+  .surface-tight {
+    @apply bg-card text-card-foreground border rounded-xl shadow-sm;
+  }
 }
 
 /* =========================================================
@@ -78,7 +195,9 @@ html, body, #root { height: 100%; }
      document.documentElement.dataset.printing = "print-..."
    ========================================================= */
 
-.print-only { display: none; }
+.print-only {
+  display: none;
+}
 
 /* Multi-line support */
 .print-letterhead__headerText,
@@ -94,27 +213,29 @@ html, body, #root { height: 100%; }
     print-color-adjust: exact !important;
   }
 
-  @media print {
   .print-meta {
     font-size: 10.5px;
     color: #555;
   }
-}
-
 
   /* hide UI helpers */
-  .no-print { display: none !important; }
+  .no-print {
+    display: none !important;
+  }
 
   /* hide everything by default */
-  body * { visibility: hidden !important; }
+  body * {
+    visibility: hidden !important;
+  }
 
   /* print-only blocks visible in print */
-  .print-only { display: block !important; }
+  .print-only {
+    display: block !important;
+  }
 
   /* =========================
      WHITELIST TARGETS — FEES
      ========================= */
-
   html[data-printing="print-fees-receipt"] #print-fees-receipt,
   html[data-printing="print-fees-receipt"] #print-fees-receipt * {
     visibility: visible !important;
@@ -138,7 +259,6 @@ html, body, #root { height: 100%; }
   /* =========================
      WHITELIST TARGETS — ACADEMIC
      ========================= */
-
   html[data-printing="print-class-results"] #print-class-results,
   html[data-printing="print-class-results"] #print-class-results * {
     visibility: visible !important;
@@ -173,7 +293,6 @@ html, body, #root { height: 100%; }
   /* =========================
      PRINT DOCUMENT (GLOBAL)
      ========================= */
-
   .print-doc {
     display: flex;
     flex-direction: column;
@@ -190,7 +309,7 @@ html, body, #root { height: 100%; }
     margin-top: 2px;
   }
 
-  /* ✅ THIS is the missing piece that makes mt-auto work */
+  /* missing piece that makes mt-auto work */
   .print-section {
     display: flex;
     flex-direction: column;
@@ -213,13 +332,19 @@ html, body, #root { height: 100%; }
     border: 1px solid #ddd !important;
     padding: 6px !important;
   }
-  thead { display: table-header-group; }
-  tr { page-break-inside: avoid; }
+  thead {
+    display: table-header-group;
+  }
+  tr {
+    page-break-inside: avoid;
+  }
 
   /* let scroll containers print fully */
-  .overflow-auto { overflow: visible !important; }
+  .overflow-auto {
+    overflow: visible !important;
+  }
 
-  /* extra safety for Tailwind max-height utilities used in reports */
+  /* safety for Tailwind max-height utilities used in reports */
   .max-h-\[520px\] {
     max-height: none !important;
     overflow: visible !important;
@@ -234,19 +359,21 @@ html, body, #root { height: 100%; }
   }
 
   /* Tighten paper density */
-  .print-doc table { font-size: 11px; }
+  .print-doc table {
+    font-size: 11px;
+  }
   .print-doc th,
-  .print-doc td { padding: 4px 6px !important; }
+  .print-doc td {
+    padding: 4px 6px !important;
+  }
 
   /* =========================
      PRINT LETTERHEAD (V2)
      Clean + sharp + minimal
      ========================= */
-
   .print-letterhead {
     text-align: center;
     margin-bottom: 8px;
-    
   }
 
   .print-letterhead__logoWrap {
@@ -260,7 +387,7 @@ html, body, #root { height: 100%; }
     width: auto;
     object-fit: contain;
     image-rendering: -webkit-optimize-contrast;
-    image-rendering: pixelated; 
+    image-rendering: pixelated;
     image-rendering: crisp-edges;
   }
 
@@ -287,7 +414,6 @@ html, body, #root { height: 100%; }
   /* =========================
      PRINT FOOTER
      ========================= */
-
   .print-footer {
     margin-top: 12px;
     text-align: center;
@@ -296,9 +422,9 @@ html, body, #root { height: 100%; }
   }
 }
 
-/* =========================
+/* =========================================================
    FEES RECEIPT (A4 PREMIUM)
-   ========================= */
+   ========================================================= */
 
 #print-fees-receipt .fees-a4 {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;

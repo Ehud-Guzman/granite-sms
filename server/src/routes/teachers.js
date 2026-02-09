@@ -1,6 +1,6 @@
 // src/routes/teachers.js
 import { Router } from "express";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";

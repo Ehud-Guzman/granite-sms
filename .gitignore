@@ -8,6 +8,10 @@ client/dist-ssr
 # Backend (if any build output later)
 server/dist
 
+# Docker
+docker-compose.override.yml
+
+
 # Environment files
 .env
 .env.*

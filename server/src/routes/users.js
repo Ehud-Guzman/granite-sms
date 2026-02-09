@@ -1,6 +1,6 @@
 // src/routes/users.js
 import { Router } from "express";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { prisma } from "../lib/prisma.js";
 import { logAudit } from "../utils/audit.js";

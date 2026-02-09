@@ -1,5 +1,5 @@
 // src/services/backup.service.js
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { prisma } from "../lib/prisma.js";
 

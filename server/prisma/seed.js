@@ -1,5 +1,5 @@
 // prisma/seed.js
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { PrismaClient, Role, Term, PaymentMethod, SubscriptionStatus, PlanCode, InvoiceStatus } from "@prisma/client";
 
 const prisma = new PrismaClient();

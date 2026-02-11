@@ -1,3 +1,4 @@
+// src/routes/settings/branding.routes.js
 import { Router } from "express";
 import path from "path";
 import fs from "fs";
@@ -12,13 +13,17 @@ import { logAudit } from "../../utils/audit.js";
 
 const router = Router();
 
-/** ✅ Stable server root from THIS file location
+/**
+ * ✅ Stable server root from THIS file location
  * file: src/routes/settings/branding.routes.js
- * go up: settings -> routes -> src -> server(root)
+ * __dirname = .../src/routes/settings
+ * project root is 4 levels up: settings -> routes -> src -> (project root)
  */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const SERVER_ROOT = path.join(__dirname, "..", "..", "..");
+
+// ✅ FIX: go up 4 levels to project root (where server.js is)
+const SERVER_ROOT = path.join(__dirname, "..", "..", "..", "..");
 
 function actorCtx(req) {
   return {
@@ -35,7 +40,12 @@ function ensureDir(dir) {
 function toDiskPathFromPublicUrl(publicUrl) {
   // publicUrl like "/uploads/branding/xxx.png"
   if (!publicUrl) return null;
+
   const clean = String(publicUrl).replace(/^\/+/, ""); // remove leading slash
+
+  // ✅ Only allow deleting inside /uploads/branding (avoid accidental deletes)
+  if (!clean.startsWith("uploads/branding/")) return null;
+
   return path.join(SERVER_ROOT, clean);
 }
 
@@ -138,7 +148,6 @@ function brandingResponse(schoolId, s) {
       brandPrimaryColor: s.brandPrimaryColor,
       brandSecondaryColor: s.brandSecondaryColor,
 
-      // ✅ new theme knobs
       themeKey: s.themeKey || null,
       mode: s.mode || null,
       density: s.density || null,
@@ -221,7 +230,6 @@ router.patch("/", requireAuth, async (req, res) => {
     }
 
     if (Object.keys(data).length === 0) {
-      // no-op, return current settings (fast + predictable)
       const s = await getOrCreateSettings(schoolId);
       return res.json(brandingResponse(schoolId, s));
     }

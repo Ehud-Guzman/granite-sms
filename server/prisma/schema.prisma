@@ -306,6 +306,8 @@ model School {
   examResultPublishes ExamResultPublish[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
+  onboardingCompleted Boolean @default(false)
+
 }
 
 model Subscription {

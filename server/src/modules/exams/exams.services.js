@@ -13,9 +13,9 @@ import { gradeFromScore, DEFAULT_GRADE_BANDS } from "./exams.grades.js";
 
 const prisma = new PrismaClient();
 
-// ---------------------------
+// ────────────────────────────────────────────────
 // Helpers
-// ---------------------------
+// ────────────────────────────────────────────────
 async function audit(schoolId, data) {
   return prisma.examAuditLog.create({ data: { schoolId, ...data } });
 }
@@ -32,7 +32,9 @@ async function assertMarkSheetAccess(req, markSheet, { allowClaim = false } = {}
   if (req.user.role === "ADMIN") return;
 
   const teacherId = await getTeacherIdFromReq(req);
-  if (!teacherId) throw Object.assign(new Error("Teacher profile not linked to user."), { statusCode: 403 });
+  if (!teacherId) {
+    throw Object.assign(new Error("Teacher profile not linked to user."), { statusCode: 403 });
+  }
 
   if (markSheet.teacherId === teacherId) return;
 
@@ -66,19 +68,43 @@ async function ensureMarkRowsForCurrentStudents({ schoolId, markSheetId, classId
   if (!missing.length) return { added: 0 };
 
   await prisma.mark.createMany({
-    data: missing.map((s) => ({ schoolId, markSheetId, studentId: s.id, score: null, isMissing: true, comment: null })),
+    data: missing.map((s) => ({
+      schoolId,
+      markSheetId,
+      studentId: s.id,
+      score: null,
+      isMissing: true,
+      comment: null,
+    })),
     skipDuplicates: true,
   });
 
   return { added: missing.length };
 }
 
-// ---------------------------
+// Optional: clean up marks belonging to deactivated students
+// (helps prevent accumulation of orphaned data)
+async function cleanupDeactivatedMarks({ schoolId, markSheetId }) {
+  const deleted = await prisma.mark.deleteMany({
+    where: {
+      schoolId,
+      markSheetId,
+      student: { isActive: false },
+    },
+  });
+  return deleted.count;
+}
+
+// ────────────────────────────────────────────────
 // Exam Types
-// ---------------------------
+// ────────────────────────────────────────────────
 export async function listExamTypes(req) {
   const schoolId = req.user.schoolId;
-  return prisma.examType.findMany({ where: { schoolId, isActive: true }, orderBy: { createdAt: "desc" }, select: examTypeSelect });
+  return prisma.examType.findMany({
+    where: { schoolId, isActive: true },
+    orderBy: { createdAt: "desc" },
+    select: examTypeSelect,
+  });
 }
 
 export async function createExamType(req) {
@@ -86,21 +112,33 @@ export async function createExamType(req) {
   const actorUserId = req.user.id;
 
   const name = cleanStr(req.body?.name);
-  if (!name) throw new Error("name is required.");
+  if (!name) throw Object.assign(new Error("Name is required."), { statusCode: 400 });
 
   const code = cleanStr(req.body?.code || "");
   const weight = req.body?.weight != null ? Number(req.body.weight) : null;
-  if (weight != null && (Number.isNaN(weight) || weight <= 0 || weight > 1)) throw new Error("weight must be a number between (0,1].");
+  if (weight != null && (Number.isNaN(weight) || weight <= 0 || weight > 1)) {
+    throw Object.assign(new Error("Weight must be between 0 and 1."), { statusCode: 400 });
+  }
 
-  const created = await prisma.examType.create({ data: { schoolId, name, code: code || null, weight, isActive: true }, select: examTypeSelect });
+  const created = await prisma.examType.create({
+    data: { schoolId, name, code: code || null, weight, isActive: true },
+    select: examTypeSelect,
+  });
 
-  await audit(schoolId, buildAuditPayload({ action: ExamAuditAction.CREATE, entityType: "ExamType", entityId: created.id, actorUserId, after: created }));
+  await audit(schoolId, buildAuditPayload({
+    action: ExamAuditAction.CREATE,
+    entityType: "ExamType",
+    entityId: created.id,
+    actorUserId,
+    after: created,
+  }));
+
   return created;
 }
 
-// ---------------------------
+// ────────────────────────────────────────────────
 // Exam Sessions
-// ---------------------------
+// ────────────────────────────────────────────────
 export async function createExamSession(req) {
   const schoolId = req.user.schoolId;
   const actorUserId = req.user.id;
@@ -117,26 +155,43 @@ export async function createExamSession(req) {
     prisma.class.findFirst({ where: { id: classId, schoolId }, select: { id: true } }),
     prisma.examType.findFirst({ where: { id: examTypeId, schoolId, isActive: true }, select: { id: true } }),
   ]);
-  if (!classRow) throw new Error("Invalid classId for this school.");
-  if (!typeRow) throw new Error("Invalid examTypeId for this school.");
+
+  if (!classRow) throw Object.assign(new Error("Invalid class."), { statusCode: 400 });
+  if (!typeRow) throw Object.assign(new Error("Invalid or inactive exam type."), { statusCode: 400 });
 
   return prisma.$transaction(async (tx) => {
     const session = await tx.examSession.create({
-      data: { schoolId, year, term, classId, examTypeId, name: name || null, createdByUserId: actorUserId, status: ExamSessionStatus.DRAFT },
+      data: {
+        schoolId,
+        year,
+        term,
+        classId,
+        examTypeId,
+        name: name || null,
+        createdByUserId: actorUserId,
+        status: ExamSessionStatus.DRAFT,
+      },
       select: examSessionSelect,
     });
 
-    await audit(schoolId, buildAuditPayload({ action: ExamAuditAction.CREATE, entityType: "ExamSession", entityId: session.id, actorUserId, after: session }));
+    await audit(schoolId, buildAuditPayload({
+      action: ExamAuditAction.CREATE,
+      entityType: "ExamSession",
+      entityId: session.id,
+      actorUserId,
+      after: session,
+    }));
 
+    // Teaching assignments → marksheets
     const assignments = await tx.teachingAssignment.findMany({
       where: { schoolId, classId, isActive: true },
       select: { teacherId: true, subjectId: true },
     });
 
-    let subjects = [];
+    let subjectsData = [];
     if (assignments.length) {
-      const subjectTeacherMap = new Map(assignments.map((a) => [a.subjectId, a.teacherId]));
-      subjects = Array.from(subjectTeacherMap.entries()).map(([subjectId, teacherId]) => ({
+      const map = new Map(assignments.map(a => [a.subjectId, a.teacherId]));
+      subjectsData = Array.from(map, ([subjectId, teacherId]) => ({
         schoolId,
         examSessionId: session.id,
         subjectId,
@@ -144,12 +199,12 @@ export async function createExamSession(req) {
         status: MarkSheetStatus.DRAFT,
       }));
     } else {
-      const allSubjects = await tx.subject.findMany({
+      const subjects = await tx.subject.findMany({
         where: { schoolId, isActive: true },
         select: { id: true },
         orderBy: { name: "asc" },
       });
-      subjects = allSubjects.map((s) => ({
+      subjectsData = subjects.map(s => ({
         schoolId,
         examSessionId: session.id,
         subjectId: s.id,
@@ -158,11 +213,11 @@ export async function createExamSession(req) {
       }));
     }
 
-    if (subjects.length) {
-      await tx.markSheet.createMany({ data: subjects, skipDuplicates: true });
+    if (subjectsData.length) {
+      await tx.markSheet.createMany({ data: subjectsData, skipDuplicates: true });
     }
 
-    const createdSheets = await tx.markSheet.findMany({
+    const sheets = await tx.markSheet.findMany({
       where: { schoolId, examSessionId: session.id },
       select: { id: true },
     });
@@ -172,8 +227,8 @@ export async function createExamSession(req) {
       select: { id: true },
     });
 
-    const markRows = createdSheets.flatMap((ms) =>
-      students.map((st) => ({
+    const markRows = sheets.flatMap(ms =>
+      students.map(st => ({
         schoolId,
         markSheetId: ms.id,
         studentId: st.id,
@@ -191,9 +246,9 @@ export async function createExamSession(req) {
   });
 }
 
-// ---------------------------
+// ────────────────────────────────────────────────
 // MarkSheets
-// ---------------------------
+// ────────────────────────────────────────────────
 export async function getMarkSheet(req) {
   const schoolId = req.user.schoolId;
   const id = assertCuid("markSheetId", req.params?.id);
@@ -207,7 +262,8 @@ export async function getMarkSheet(req) {
       examSession: { select: { id: true, status: true, year: true, term: true, classId: true, name: true } },
     },
   });
-  if (!ms) throw new Error("MarkSheet not found.");
+
+  if (!ms) throw Object.assign(new Error("Marksheet not found."), { statusCode: 404 });
 
   if (req.user.role === "TEACHER") {
     const teacherId = await getTeacherIdFromReq(req);
@@ -219,7 +275,6 @@ export async function getMarkSheet(req) {
     await assertMarkSheetAccess(req, ms);
   }
 
-  // Ensure marks exist for current active students (safe to run on read for now)
   await ensureMarkRowsForCurrentStudents({
     schoolId,
     markSheetId: ms.id,
@@ -232,7 +287,7 @@ export async function getMarkSheet(req) {
       ...markSheetSelect,
       examSession: { select: { id: true, status: true, year: true, term: true, classId: true, name: true } },
       marks: {
-        where: { student: { isActive: true } }, // ← Critical: exclude deactivated students
+        where: { student: { isActive: true } },
         select: {
           id: true,
           studentId: true,
@@ -264,7 +319,7 @@ export async function upsertBulkMarks(req) {
   const marks = validateBulkMarksPayload(req.body);
 
   if (marks.length > 300) {
-    throw Object.assign(new Error("Maximum 300 marks per request. Split into smaller batches."), { statusCode: 400 });
+    throw Object.assign(new Error("Maximum 300 marks per request allowed."), { statusCode: 400 });
   }
 
   const ms = await prisma.markSheet.findFirst({
@@ -276,12 +331,15 @@ export async function upsertBulkMarks(req) {
       examSession: { select: { id: true, status: true, classId: true } },
     },
   });
-  if (!ms) throw new Error("MarkSheet not found.");
+
+  if (!ms) throw Object.assign(new Error("Marksheet not found."), { statusCode: 404 });
 
   await assertMarkSheetAccess(req, ms, { allowClaim: true });
+
   if (ms.examSession.status === ExamSessionStatus.PUBLISHED) {
-    throw new Error("Cannot edit marks after results are published.");
+    throw Object.assign(new Error("Cannot edit marks after session is published."), { statusCode: 403 });
   }
+
   assertMarkSheetEditable(ms.status);
 
   await ensureMarkRowsForCurrentStudents({
@@ -290,6 +348,7 @@ export async function upsertBulkMarks(req) {
     classId: ms.examSession.classId,
   });
 
+  // Auto-claim for teachers
   if (req.user.role === "TEACHER" && ms.teacherId === null) {
     const teacherId = await getTeacherIdFromReq(req);
     const claimed = await claimMarkSheetIfUnassigned({ schoolId, markSheetId, teacherId });
@@ -308,7 +367,7 @@ export async function upsertBulkMarks(req) {
     where: { schoolId, classId: ms.examSession.classId, isActive: true },
     select: { id: true },
   });
-  const allowedSet = new Set(allowedStudents.map((s) => s.id));
+  const allowedSet = new Set(allowedStudents.map(s => s.id));
 
   const tx = [];
   const skipped = [];
@@ -326,7 +385,10 @@ export async function upsertBulkMarks(req) {
     } else {
       score = Number(score);
       if (Number.isNaN(score) || score < 0 || score > 100) {
-        throw new Error(`Invalid score for student ${studentId}: must be 0-100 or empty/null`);
+        throw Object.assign(
+          new Error(`Invalid score for student ${studentId}: must be 0–100 or empty.`),
+          { statusCode: 400 }
+        );
       }
     }
 
@@ -353,20 +415,22 @@ export async function upsertBulkMarks(req) {
 
   const updated = await prisma.$transaction(tx);
 
-  await audit(
-    schoolId,
-    buildAuditPayload({
-      action: ExamAuditAction.UPDATE,
-      entityType: "Mark",
-      entityId: markSheetId,
-      actorUserId,
-      after: { updatedCount: updated.length, skipped },
-    })
-  );
+  await audit(schoolId, buildAuditPayload({
+    action: ExamAuditAction.UPDATE,
+    entityType: "Mark",
+    entityId: markSheetId,
+    actorUserId,
+    after: { updatedCount: updated.length, skippedCount: skipped.length },
+  }));
 
+  // Counts only active students
   const [missingCount, filledCount] = await Promise.all([
-    prisma.mark.count({ where: { schoolId, markSheetId, isMissing: true } }),
-    prisma.mark.count({ where: { schoolId, markSheetId, isMissing: false } }),
+    prisma.mark.count({
+      where: { schoolId, markSheetId, isMissing: true, student: { isActive: true } },
+    }),
+    prisma.mark.count({
+      where: { schoolId, markSheetId, isMissing: false, student: { isActive: true } },
+    }),
   ]);
 
   return {
@@ -375,7 +439,7 @@ export async function upsertBulkMarks(req) {
     skipped,
     missingCount,
     filledCount,
-    totalStudents: missingCount + filledCount,
+    totalActiveStudents: missingCount + filledCount,
     status: ms.status,
   };
 }
@@ -387,19 +451,54 @@ export async function submitMarkSheet(req) {
 
   const ms = await prisma.markSheet.findFirst({
     where: { id: markSheetId, schoolId },
-    select: { id: true, status: true, teacherId: true, examSession: { select: { status: true, classId: true } } },
+    select: {
+      id: true,
+      status: true,
+      teacherId: true,
+      examSession: { select: { status: true, classId: true } },
+    },
   });
-  if (!ms) throw new Error("MarkSheet not found.");
-  await assertMarkSheetAccess(req, ms);
-  if (ms.examSession.status === ExamSessionStatus.PUBLISHED) throw new Error("Cannot submit after results are published.");
 
-  await ensureMarkRowsForCurrentStudents({ schoolId, markSheetId, classId: ms.examSession.classId });
-  const missing = await prisma.mark.count({ where: { schoolId, markSheetId, isMissing: true } });
-  if (missing > 0) throw new Error(`Cannot submit: ${missing} missing marks.`);
+  if (!ms) throw Object.assign(new Error("Marksheet not found."), { statusCode: 404 });
+
+  await assertMarkSheetAccess(req, ms);
+
+  if (ms.examSession.status === ExamSessionStatus.PUBLISHED) {
+    throw Object.assign(new Error("Cannot submit after results are published."), { statusCode: 403 });
+  }
+
+  await ensureMarkRowsForCurrentStudents({
+    schoolId,
+    markSheetId,
+    classId: ms.examSession.classId,
+  });
+
+  // Optional but recommended: clean orphaned deactivated marks before final check
+  await cleanupDeactivatedMarks({ schoolId, markSheetId });
+
+  const missing = await prisma.mark.count({
+    where: {
+      schoolId,
+      markSheetId,
+      isMissing: true,
+      student: { isActive: true },
+    },
+  });
+
+  if (missing > 0) {
+    throw Object.assign(
+      new Error(`Cannot submit: ${missing} active student(s) still have missing marks.`),
+      { statusCode: 400 }
+    );
+  }
 
   const updated = await prisma.markSheet.update({
     where: { id: markSheetId },
-    data: { status: MarkSheetStatus.SUBMITTED, submittedAt: new Date(), submittedById: actorUserId },
+    data: {
+      status: MarkSheetStatus.SUBMITTED,
+      submittedAt: new Date(),
+      submittedById: actorUserId,
+    },
     select: markSheetSelect,
   });
 
@@ -420,19 +519,32 @@ export async function unlockMarkSheet(req) {
   const actorUserId = req.user.id;
   const markSheetId = assertCuid("markSheetId", req.params?.id);
   const reason = cleanStr(req.body?.reason);
-  if (!reason) throw new Error("reason is required.");
+
+  if (!reason) throw Object.assign(new Error("Unlock reason is required."), { statusCode: 400 });
 
   const ms = await prisma.markSheet.findFirst({
     where: { id: markSheetId, schoolId },
     select: { id: true, status: true, examSession: { select: { status: true } } },
   });
-  if (!ms) throw new Error("MarkSheet not found.");
-  if (ms.examSession.status === ExamSessionStatus.PUBLISHED) throw new Error("Cannot unlock after results are published.");
-  if (ms.status !== MarkSheetStatus.SUBMITTED) throw new Error("Only SUBMITTED marksheets can be unlocked.");
+
+  if (!ms) throw Object.assign(new Error("Marksheet not found."), { statusCode: 404 });
+
+  if (ms.examSession.status === ExamSessionStatus.PUBLISHED) {
+    throw Object.assign(new Error("Cannot unlock after results published."), { statusCode: 403 });
+  }
+
+  if (ms.status !== MarkSheetStatus.SUBMITTED) {
+    throw Object.assign(new Error("Only submitted marksheets can be unlocked."), { statusCode: 400 });
+  }
 
   const updated = await prisma.markSheet.update({
     where: { id: markSheetId },
-    data: { status: MarkSheetStatus.UNLOCKED, unlockedAt: new Date(), unlockedById: actorUserId, unlockReason: reason },
+    data: {
+      status: MarkSheetStatus.UNLOCKED,
+      unlockedAt: new Date(),
+      unlockedById: actorUserId,
+      unlockReason: reason,
+    },
     select: markSheetSelect,
   });
 
@@ -456,7 +568,8 @@ export async function listSessionMarkSheets(req) {
     where: { id: sessionId, schoolId },
     select: { id: true, status: true, classId: true, year: true, term: true, name: true },
   });
-  if (!session) throw new Error("ExamSession not found.");
+
+  if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
 
   const where = { schoolId, examSessionId: sessionId };
   if (req.user.role === "TEACHER") {
@@ -471,28 +584,38 @@ export async function listSessionMarkSheets(req) {
     select: markSheetSelect,
   });
 
-  const ids = markSheets.map((m) => m.id);
+  const ids = markSheets.map(m => m.id);
   const missingMap = new Map();
+
   if (ids.length) {
- const missing = await prisma.mark.groupBy({
-  by: ["markSheetId"],
-  where: {
-    schoolId,
-    markSheetId: { in: ids },
-    isMissing: true,
-    student: { isActive: true },   
-  },
-  _count: { _all: true },
-});
-    for (const row of missing) missingMap.set(row.markSheetId, row._count._all);
+    const missing = await prisma.mark.groupBy({
+      by: ["markSheetId"],
+      where: {
+        schoolId,
+        markSheetId: { in: ids },
+        isMissing: true,
+        student: { isActive: true },
+      },
+      _count: { _all: true },
+    });
+
+    for (const row of missing) {
+      missingMap.set(row.markSheetId, row._count._all);
+    }
   }
 
   return {
     session,
-    markSheets: markSheets.map((m) => ({ ...m, missingCount: missingMap.get(m.id) ?? 0 })),
+    markSheets: markSheets.map(m => ({
+      ...m,
+      missingCount: missingMap.get(m.id) ?? 0,
+    })),
   };
 }
 
+// ────────────────────────────────────────────────
+// Results
+// ────────────────────────────────────────────────
 export async function getClassResults(req) {
   const schoolId = req.user.schoolId;
   const sessionId = assertCuid("sessionId", req.params?.id);
@@ -501,12 +624,13 @@ export async function getClassResults(req) {
     where: { id: sessionId, schoolId },
     select: { id: true, classId: true, term: true, year: true },
   });
-  if (!session) throw new Error("ExamSession not found.");
+
+  if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
 
   const marks = await prisma.mark.findMany({
     where: {
       markSheet: { examSessionId: sessionId },
-      student: { isActive: true }, // ← also filter here
+      student: { isActive: true },
     },
     select: {
       studentId: true,
@@ -517,8 +641,11 @@ export async function getClassResults(req) {
 
   const studentMap = {};
   for (const m of marks) {
-    if (!studentMap[m.studentId]) studentMap[m.studentId] = [];
-    studentMap[m.studentId].push({ subjectId: m.markSheet.subjectId, score: m.score });
+    studentMap[m.studentId] = studentMap[m.studentId] || [];
+    studentMap[m.studentId].push({
+      subjectId: m.markSheet.subjectId,
+      score: m.score,
+    });
   }
 
   return studentMap;
@@ -543,7 +670,7 @@ export async function getStudentResults(req) {
     },
   });
 
-  return marks.map((m) => ({
+  return marks.map(m => ({
     examSessionId: m.markSheet.examSession.id,
     term: m.markSheet.examSession.term,
     year: m.markSheet.examSession.year,
@@ -562,12 +689,19 @@ export async function publishResults(req) {
     where: { id: sessionId, schoolId },
     select: { id: true, status: true },
   });
-  if (!session) throw new Error("ExamSession not found.");
-  if (session.status === ExamSessionStatus.PUBLISHED) throw new Error("Already published.");
+
+  if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
+  if (session.status === ExamSessionStatus.PUBLISHED) {
+    throw Object.assign(new Error("Results already published."), { statusCode: 400 });
+  }
 
   const updated = await prisma.examSession.update({
     where: { id: sessionId },
-    data: { status: ExamSessionStatus.PUBLISHED, publishedAt: new Date(), publishedById: actorUserId },
+    data: {
+      status: ExamSessionStatus.PUBLISHED,
+      publishedAt: new Date(),
+      publishedById: actorUserId,
+    },
   });
 
   await audit(schoolId, buildAuditPayload({

@@ -21,20 +21,19 @@ function isBlankScore(v) {
 export default function MarksTable({
   loading,
   isLocked,
-  rows,
+  rows,                    // backend guarantees only active students
   setDraft,
   normalizeScoreInput,
 }) {
   const [q, setQ] = useState("");
 
-  // refs for keyboard navigation
   const scoreRefs = useRef([]);
   const commentRefs = useRef([]);
 
-  // keep refs aligned with visible rows length
+  // Reset refs array when underlying data length changes
   useEffect(() => {
-    scoreRefs.current = scoreRefs.current.slice(0, rows.length);
-    commentRefs.current = commentRefs.current.slice(0, rows.length);
+    scoreRefs.current = new Array(rows.length);
+    commentRefs.current = new Array(rows.length);
   }, [rows.length]);
 
   const filtered = useMemo(() => {
@@ -49,52 +48,47 @@ export default function MarksTable({
   }, [rows, q]);
 
   const focusScore = useCallback((idx) => {
+    if (idx < 0 || idx >= filtered.length) return;
     const el = scoreRefs.current[idx];
-    if (el && typeof el.focus === "function") {
+    if (el) {
       el.focus();
-      try {
-        el.select?.();
-      } catch {}
+      try { el.select(); } catch {}
     }
-  }, []);
+  }, [filtered.length]);
 
-  const focusPrev = useCallback(
-    (idx) => {
-      const next = Math.max(0, idx - 1);
-      focusScore(next);
-    },
-    [focusScore]
-  );
+  const focusPrev = useCallback((idx) => {
+    focusScore(Math.max(0, idx - 1));
+  }, [focusScore]);
 
-  const focusNext = useCallback(
-    (idx) => {
-      const next = Math.min(filtered.length - 1, idx + 1);
-      focusScore(next);
-    },
-    [filtered.length, focusScore]
-  );
+  const focusNext = useCallback((idx) => {
+    focusScore(Math.min(filtered.length - 1, idx + 1));
+  }, [focusScore, filtered.length]);
 
-  // Bulk actions operate on FILTERED rows (better UX)
-  const bulkSetMissing = useCallback(
-    (missing) => {
-      if (isLocked) return;
-      setDraft((prev) => {
-        const next = { ...prev };
-        for (const r of filtered) {
-          const sid = r.student.id;
-          const cur = next[sid] || r.draft || {};
-          next[sid] = {
-            ...cur,
-            isMissing: !!missing,
-            // if marking missing, blank the score (keeps semantics clean)
-            score: missing ? "" : (isBlankScore(cur.score) ? "" : cur.score),
-          };
-        }
-        return next;
-      });
-    },
-    [filtered, isLocked, setDraft]
-  );
+const focusComment = useCallback(
+  (idx) => {
+    if (idx < 0 || idx >= filtered.length) return;
+    const el = commentRefs.current[idx];
+    if (el && typeof el.focus === "function") el.focus();
+  },
+  [filtered.length] 
+);
+  // Bulk actions — filtered rows for better UX when searching
+  const bulkSetMissing = useCallback((missing) => {
+    if (isLocked) return;
+    setDraft((prev) => {
+      const next = { ...prev };
+      for (const r of filtered) {
+        const sid = r.student.id;
+        const cur = next[sid] || r.draft || {};
+        next[sid] = {
+          ...cur,
+          isMissing: !!missing,
+          score: missing ? "" : (isBlankScore(cur.score) ? "" : cur.score),
+        };
+      }
+      return next;
+    });
+  }, [filtered, isLocked, setDraft]);
 
   const autoMissing = useCallback(() => {
     if (isLocked) return;
@@ -103,279 +97,266 @@ export default function MarksTable({
       for (const r of filtered) {
         const sid = r.student.id;
         const cur = next[sid] || r.draft || {};
-        const blank = isBlankScore(cur.score);
-        next[sid] = { ...cur, isMissing: blank };
+        next[sid] = { ...cur, isMissing: isBlankScore(cur.score) };
       }
       return next;
     });
   }, [filtered, isLocked, setDraft]);
 
-  const onScoreChange = useCallback(
-    (row, value) => {
-      if (isLocked) return;
+  const onScoreChange = useCallback((row, value) => {
+    if (isLocked) return;
 
-      const n = normalizeScoreInput(value);
+    const n = normalizeScoreInput(value);
+    setDraft((prev) => {
+      const sid = row.student.id;
+      const cur = prev[sid] || row.draft || {};
+
       if (!n.ok) {
-        // still store raw input so user can correct it
-        setDraft((prev) => ({
+        // Store raw input so user can correct typos
+        return {
           ...prev,
-          [row.student.id]: {
-            ...(prev[row.student.id] || row.draft),
-            score: value,
-            isMissing: false,
-          },
-        }));
-        return;
+          [sid]: { ...cur, score: value, isMissing: false },
+        };
       }
 
-      setDraft((prev) => {
-        const cur = prev[row.student.id] || row.draft || {};
-        const blank = isBlankScore(value);
-
-        return {
-          ...prev,
-          [row.student.id]: {
-            ...cur,
-            score: value,
-            // smart default: if score is blank, mark missing, else present
-            isMissing: blank ? true : false,
-          },
-        };
-      });
-    },
-    [isLocked, normalizeScoreInput, setDraft]
-  );
-
-  const toggleMissing = useCallback(
-    (row) => {
-      if (isLocked) return;
-      setDraft((prev) => {
-        const cur = prev[row.student.id] || row.draft || {};
-        const nextMissing = !cur.isMissing;
-
-        return {
-          ...prev,
-          [row.student.id]: {
-            ...cur,
-            isMissing: nextMissing,
-            // if switched to missing, blank the score (cleaner)
-            score: nextMissing ? "" : cur.score,
-          },
-        };
-      });
-    },
-    [isLocked, setDraft]
-  );
-
-  const onCommentChange = useCallback(
-    (row, value) => {
-      if (isLocked) return;
-      setDraft((prev) => ({
+      const blank = isBlankScore(value);
+      return {
         ...prev,
-        [row.student.id]: {
-          ...(prev[row.student.id] || row.draft),
-          comment: value,
+        [sid]: {
+          ...cur,
+          score: value,
+          isMissing: blank,
         },
-      }));
-    },
-    [isLocked, setDraft]
-  );
+      };
+    });
+  }, [isLocked, normalizeScoreInput, setDraft]);
 
-  const onScoreKeyDown = useCallback(
-    (e, idx) => {
-      if (e.key === "Enter" || e.key === "ArrowDown") {
-        e.preventDefault();
-        focusNext(idx);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        focusPrev(idx);
-      }
-    },
-    [focusNext, focusPrev]
-  );
+  const toggleMissing = useCallback((row) => {
+    if (isLocked) return;
+    setDraft((prev) => {
+      const sid = row.student.id;
+      const cur = prev[sid] || row.draft || {};
+      const nextMissing = !cur.isMissing;
+      return {
+        ...prev,
+        [sid]: {
+          ...cur,
+          isMissing: nextMissing,
+          score: nextMissing ? "" : cur.score,
+        },
+      };
+    });
+  }, [isLocked, setDraft]);
 
-  const onRowKeyDown = useCallback(
-    (e, idx, row) => {
-      // quick toggles
-      if (e.key.toLowerCase() === "m") {
-        // "m" toggle missing
-        e.preventDefault();
-        toggleMissing(row);
-      }
-      if (e.key === "Escape") {
-        // bounce focus back to score
-        e.preventDefault();
-        focusScore(idx);
-      }
-    },
-    [toggleMissing, focusScore]
-  );
+  const onCommentChange = useCallback((row, value) => {
+    if (isLocked) return;
+    setDraft((prev) => ({
+      ...prev,
+      [row.student.id]: {
+        ...(prev[row.student.id] || row.draft),
+        comment: value,
+      },
+    }));
+  }, [isLocked, setDraft]);
 
-  // ---------- UI ----------
+  const onScoreKeyDown = useCallback((e, idx) => {
+    if (e.key === "Enter" || e.key === "ArrowDown") {
+      e.preventDefault();
+      focusNext(idx);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      focusPrev(idx);
+    } else if (e.key === "ArrowRight" || (e.key === "Tab" && !e.shiftKey)) {
+      e.preventDefault();
+      focusComment(idx);
+    }
+  }, [focusNext, focusPrev, focusComment]);
+
+  const onCommentKeyDown = useCallback((e, idx) => {
+    if (e.key === "Tab" && !e.shiftKey) {
+      e.preventDefault();
+      focusScore(idx + 1);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      focusScore(idx);
+    }
+  }, [focusScore]);
+
+  const onRowKeyDown = useCallback((e, idx, row) => {
+    if (e.key.toLowerCase() === "m") {
+      e.preventDefault();
+      toggleMissing(row);
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      focusScore(idx);
+    }
+  }, [toggleMissing, focusScore]);
+
   return (
     <Card>
-      <CardContent className="p-6 space-y-4">
+      <CardContent className="p-6 space-y-5">
         {/* Toolbar */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <div className="font-medium">Marks</div>
-            <div className="text-xs text-muted-foreground">
-              {filtered.length} students • Enter/↓ next • ↑ previous • Press <span className="font-medium">M</span> to toggle Missing
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="font-medium text-lg">Marks Entry</div>
+            <div className="text-sm text-muted-foreground mt-1">
+              {filtered.length} of {rows.length} students shown
+              {filtered.length !== rows.length && ` • filtered by “${q}”`}
+              <br />
+              <span className="text-xs">
+                Enter/↓ next • ↑ previous • →/Tab → comment • M toggle missing
+              </span>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div className="flex flex-col sm:flex-row gap-3">
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search admission no / name"
-              className="h-9 w-full sm:w-[260px]"
-              disabled={loading}
+              placeholder="Search admission # or name…"
+              className="h-10 w-full sm:w-72"
+              disabled={loading || isLocked}
             />
 
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                className="h-9"
+                size="sm"
                 onClick={() => bulkSetMissing(false)}
-                disabled={loading || isLocked || filtered.length === 0}
-                title="Sets Missing = false for filtered rows"
+                disabled={loading || isLocked || !filtered.length}
               >
                 Mark all present
               </Button>
               <Button
                 variant="outline"
-                className="h-9"
+                size="sm"
                 onClick={() => bulkSetMissing(true)}
-                disabled={loading || isLocked || filtered.length === 0}
-                title="Sets Missing = true for filtered rows"
+                disabled={loading || isLocked || !filtered.length}
               >
                 Mark all missing
               </Button>
               <Button
                 variant="outline"
-                className="h-9"
+                size="sm"
                 onClick={autoMissing}
-                disabled={loading || isLocked || filtered.length === 0}
-                title="Blank score = Missing, score entered = Present"
+                disabled={loading || isLocked || !filtered.length}
               >
-                Auto missing (blank)
+                Auto (blank = missing)
               </Button>
             </div>
           </div>
         </div>
 
-        {/* States */}
         {loading ? (
-          <div className="text-sm text-muted-foreground">Loading marks…</div>
+          <div className="text-center py-8 text-muted-foreground">Loading marks…</div>
         ) : rows.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No rows available for this marksheet.</div>
+          <div className="text-center py-8 text-muted-foreground">
+            No active students in this class/marksheet.
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No matches for “{q}”.</div>
-        ) : null}
+          <div className="text-center py-8 text-muted-foreground">No matches for “{q}”.</div>
+        ) : (
+          <div className="border rounded-lg overflow-hidden">
+            <div className="overflow-auto max-h-[65vh]">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-background border-b z-10">
+                  <tr className="text-left">
+                    <th className="px-4 py-3 w-28 font-medium">Adm No</th>
+                    <th className="px-4 py-3 min-w-56 font-medium">Student</th>
+                    <th className="px-4 py-3 w-36 font-medium">Score (/100)</th>
+                    <th className="px-4 py-3 w-36 font-medium">Missing</th>
+                    <th className="px-4 py-3 min-w-64 font-medium">Comment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((r, idx) => {
+                    const s = r.student;
+                    const d = r.draft || {};
+                    const missing = !!d.isMissing;
+                    const scoreVal = d.score ?? "";
+                    const normalized = normalizeScoreInput(scoreVal);
+                    const scoreInvalid = !missing && !isBlankScore(scoreVal) && !normalized.ok;
 
-        {/* Table */}
-        {filtered.length > 0 ? (
-          <div className="overflow-auto border rounded-lg">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-background z-10 border-b">
-                <tr className="text-left">
-                  <th className="px-3 py-2 w-[110px]">Adm No</th>
-                  <th className="px-3 py-2 min-w-[220px]">Student</th>
-                  <th className="px-3 py-2 w-[140px]">Score (/100)</th>
-                  <th className="px-3 py-2 w-[140px]">Missing</th>
-                  <th className="px-3 py-2 min-w-[240px]">Comment</th>
-                </tr>
-              </thead>
+                    return (
+                      <tr
+                        key={s.id}
+                        className="border-b last:border-b-0 hover:bg-muted/50 focus-within:bg-muted/30 transition-colors"
+                        onKeyDown={(e) => onRowKeyDown(e, idx, r)}
+                        tabIndex={-1}
+                      >
+                        <td className="px-4 py-3 font-medium">{s.admissionNo || "—"}</td>
 
-              <tbody>
-                {filtered.map((r, idx) => {
-                  const s = r.student;
-                  const d = r.draft || {};
-                  const missing = !!d.isMissing;
+                        <td className="px-4 py-3">
+                          <div className="font-medium">{fullName(s)}</div>
+                          <div className="text-xs text-muted-foreground">{s.gender || "—"}</div>
+                        </td>
 
-                  const scoreVal = d.score ?? "";
-                  const normalized = normalizeScoreInput(scoreVal);
-                  const scoreInvalid = !missing && !isBlankScore(scoreVal) && !normalized.ok;
+                        <td className="px-4 py-3">
+                          <Input
+                            ref={(el) => (scoreRefs.current[idx] = el)}
+                            value={scoreVal}
+                            onChange={(e) => onScoreChange(r, e.target.value)}
+                            onKeyDown={(e) => onScoreKeyDown(e, idx)}
+                            disabled={isLocked}
+                            placeholder={missing ? "Missing" : "0–100"}
+                            className={`h-9 ${missing ? "opacity-70 bg-muted/30" : ""} ${
+                              scoreInvalid ? "border-red-500 focus-visible:ring-red-500" : ""
+                            }`}
+                            inputMode="numeric"
+                            aria-invalid={scoreInvalid}
+                          />
+                          {scoreInvalid && (
+                            <div className="text-xs text-red-600 mt-1">
+                              {normalized.message || "Invalid score"}
+                            </div>
+                          )}
+                        </td>
 
-                  return (
-                    <tr
-                      key={s.id}
-                      className="border-b last:border-b-0 hover:bg-muted/40"
-                      onKeyDown={(e) => onRowKeyDown(e, idx, r)}
-                      tabIndex={-1}
-                    >
-                      <td className="px-3 py-2 font-medium">{s.admissionNo || "—"}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            disabled={isLocked}
+                            onClick={() => toggleMissing(r)}
+                            className={`w-full h-9 rounded border px-3 text-left flex items-center justify-between transition-colors ${
+                              missing
+                                ? "bg-red-50/70 border-red-200 hover:bg-red-100"
+                                : "bg-background hover:bg-muted/60 border-border"
+                            } ${isLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+                            title="Toggle missing (shortcut: M)"
+                          >
+                            <span className="font-medium">{missing ? "YES" : "NO"}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {missing ? "Missing" : "Present"}
+                            </span>
+                          </button>
+                        </td>
 
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{fullName(s)}</div>
-                        <div className="text-xs text-muted-foreground">{s.gender || ""}</div>
-                      </td>
-
-                      <td className="px-3 py-2">
-                        <Input
-                          ref={(el) => (scoreRefs.current[idx] = el)}
-                          value={scoreVal}
-                          onChange={(e) => onScoreChange(r, e.target.value)}
-                          onKeyDown={(e) => onScoreKeyDown(e, idx)}
-                          disabled={isLocked}
-                          placeholder={missing ? "Missing" : "0–100"}
-                          className={[
-                            "h-9",
-                            missing ? "opacity-70" : "",
-                            scoreInvalid ? "border-red-500 focus-visible:ring-red-500" : "",
-                          ].join(" ")}
-                          inputMode="numeric"
-                        />
-                        {scoreInvalid ? (
-                          <div className="text-[11px] text-red-600 mt-1">
-                            {normalized.message || "Invalid score"}
-                          </div>
-                        ) : null}
-                      </td>
-
-                      <td className="px-3 py-2">
-                        <button
-                          type="button"
-                          disabled={isLocked}
-                          onClick={() => toggleMissing(r)}
-                          className={[
-                            "w-full h-9 rounded-md border px-3 text-left flex items-center justify-between",
-                            missing ? "bg-muted" : "bg-background hover:bg-muted/40",
-                            isLocked ? "opacity-60 cursor-not-allowed" : "",
-                          ].join(" ")}
-                          title="Click to toggle missing (shortcut: M)"
-                        >
-                          <span className="font-medium">{missing ? "YES" : "NO"}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {missing ? "Missing" : "Present"}
-                          </span>
-                        </button>
-                      </td>
-
-                      <td className="px-3 py-2">
-                        <Input
-                          ref={(el) => (commentRefs.current[idx] = el)}
-                          value={d.comment ?? ""}
-                          onChange={(e) => onCommentChange(r, e.target.value)}
-                          disabled={isLocked}
-                          placeholder="Optional…"
-                          className="h-9"
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <td className="px-4 py-3">
+                          <Input
+                            ref={(el) => (commentRefs.current[idx] = el)}
+                            value={d.comment ?? ""}
+                            onChange={(e) => onCommentChange(r, e.target.value)}
+                            onKeyDown={(e) => onCommentKeyDown(e, idx)}
+                            disabled={isLocked}
+                            placeholder="Optional comment…"
+                            className="h-9"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        ) : null}
+        )}
 
-        {isLocked ? (
-          <div className="text-xs text-muted-foreground">
-            This marksheet is <span className="font-medium">SUBMITTED</span>. Editing is locked.
+        {isLocked && (
+          <div className="text-sm text-amber-700 bg-amber-50/70 p-3 rounded border border-amber-200">
+            This marksheet is <strong>SUBMITTED</strong>. Editing is locked.
           </div>
-        ) : null}
+        )}
       </CardContent>
     </Card>
   );

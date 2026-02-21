@@ -187,67 +187,138 @@ export async function upsertBulkMarks(req) {
   const schoolId = req.user.schoolId;
   const actorUserId = req.user.id;
   const markSheetId = assertCuid("markSheetId", req.params?.id);
+
+  // Validate payload
   const marks = validateBulkMarksPayload(req.body);
 
+  // Fetch marksheet + basic access info
   const ms = await prisma.markSheet.findFirst({
     where: { id: markSheetId, schoolId },
-    select: { id: true, status: true, teacherId: true, examSession: { select: { id: true, status: true, classId: true } } },
+    select: {
+      id: true,
+      status: true,
+      teacherId: true,
+      examSession: { select: { id: true, status: true, classId: true } },
+    },
   });
   if (!ms) throw new Error("MarkSheet not found.");
 
+  // Access check (teachers can claim unassigned sheets)
   await assertMarkSheetAccess(req, ms, { allowClaim: true });
-  if (ms.examSession.status === ExamSessionStatus.PUBLISHED) throw new Error("Cannot edit marks after results are published.");
+  if (ms.examSession.status === ExamSessionStatus.PUBLISHED)
+    throw new Error("Cannot edit marks after results are published.");
   assertMarkSheetEditable(ms.status);
 
-  // Ensure all active students have marks
-  await ensureMarkRowsForCurrentStudents({ schoolId, markSheetId, classId: ms.examSession.classId });
+  // Ensure all active students have mark rows
+  await ensureMarkRowsForCurrentStudents({
+    schoolId,
+    markSheetId,
+    classId: ms.examSession.classId,
+  });
 
   // Teacher claims unassigned sheet if applicable
   if (req.user.role === "TEACHER" && ms.teacherId === null) {
     const teacherId = await getTeacherIdFromReq(req);
-    const claimed = await claimMarkSheetIfUnassigned({ schoolId, markSheetId, teacherId });
+    const claimed = await claimMarkSheetIfUnassigned({
+      schoolId,
+      markSheetId,
+      teacherId,
+    });
+
     if (!claimed) {
-      const fresh = await prisma.markSheet.findFirst({ where: { id: markSheetId, schoolId }, select: { teacherId: true } });
-      if (!fresh || fresh.teacherId !== teacherId) throw Object.assign(new Error("Access denied: marksheet already claimed by another teacher."), { statusCode: 403 });
+      const fresh = await prisma.markSheet.findFirst({
+        where: { id: markSheetId, schoolId },
+        select: { teacherId: true },
+      });
+      if (!fresh || fresh.teacherId !== teacherId) {
+        const e = new Error(
+          "Access denied: marksheet already claimed by another teacher."
+        );
+        e.statusCode = 403;
+        throw e;
+      }
     }
   }
 
-  // Validate students belong to class
-  const allowed = await prisma.student.findMany({ where: { schoolId, classId: ms.examSession.classId, isActive: true }, select: { id: true } });
-  const allowedSet = new Set(allowed.map((s) => s.id));
-  const invalidIds = [];
+  // --- Smart student validation ---
+  const allowedStudents = await prisma.student.findMany({
+    where: { schoolId, classId: ms.examSession.classId, isActive: true },
+    select: { id: true },
+  });
+  const allowedSet = new Set(allowedStudents.map((s) => s.id));
+
+  const tx = [];
+  const skipped = [];
 
   for (const row of marks) {
-    const sid = String(row.studentId);
-    if (!allowedSet.has(sid)) invalidIds.push(sid);
-  }
-  if (invalidIds.length > 0) throw new Error(`Invalid studentId(s) for this class: ${invalidIds.join(", ")}`);
-
-  // Prepare upserts
-  const tx = marks.map((row) => {
     const studentId = String(row.studentId);
+
+    // Skip invalid students but log them
+    if (!allowedSet.has(studentId)) {
+      skipped.push(studentId);
+      console.warn(`Skipping invalid student: ${studentId}`);
+      continue;
+    }
+
     const score = row.score == null ? null : Number(row.score);
 
-    if (score !== null && (Number.isNaN(score) || score < 0 || score > 100)) throw new Error("Score must be a number between 0 and 100 or null.");
+    if (score !== null && (Number.isNaN(score) || score < 0 || score > 100)) {
+      throw new Error(
+        "Score must be a number between 0 and 100 or null."
+      );
+    }
 
-    return prisma.mark.upsert({
-      where: { schoolId_markSheetId_studentId: { schoolId, markSheetId, studentId } },
-      create: { schoolId, markSheetId, studentId, score, isMissing: score === null, comment: cleanStr(row.comment) || null },
-      update: { score, isMissing: score === null, comment: cleanStr(row.comment) || null },
-      select: { id: true, studentId: true, score: true, isMissing: true, updatedAt: true },
-    });
-  });
+    tx.push(
+      prisma.mark.upsert({
+        where: { schoolId_markSheetId_studentId: { schoolId, markSheetId, studentId } },
+        create: {
+          schoolId,
+          markSheetId,
+          studentId,
+          score,
+          isMissing: score === null,
+          comment: cleanStr(row.comment) || null,
+        },
+        update: {
+          score,
+          isMissing: score === null,
+          comment: cleanStr(row.comment) || null,
+        },
+        select: { id: true, studentId: true, score: true, isMissing: true, updatedAt: true },
+      })
+    );
+  }
 
+  // Run transaction
   const updated = await prisma.$transaction(tx);
 
-  await audit(schoolId, buildAuditPayload({ action: ExamAuditAction.UPDATE, entityType: "Mark", entityId: markSheetId, actorUserId, after: { updatedCount: updated.length } }));
+  // Audit log
+  await audit(
+    schoolId,
+    buildAuditPayload({
+      action: ExamAuditAction.UPDATE,
+      entityType: "Mark",
+      entityId: markSheetId,
+      actorUserId,
+      after: { updatedCount: updated.length, skipped },
+    })
+  );
 
+  // Count marks
   const [missingCount, filledCount] = await Promise.all([
     prisma.mark.count({ where: { schoolId, markSheetId, isMissing: true } }),
     prisma.mark.count({ where: { schoolId, markSheetId, isMissing: false } }),
   ]);
 
-  return { markSheetId, updatedCount: updated.length, missingCount, filledCount, totalStudents: missingCount + filledCount, status: ms.status };
+  return {
+    markSheetId,
+    updatedCount: updated.length,
+    skipped, // new: list of invalid studentIds that were ignored
+    missingCount,
+    filledCount,
+    totalStudents: missingCount + filledCount,
+    status: ms.status,
+  };
 }
 
 // ---------------------------

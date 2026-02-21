@@ -452,6 +452,11 @@ export async function upsertBulkMarks(req) {
   });
   const allowedSet = new Set(allowed.map((s) => s.id));
 
+  console.log("=== DEBUG START ===");
+console.log("schoolId:", schoolId);
+console.log("examSession.classId:", ms.examSession.classId);
+console.log("allowed student IDs:", allowed.map(s => s.id));
+
   for (const row of marks) {
     const sid = String(row.studentId);
     if (!allowedSet.has(sid)) throw new Error(`Invalid studentId for this class: ${sid}`);

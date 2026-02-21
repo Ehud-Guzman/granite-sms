@@ -446,21 +446,34 @@ export async function upsertBulkMarks(req) {
   }
 
   // validate student belongs to class (security)
-  const allowed = await prisma.student.findMany({
-    where: { schoolId, classId: ms.examSession.classId, isActive: true },
-    select: { id: true },
-  });
-  const allowedSet = new Set(allowed.map((s) => s.id));
+const allowed = await prisma.student.findMany({
+  where: { schoolId, classId: ms.examSession.classId, isActive: true },
+  select: { id: true },
+});
 
-  console.log("=== DEBUG START ===");
+const allowedSet = new Set(allowed.map((s) => s.id));
+
+console.log("=== DEBUG START ===");
 console.log("schoolId:", schoolId);
 console.log("examSession.classId:", ms.examSession.classId);
 console.log("allowed student IDs:", allowed.map(s => s.id));
 
-  for (const row of marks) {
-    const sid = String(row.studentId);
-    if (!allowedSet.has(sid)) throw new Error(`Invalid studentId for this class: ${sid}`);
+for (const row of marks) {
+  const sid = String(row.studentId);
+
+  console.log("Incoming studentId:", sid);
+
+  const studentRecord = await prisma.student.findFirst({
+    where: { id: sid },
+  });
+
+  console.log("Student record from DB:", studentRecord);
+
+  if (!allowedSet.has(sid)) {
+    console.log("❌ NOT IN ALLOWED SET");
+    throw new Error(`Invalid studentId for this class: ${sid}`);
   }
+}
 
   const tx = [];
 

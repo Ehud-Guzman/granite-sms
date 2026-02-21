@@ -8,6 +8,7 @@ import { useMe } from "@/hooks/useMe";
 import { api } from "@/api/axios";
 import {
   deactivateStudent,
+ updateStudent,
   getTeacherAssignedClasses,
   listStudents,
 } from "./students.api";
@@ -46,6 +47,7 @@ import {
   Eye,
   Edit2,
   UserX,
+  UserCheck,               // ← NEW icon
   Loader2,
   AlertCircle,
 } from "lucide-react";
@@ -73,16 +75,14 @@ export default function StudentsListPage() {
   const [drawerMode, setDrawerMode] = useState("create");
   const [editingStudent, setEditingStudent] = useState(null);
 
-  // ✅ identity truth
+  // identity truth
   const { data: meData, isLoading: meLoading } = useMe();
 
   const role = String(meData?.user?.role || meData?.role || "").toUpperCase();
   const teacherId = meData?.user?.teacherId;
   const tenantId = String(meData?.user?.schoolId || meData?.schoolId || "").trim();
 
-  // ----------------------------
-  // ✅ Subscription overview (limit-aware UI for ADMIN create)
-  // ----------------------------
+  // Subscription overview (limit-aware UI for ADMIN create)
   const subQ = useQuery({
     queryKey: ["subscription-overview", "students", tenantId || "NO_TENANT"],
     queryFn: async () => {
@@ -198,6 +198,16 @@ export default function StudentsListPage() {
     onError: (err) =>
       toast.error(err?.response?.data?.message || "Failed to deactivate"),
   });
+
+const activateMut = useMutation({
+  mutationFn: (id) => updateStudent(id, { isActive: true }),
+  onSuccess: () => {
+    toast.success("Student reactivated");
+    qc.invalidateQueries({ queryKey: ["students"] });
+  },
+  onError: (err) =>
+    toast.error(err?.response?.data?.message || "Failed to reactivate"),
+});
 
   const filteredStudents = useMemo(() => {
     const qq = search.trim().toLowerCase();
@@ -562,24 +572,45 @@ export default function StudentsListPage() {
                                   Edit
                                 </Button>
 
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 text-destructive hover:text-destructive"
-                                  disabled={deactivateMut.isPending}
-                                  onClick={() => {
-                                    if (confirm("Are you sure you want to deactivate this student?")) {
-                                      deactivateMut.mutate(s.id);
-                                    }
-                                  }}
-                                >
-                                  {deactivateMut.isPending ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <UserX className="h-3.5 w-3.5" />
-                                  )}
-                                  Deactivate
-                                </Button>
+                                {s.isActive ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 text-destructive hover:text-destructive"
+                                    disabled={deactivateMut.isPending}
+                                    onClick={() => {
+                                      if (confirm(`Deactivate ${fullName(s)}? They will no longer appear in active lists or marksheets.`)) {
+                                        deactivateMut.mutate(s.id);
+                                      }
+                                    }}
+                                  >
+                                    {deactivateMut.isPending ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <UserX className="h-3.5 w-3.5" />
+                                    )}
+                                    Deactivate
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 text-green-600 hover:text-green-700"
+                                    disabled={activateMut.isPending}
+                                    onClick={() => {
+                                      if (confirm(`Reactivate ${fullName(s)}? They will now appear in active lists and be eligible for marks entry.`)) {
+                                        activateMut.mutate(s.id);
+                                      }
+                                    }}
+                                  >
+                                    {activateMut.isPending ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <UserCheck className="h-3.5 w-3.5" />
+                                    )}
+                                    Reactivate
+                                  </Button>
+                                )}
                               </>
                             )}
                           </div>

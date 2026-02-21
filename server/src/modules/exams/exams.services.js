@@ -474,11 +474,16 @@ export async function listSessionMarkSheets(req) {
   const ids = markSheets.map((m) => m.id);
   const missingMap = new Map();
   if (ids.length) {
-    const missing = await prisma.mark.groupBy({
-      by: ["markSheetId"],
-      where: { schoolId, markSheetId: { in: ids }, isMissing: true },
-      _count: { _all: true },
-    });
+ const missing = await prisma.mark.groupBy({
+  by: ["markSheetId"],
+  where: {
+    schoolId,
+    markSheetId: { in: ids },
+    isMissing: true,
+    student: { isActive: true },   
+  },
+  _count: { _all: true },
+});
     for (const row of missing) missingMap.set(row.markSheetId, row._count._all);
   }
 

@@ -1,7 +1,8 @@
+// src/features/results/components/ResultsFilters.jsx
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 
-const TERMS = ["TERM1", "TERM2", "TERM3"];
+const TERMS = ["ALL", "TERM1", "TERM2", "TERM3"];
 
 export default function ResultsFilters({
   year,
@@ -18,7 +19,15 @@ export default function ResultsFilters({
       <div className="flex flex-wrap gap-2 items-center">
         <div className="flex items-center gap-2">
           <span className="text-sm opacity-70">Year</span>
-          <Input className="w-28" value={year} onChange={(e) => setYear(e.target.value)} />
+          <Input
+            className="w-28"
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            placeholder="2026"
+            type="number"
+            min="2000"
+            max="2100"
+          />
         </div>
 
         <div className="flex items-center gap-2">
@@ -30,7 +39,7 @@ export default function ResultsFilters({
           >
             {TERMS.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {t === "ALL" ? "All Terms" : t}
               </option>
             ))}
           </select>

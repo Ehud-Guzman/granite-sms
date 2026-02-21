@@ -98,6 +98,43 @@ async function cleanupDeactivatedMarks({ schoolId, markSheetId }) {
 // ────────────────────────────────────────────────
 // Exam Types
 // ────────────────────────────────────────────────
+
+export async function listExamSessions(req) {
+  const schoolId = req.user.schoolId;
+  const { year, term: termRaw, classId, status } = req.query;
+
+  const where = { schoolId };
+
+  if (year) {
+    where.year = assertInt("year", year);
+  }
+
+  let termFilter;
+  if (termRaw) {
+    const termStr = String(termRaw).trim().toLowerCase();
+    if (termStr === 'all') {
+      termFilter = undefined; // all terms
+    } else {
+      termFilter = assertTerm(termStr); // validate real term
+    }
+  } else {
+    termFilter = undefined; // missing term = all terms
+  }
+
+  if (termFilter) {
+    where.term = termFilter;
+  }
+
+  if (classId) where.classId = String(classId);
+  if (status) where.status = status;
+
+  return prisma.examSession.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    select: examSessionSelect,
+  });
+}
+
 export async function listExamTypes(req) {
   const schoolId = req.user.schoolId;
   return prisma.examType.findMany({

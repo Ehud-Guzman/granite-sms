@@ -37,7 +37,7 @@ export default function ResultsPage() {
   const schoolName = meData?.user?.school?.name || meData?.school?.name || "-";
 
   const [year, setYear] = useState(String(currentYear()));
-  const [term, setTerm] = useState("TERM1");
+  const [term, setTerm] = useState("ALL");
   const [search, setSearch] = useState("");
 
   const [activeSessionId, setActiveSessionId] = useState(null);
@@ -53,11 +53,17 @@ export default function ResultsPage() {
   // --------------------
   // Sessions (IMPORTANT FIX: listExamSessions returns array)
   // --------------------
-  const sessionsQ = useQuery({
-    enabled: Boolean(yearNum && term),
-    queryKey: ["examSessions", { year: yearNum, term }],
-    queryFn: () => listExamSessions({ year: yearNum, term }),
-  });
+const sessionsQ = useQuery({
+  enabled: !!yearNum,
+  queryKey: ["examSessions", { year: yearNum, term }],
+  queryFn: () => {
+    const params = { year: yearNum };
+    if (term !== "ALL") {
+      params.term = term; // sends TERM1, TERM2, TERM3
+    }
+    return listExamSessions(params);
+  },
+});
 
   const sessions = useMemo(() => {
     return Array.isArray(sessionsQ.data) ? sessionsQ.data : [];

@@ -664,6 +664,8 @@ export async function getClassResults(req) {
 
   if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
 
+  console.log(`[getClassResults] Fetching marks for session ${sessionId} (school ${schoolId})`);
+
   const marks = await prisma.mark.findMany({
     where: {
       markSheet: { examSessionId: sessionId },
@@ -672,17 +674,60 @@ export async function getClassResults(req) {
     select: {
       studentId: true,
       score: true,
-      markSheet: { select: { subjectId: true } },
+      student: {
+        select: {
+          admissionNo: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+      markSheet: {
+        select: {
+          subjectId: true,
+          subject: {  // ← make sure this is present
+            select: {
+              name: true,
+              // code: true,  // if you have it
+            },
+          },
+        },
+      },
     },
   });
 
+  // ← Log right after query to confirm we got subject names
+  console.log(`[getClassResults] Fetched ${marks.length} marks`);
+  if (marks.length > 0) {
+    console.log(
+      "[getClassResults] Sample mark object:",
+      JSON.stringify(marks[0], null, 2)
+    );
+    // Check if subject.name exists in the first few
+    const hasSubjectName = marks.some(
+      (m) => m.markSheet?.subject?.name
+    );
+    console.log(`[getClassResults] Has subject.name in at least one mark? ${hasSubjectName}`);
+  }
+
   const studentMap = {};
   for (const m of marks) {
-    studentMap[m.studentId] = studentMap[m.studentId] || [];
-    studentMap[m.studentId].push({
+    const sid = m.studentId;
+    studentMap[sid] = studentMap[sid] || [];
+
+    studentMap[sid].push({
       subjectId: m.markSheet.subjectId,
+      subjectName: m.markSheet.subject?.name || "NO_SUBJECT_NAME",
       score: m.score,
     });
+  }
+
+  // ← Final log: check if subjectName made it into the response
+  if (Object.keys(studentMap).length > 0) {
+    const firstStudentId = Object.keys(studentMap)[0];
+    console.log(
+      `[getClassResults] First student's first mark:`,
+      JSON.stringify(studentMap[firstStudentId][0], null, 2)
+    );
   }
 
   return studentMap;

@@ -31,8 +31,7 @@ function fmtClass(c) {
 }
 
 function fmtMoney(n) {
-  const v = Number(n || 0);
-  return v.toLocaleString();
+  return Number(n || 0).toLocaleString();
 }
 
 const TERMS = ["TERM1", "TERM2", "TERM3"];
@@ -63,11 +62,11 @@ export default function FeesSummaryReport() {
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [term, setTerm] = useState("TERM1");
 
-  // Classes
   const { data: classesRaw, isLoading: classesLoading } = useQuery({
     queryKey: ["classes", "active"],
     queryFn: () => listClasses({ active: true }),
   });
+
   const classes = useMemo(() => normalizeArray(classesRaw), [classesRaw]);
 
   const selectedClass = useMemo(
@@ -80,8 +79,11 @@ export default function FeesSummaryReport() {
     return { classId: String(classId), year: Number(year), term: String(term) };
   }, [classId, year, term]);
 
-  // Report
-  const { data: report, isLoading, error } = useQuery({
+  const {
+    data: report,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["feesReports", "classSummary", params],
     queryFn: () => getFeesClassSummary(params),
     enabled: Boolean(params),
@@ -90,13 +92,12 @@ export default function FeesSummaryReport() {
   const collectionPct = useMemo(() => {
     const billed = Number(report?.totalBilled || 0);
     const paid = Number(report?.totalPaid || 0);
-    if (!billed) return 0;
-    return (paid / billed) * 100;
+    return billed ? (paid / billed) * 100 : 0;
   }, [report]);
 
   return (
     <div className="space-y-4">
-      {/* top bar */}
+      {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap no-print">
         <div>
           <h2 className="text-xl font-semibold">Finance — Fees Summary</h2>
@@ -105,31 +106,28 @@ export default function FeesSummaryReport() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => printId("print-fees-summary")}
-            disabled={!report}
-            title={!report ? "Load a report first" : "Print this report"}
-          >
-            Print
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          onClick={() => printId("print-fees-summary")}
+          disabled={!report}
+        >
+          Print
+        </Button>
       </div>
 
       <FinanceNav />
 
-      {/* filters */}
+      {/* Filters */}
       <Card className="no-print">
         <CardHeader>
           <CardTitle>Filters</CardTitle>
         </CardHeader>
 
         <CardContent className="grid gap-3 md:grid-cols-3">
-          {/* class */}
+          {/* Class */}
           <div className="space-y-1">
             <div className="text-xs opacity-70">Class</div>
-            <Select value={String(classId || "")} onValueChange={setClassId}>
+            <Select value={String(classId)} onValueChange={setClassId}>
               <SelectTrigger>
                 <SelectValue
                   placeholder={
@@ -154,23 +152,22 @@ export default function FeesSummaryReport() {
             </Select>
           </div>
 
-          {/* year */}
+          {/* Year */}
           <div className="space-y-1">
             <div className="text-xs opacity-70">Year</div>
             <Input
               value={year}
               onChange={(e) => setYear(e.target.value)}
               inputMode="numeric"
-              placeholder="2026"
             />
           </div>
 
-          {/* term */}
+          {/* Term */}
           <div className="space-y-1">
             <div className="text-xs opacity-70">Term</div>
             <Select value={term} onValueChange={setTerm}>
               <SelectTrigger>
-                <SelectValue placeholder="Select term" />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {TERMS.map((t) => (
@@ -184,7 +181,6 @@ export default function FeesSummaryReport() {
         </CardContent>
       </Card>
 
-      {/* states */}
       {isLoading && <div className="opacity-70 no-print">Loading report…</div>}
       {error && (
         <div className="text-red-600 no-print">
@@ -192,101 +188,100 @@ export default function FeesSummaryReport() {
         </div>
       )}
 
-      {/* report */}
-      {report && (
-        <PrintDocument id="print-fees-summary" className="space-y-3 bg-white">
-          {/* (No manual print header here — Letterhead handles it) */}
-
-          {/* optional: report title/subtitle for print-only */}
-          <div className="hidden print:block">
-            <div className="text-base font-semibold">Fees Summary Report</div>
-            <div className="text-sm opacity-70">
-              {selectedClass
-                ? fmtClass(selectedClass)
-                : `Class ${String(classId)}`}{" "}
-              • {term} {year}
-            </div>
+      {/* PRINT BLOCK — ALWAYS MOUNTED */}
+      <PrintDocument id="print-fees-summary" className="space-y-3 bg-white">
+        {/* Print-only heading */}
+        <div className="hidden print:block">
+          <div className="text-base font-semibold">Fees Summary Report</div>
+          <div className="text-sm opacity-70">
+            {selectedClass
+              ? fmtClass(selectedClass)
+              : classId
+              ? `Class ${classId}`
+              : "-"}{" "}
+            • {term} {year}
           </div>
+        </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Summary</CardTitle>
-            </CardHeader>
+        {!report ? (
+          <div className="p-6 text-sm opacity-70">
+            Load a report to view summary details.
+          </div>
+        ) : (
+          <>
+            {/* Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Summary</CardTitle>
+              </CardHeader>
 
-            <CardContent className="grid gap-3 md:grid-cols-5">
-              <div>
-                <div className="text-xs opacity-70">Total Billed</div>
-                <div className="font-medium">{fmtMoney(report.totalBilled)}</div>
-              </div>
+              <CardContent className="grid gap-3 md:grid-cols-5">
+                <Metric label="Total Billed" value={fmtMoney(report.totalBilled)} />
+                <Metric label="Total Paid" value={fmtMoney(report.totalPaid)} />
+                <Metric label="Total Balance" value={fmtMoney(report.totalBalance)} />
+                <Metric label="Collection %" value={`${collectionPct.toFixed(2)}%`} />
+                <Metric
+                  label="Invoices"
+                  value={Number(report.invoiceCount ?? 0).toLocaleString()}
+                />
+              </CardContent>
+            </Card>
 
-              <div>
-                <div className="text-xs opacity-70">Total Paid</div>
-                <div className="font-medium">{fmtMoney(report.totalPaid)}</div>
-              </div>
-
-              <div>
-                <div className="text-xs opacity-70">Total Balance</div>
-                <div className="font-medium">
-                  {fmtMoney(report.totalBalance)}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs opacity-70">Collection %</div>
-                <div className="font-medium">{collectionPct.toFixed(2)}%</div>
-              </div>
-
-              <div>
-                <div className="text-xs opacity-70">Invoices</div>
-                <div className="font-medium">
-                  {Number(report.invoiceCount ?? 0).toLocaleString()}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Invoice Status Counts</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {Object.keys(report.statusCounts || {}).length === 0 ? (
-                <div className="text-sm opacity-70">
-                  No invoice statuses available.
-                </div>
-              ) : (
-                Object.entries(report.statusCounts).map(([k, v]) => (
-                  <div key={k} className="border rounded px-3 py-1 text-sm">
-                    <span className="font-medium">{k}</span>
-                    <span className="opacity-70">
-                      {" "}
-                      • {Number(v || 0).toLocaleString()}
-                    </span>
+            {/* Status Counts */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Invoice Status Counts</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                {Object.keys(report.statusCounts || {}).length === 0 ? (
+                  <div className="text-sm opacity-70">
+                    No invoice statuses available.
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                ) : (
+                  Object.entries(report.statusCounts).map(([k, v]) => (
+                    <div key={k} className="border rounded px-3 py-1 text-sm">
+                      <span className="font-medium">{k}</span>
+                      <span className="opacity-70">
+                        {" "}
+                        • {Number(v || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <div className="mt-4 text-xs opacity-70">
-                Printed: {new Date().toLocaleString()}
-              </div>
-              <div className="mt-6 flex justify-between text-xs">
-                <div>Signature: ____________________</div>
-                <div>Date: ____________________</div>
-              </div>
-            </CardContent>
-          </Card>
+            {/* Footer */}
+            <Card>
+              <CardContent>
+                <div className="mt-4 text-xs opacity-70">
+                  Printed: {new Date().toLocaleString()}
+                </div>
+                <div className="mt-6 flex justify-between text-xs">
+                  <div>Signature: ____________________</div>
+                  <div>Date: ____________________</div>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </PrintDocument>
 
-          <div className="no-print">
-            <Button asChild variant="outline">
-              <Link to="/app/dashboard">Back to Dashboard</Link>
-            </Button>
-          </div>
-        </PrintDocument>
-      )}
+      {/* Back Button */}
+      <div className="no-print">
+        <Button asChild variant="outline">
+          <Link to="/app/dashboard">Back to Dashboard</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }) {
+  return (
+    <div>
+      <div className="text-xs opacity-70">{label}</div>
+      <div className="font-medium">{value}</div>
     </div>
   );
 }

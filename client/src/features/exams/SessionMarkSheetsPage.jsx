@@ -16,9 +16,17 @@ import { Separator } from "@/components/ui/separator";
 function badgeVariant(status) {
   if (status === "PUBLISHED") return "default";
   if (status === "SUBMITTED") return "secondary";
-  if (status === "UNLOCKED") return "secondary";
-  if (status === "DRAFT") return "outline";
+  if (status === "UNLOCKED") return "destructive";           // red
+  if (status === "DRAFT") return "outline";                  // gray outline
   return "secondary";
+}
+
+function getStatusColor(status) {
+  if (status === "PUBLISHED") return "text-green-700";
+  if (status === "SUBMITTED") return "text-green-600";
+  if (status === "UNLOCKED") return "text-red-600";
+  if (status === "DRAFT") return "text-amber-700";
+  return "text-muted-foreground";
 }
 
 function fmtClass(c) {
@@ -31,9 +39,6 @@ function errMsg(err) {
 }
 
 function unwrapMarksheetsResponse(resp) {
-  // Supports BOTH shapes:
-  // A) { success: true, data: { session, markSheets } }
-  // B) { session, markSheets }
   if (!resp) return { session: null, markSheets: [] };
 
   const payload =
@@ -52,12 +57,11 @@ export default function SessionMarkSheetsPage() {
   const qc = useQueryClient();
 
   const [search, setSearch] = useState("");
-  const [notice, setNotice] = useState(null); // { type: "success"|"error", message }
+  const [notice, setNotice] = useState(null);
 
   const { data: meData } = useMe();
   const role = meData?.user?.role;
 
-  // Reset UI feedback when session changes
   useEffect(() => {
     setNotice(null);
     setSearch("");
@@ -78,7 +82,6 @@ export default function SessionMarkSheetsPage() {
   const term = session?.term;
   const classId = session?.classId;
 
-  // Resolve class label
   const classesQ = useQuery({
     enabled: Boolean(year),
     queryKey: ["classes", { year }],
@@ -105,7 +108,6 @@ export default function SessionMarkSheetsPage() {
 
   const headerTitle = session?.name || "Exam Session";
 
-  // --- publish readiness ---
   const total = markSheets.length;
 
   const submittedCount = useMemo(
@@ -145,7 +147,6 @@ export default function SessionMarkSheetsPage() {
     allSubmitted &&
     !anyUnlocked;
 
-  // Publish mutation (ADMIN)
   const pubMut = useMutation({
     mutationFn: () => publishResults(sessionId),
     onSuccess: () => {
@@ -154,17 +155,10 @@ export default function SessionMarkSheetsPage() {
         message: "Published successfully ✅ Results are now visible to students.",
       });
 
-      // Refresh marksheets + sessions + results caches
       qc.invalidateQueries({ queryKey: ["sessionMarkSheets", sessionId] });
       qc.invalidateQueries({ queryKey: ["examSessions"], exact: false });
       qc.invalidateQueries({ queryKey: ["classResults"], exact: false });
       qc.invalidateQueries({ queryKey: ["studentResults"], exact: false });
-
-      // reports (future-proof)
-      qc.invalidateQueries({ queryKey: ["classReport"], exact: false });
-      qc.invalidateQueries({ queryKey: ["subjectReport"], exact: false });
-      qc.invalidateQueries({ queryKey: ["studentReport"], exact: false });
-      qc.invalidateQueries({ queryKey: ["reports"], exact: false });
     },
     onError: (err) => {
       setNotice({ type: "error", message: `Publish failed: ${errMsg(err)}` });
@@ -182,18 +176,26 @@ export default function SessionMarkSheetsPage() {
               <div className="text-sm opacity-70 mt-1">
                 Year: {year ?? "-"} • Term: {term ?? "-"} • Class:{" "}
                 {classesQ.isLoading ? "Loading class…" : classLabel} • Status:{" "}
-                <span className="font-medium">{sessionStatus}</span>
+                <span className={`font-medium ${getStatusColor(sessionStatus)}`}>
+                  {sessionStatus}
+                </span>
               </div>
 
-              <div className="text-xs opacity-70 mt-2 flex flex-wrap gap-2 items-center">
+              <div className="text-xs opacity-70 mt-2 flex flex-wrap gap-3 items-center">
                 <span>
                   Submitted: <span className="font-medium">{submittedCount}</span> /{" "}
                   <span className="font-medium">{total}</span>
                 </span>
 
                 {anyUnlocked && (
-                  <span className="text-red-600">
-                    Some marksheets are UNLOCKED — re-submit them before publishing.
+                  <span className="text-red-600 font-medium">
+                    UNLOCKED marksheets detected — re-submit before publishing
+                  </span>
+                )}
+
+                {anyDraft && (
+                  <span className="text-amber-700 font-medium">
+                    {submittedCount}/{total} submitted — {total - submittedCount} still draft
                   </span>
                 )}
               </div>
@@ -206,6 +208,7 @@ export default function SessionMarkSheetsPage() {
                 <Button
                   onClick={() => pubMut.mutate()}
                   disabled={!canPublish || pubMut.isPending}
+                  variant={canPublish ? "default" : "secondary"}
                   title={publishDisabledReason || "Publish results for this session"}
                 >
                   {pubMut.isPending ? "Publishing..." : "Publish Results"}
@@ -223,7 +226,9 @@ export default function SessionMarkSheetsPage() {
           {notice && (
             <div
               className={`text-sm rounded border px-3 py-2 ${
-                notice.type === "success" ? "text-green-700" : "text-red-600"
+                notice.type === "success"
+                  ? "text-green-700 bg-green-50 border-green-200"
+                  : "text-red-700 bg-red-50 border-red-200"
               }`}
             >
               {notice.message}
@@ -249,17 +254,17 @@ export default function SessionMarkSheetsPage() {
 
           <Separator />
 
-          {q.isLoading && <div className="opacity-70">Loading marksheets…</div>}
+          {q.isLoading && <div className="opacity-70 text-center py-6">Loading marksheets…</div>}
 
           {q.isError && (
-            <div className="text-red-600">
+            <div className="text-red-600 text-center py-6">
               Failed to load marksheets: {errMsg(q.error)}
             </div>
           )}
 
           {classesQ.isError && (
-            <div className="text-sm text-red-600">
-              Failed to load classes: {errMsg(classesQ.error)}
+            <div className="text-sm text-red-600 text-center">
+              Failed to load class info: {errMsg(classesQ.error)}
             </div>
           )}
 
@@ -271,28 +276,47 @@ export default function SessionMarkSheetsPage() {
           )}
 
           {!q.isLoading && !q.isError && filtered.length === 0 && (
-            <div className="opacity-70">No marksheets found.</div>
+            <div className="opacity-70 text-center py-8">
+              No marksheets found matching your search.
+            </div>
           )}
 
           <div className="grid gap-3">
             {filtered.map((m) => (
-              <Card key={m.id}>
+              <Card
+                key={m.id}
+                className={`transition-colors ${
+                  m.status === "DRAFT"
+                    ? "bg-amber-50/40 border-amber-200"
+                    : m.status === "UNLOCKED"
+                    ? "bg-red-50/40 border-red-200"
+                    : ""
+                }`}
+              >
                 <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="font-medium">
+                  <div className="space-y-1 flex-1">
+                    <div className="font-medium flex items-center gap-2">
                       {m.subject?.name || "Subject"}{" "}
-                      {m.subject?.code ? `(${m.subject.code})` : ""}
+                      {m.subject?.code && (
+                        <span className="text-muted-foreground text-sm">({m.subject.code})</span>
+                      )}
                     </div>
 
-                    <div className="text-sm opacity-70 flex flex-wrap gap-2 items-center">
-                      <Badge variant={badgeVariant(m.status)}>{m.status}</Badge>
+                    <div className="text-sm flex flex-wrap gap-3 items-center">
+                      <Badge variant={badgeVariant(m.status)} className="capitalize">
+                        {m.status.toLowerCase()}
+                      </Badge>
 
                       {typeof m.missingCount === "number" && (
-                        <span>Missing: {m.missingCount}</span>
+                        <span className={m.missingCount > 0 ? "text-amber-700 font-medium" : ""}>
+                          Missing: {m.missingCount}
+                        </span>
                       )}
 
                       {m.status === "UNLOCKED" && m.unlockReason && (
-                        <span>Reason: {m.unlockReason}</span>
+                        <span className="text-red-600 text-xs italic">
+                          Unlocked: {m.unlockReason}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -300,7 +324,6 @@ export default function SessionMarkSheetsPage() {
                   <div className="flex items-center gap-2">
                     <Button asChild variant="secondary">
                       <Link to={`/app/exams/marksheets/${m.id}/marks-entry`}>Enter Marks</Link>
-
                     </Button>
                   </div>
                 </CardContent>

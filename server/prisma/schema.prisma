@@ -677,6 +677,9 @@ model ExamSession {
   markSheets MarkSheet[]
   publish    ResultPublish?
 
+  publishedAt     DateTime?            
+  publishedById   String?
+
   class Class @relation(fields: [classId], references: [id], onDelete: Restrict)
 
   @@unique([schoolId, year, term, classId, examTypeId])

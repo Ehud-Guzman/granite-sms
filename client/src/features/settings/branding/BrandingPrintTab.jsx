@@ -272,11 +272,11 @@ export default function BrandingPrintTab() {
     toast.message("Custom colors cleared. Click Save to persist preset colors.");
   };
 
-  const logoSrc =
-    form?.brandLogoUrl
-      ? `${form.brandLogoUrl}?v=${brandingQ.data?.updatedAt || logoNonce}`
-      : null;
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+const logoSrc = form?.brandLogoUrl
+  ? `${API_BASE}${form.brandLogoUrl}?v=${brandingQ.data?.updatedAt || logoNonce}`
+  : null;
   /* =========================
      UI states
   ========================= */

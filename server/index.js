@@ -1,4 +1,4 @@
-// server.js (ENTRY FILE)
+
 import path from "path";
 import express from "express";
 import cors from "cors";
@@ -37,21 +37,26 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-/** ✅ Stable server root (not process.cwd guessing) */
+/** ✅ Correct project root: go UP one level from server/ folder */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const SERVER_ROOT = __dirname; // because server.js is at /server root
+const PROJECT_ROOT = path.resolve(__dirname, "..");
 
-/** ✅ Serve uploads BEFORE routes + BEFORE 404 */
-app.use("/uploads", express.static(path.join(SERVER_ROOT, "uploads")));
+/** ✅ Serve uploads with CORS headers */
+const uploadsPath = path.join(PROJECT_ROOT, "uploads");
+console.log("Serving static /uploads from:", uploadsPath);
+
+// Add CORS middleware for /uploads
+app.use("/uploads", (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "http://localhost:5173"); // add your prod frontend URL too
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  next();
+}, express.static(uploadsPath));
 
 // If you're behind a proxy (Render, Nginx, etc.)
 app.set("trust proxy", 1);
 
-// ---- CORS ----
-// Supports comma-separated ALLOWED_ORIGINS in env.
-// Example:
-//   ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
+// ---- CORS for API routes ----
 const envOrigins = String(process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
@@ -212,4 +217,3 @@ app.use((err, req, res, next) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
-

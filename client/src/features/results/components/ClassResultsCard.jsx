@@ -1,11 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
 import PrintDocument from "@/components/print/PrintDocument";
 
 export default function ClassResultsCard({
-  schoolName,
   sessionName,
   classLabel,
   term,
@@ -13,62 +11,38 @@ export default function ClassResultsCard({
   status,
   gradingMode,
   role,
-
   canPrintClass,
   onPrintClass,
-
   canPublish,
   publishing,
   onPublish,
-
   children,
+  examType = "End Term",
 }) {
-  // ---------- SCREEN (normal UI) ----------
   const ScreenCard = (
     <Card className="no-print">
       <CardHeader className="space-y-1">
         <CardTitle>Class Results — {sessionName || "Session"}</CardTitle>
 
         <div className="text-sm opacity-70 flex flex-wrap gap-2 items-center">
-          <span>{classLabel}</span>
-          <span>•</span>
-          <span>
-            {term} {year}
-          </span>
-          <span>•</span>
+          <span>{classLabel}</span>•<span>{term} {year}</span>• 
           <Badge variant="secondary">{status ?? "-"}</Badge>
 
-          {gradingMode ? (
-            <>
-              <span>•</span>
-              <Badge variant="outline">Grading: {gradingMode}</Badge>
-            </>
-          ) : null}
+          {gradingMode && <>
+            •<Badge variant="outline">Grading: {gradingMode}</Badge>
+          </>}
 
-          <span>•</span>
-
-          <Button
-            variant="secondary"
-            onClick={onPrintClass}
-            disabled={!canPrintClass}
-            title={!canPrintClass ? "Open class results first" : "Print class results"}
-          >
+          •
+          <Button variant="secondary" onClick={onPrintClass} disabled={!canPrintClass}>
             Print Class Results
           </Button>
 
-          {role === "ADMIN" ? (
-            <>
-              <span>•</span>
-              <Button
-                variant="outline"
-                onClick={onPublish}
-                disabled={!canPublish || publishing || status === "PUBLISHED"}
-                title={status === "PUBLISHED" ? "Already published" : "Publish results"}
-              >
-                {publishing ? "Publishing..." : "Publish Results"}
-              </Button>
-            </>
-          ) : null}
+          {role === "ADMIN" && <>
+            •
+            <Button variant="outline" onClick={onPublish} disabled={!canPublish || publishing || status === "PUBLISHED"}>
+              {publishing ? "Publishing..." : "Publish Results"}
+            </Button>
+          </>}
         </div>
       </CardHeader>
 
@@ -76,65 +50,25 @@ export default function ClassResultsCard({
     </Card>
   );
 
-const PrintBlock = (
-  <PrintDocument id="print-class-results">
-    {/* This wrapper MUST be flex column so mt-auto works */}
-    <div className="print-section">
-      {/* Everything above signatures */}
-      <div className="space-y-4">
-        <div className="text-center">
-          <div className="text-base font-semibold">Class Results</div>
-          <div className="text-sm opacity-70">{sessionName || "Exam Session"}</div>
+  const PrintBlock = (
+    <PrintDocument id="print-class-results">
+      <div className="bg-white">
+        {/* Exam & Class Details */}
+        <div className="text-center mb-4">
+          <h2 className="text-xl font-semibold">{examType} Results</h2>
+          <p className="text-sm mt-1">{sessionName || "Exam Session"} • {term || "Term"} {year || ""}</p>
+          <p className="text-sm">Class: {classLabel || "-"}</p>
+          <p className="text-sm text-muted-foreground mt-1">Status: {status || "-"}</p>
+          {gradingMode && <p className="text-sm text-muted-foreground">Grading Mode: {gradingMode}</p>}
         </div>
 
-        <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-          <div>
-            <b>Term/Year:</b> {term || "-"} {year || "-"}
-          </div>
-          <div className="text-right">
-            <b>Class:</b> {classLabel || "-"}
-          </div>
+        <div className="border-t border-gray-300 my-3" />
 
-          {status ? (
-            <div>
-              <b>Status:</b> {status}
-            </div>
-          ) : (
-            <div />
-          )}
-
-          {gradingMode ? (
-            <div className="text-right">
-              <b>Grading:</b> {gradingMode}
-            </div>
-          ) : (
-            <div />
-          )}
-        </div>
-
-        <div className="border-t" />
-
-        <div className="space-y-3">{children}</div>
+        {/* Table only, no interactive elements */}
+        <div className="break-inside-auto">{children}</div>
       </div>
-
-      {/* Signatures pinned to bottom */}
-      <div className="mt-auto pt-10 grid grid-cols-2 gap-12 text-sm">
-        <div>
-          <div className="border-t pt-2">Class Teacher / Exam Teacher</div>
-        </div>
-        <div className="text-right">
-          <div className="border-t pt-2">Principal / Headteacher (Stamp)</div>
-        </div>
-      </div>
-    </div>
-  </PrintDocument>
-);
-
-
-  return (
-    <div className="space-y-3">
-      {ScreenCard}
-      {PrintBlock}
-    </div>
+    </PrintDocument>
   );
+
+  return <div className="space-y-3">{ScreenCard}{PrintBlock}</div>;
 }

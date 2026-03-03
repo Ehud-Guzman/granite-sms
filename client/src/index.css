@@ -206,219 +206,108 @@ body,
 }
 
 @media print {
+
   @page {
-    size: A4;
-    margin: 12mm;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
+    size: A4 landscape;
+    margin: 10mm 8mm 12mm 8mm;
   }
 
-  .print-meta {
-    font-size: 10.5px;
-    color: #555;
+  body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    font-family: inherit;
+    color: #000;
   }
 
-  /* hide UI helpers */
-  .no-print {
+  /* Hide UI elements */
+  .no-print,
+  header,
+  nav,
+  .top-bar,
+  .school-header,
+  .user-info {
     display: none !important;
   }
 
-  /* hide everything by default */
-  body * {
-    visibility: hidden !important;
-  }
-
-  /* print-only blocks visible in print */
+  /* Print container */
   .print-only {
     display: block !important;
-  }
-
-  /* =========================
-     WHITELIST TARGETS — FEES
-     ========================= */
-  html[data-printing="print-fees-receipt"] #print-fees-receipt,
-  html[data-printing="print-fees-receipt"] #print-fees-receipt * {
-    visibility: visible !important;
-  }
-
-  html[data-printing="print-fees-summary"] #print-fees-summary,
-  html[data-printing="print-fees-summary"] #print-fees-summary * {
-    visibility: visible !important;
-  }
-
-  html[data-printing="print-fees-defaulters"] #print-fees-defaulters,
-  html[data-printing="print-fees-defaulters"] #print-fees-defaulters * {
-    visibility: visible !important;
-  }
-
-  html[data-printing="print-fees-collections"] #print-fees-collections,
-  html[data-printing="print-fees-collections"] #print-fees-collections * {
-    visibility: visible !important;
-  }
-
-  /* =========================
-     WHITELIST TARGETS — ACADEMIC
-     ========================= */
-  html[data-printing="print-class-results"] #print-class-results,
-  html[data-printing="print-class-results"] #print-class-results * {
-    visibility: visible !important;
-  }
-
-  html[data-printing="print-student-slip"] #print-student-slip,
-  html[data-printing="print-student-slip"] #print-student-slip * {
-    visibility: visible !important;
-  }
-
-  html[data-printing="print-class-performance"] #print-class-performance,
-  html[data-printing="print-class-performance"] #print-class-performance * {
-    visibility: visible !important;
-  }
-
-  /* =========================
-     Anchor active print blocks
-     ========================= */
-  #print-fees-receipt,
-  #print-fees-summary,
-  #print-fees-defaulters,
-  #print-fees-collections,
-  #print-class-results,
-  #print-student-slip,
-  #print-class-performance {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
     width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
   }
 
-  /* =========================
-     PRINT DOCUMENT (GLOBAL)
-     ========================= */
   .print-doc {
-    display: flex;
-    flex-direction: column;
-    min-height: calc(297mm - 24mm); /* A4 height minus @page top+bottom margin */
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-    color: #111;
-    background: #fff;
+    width: 100% !important;
+    max-width: 100% !important;
+    page-break-inside: auto !important; /* natural breaks */
   }
 
   .print-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    margin-top: 2px;
+    min-height: 60vh;
   }
 
-  /* missing piece that makes mt-auto work */
-  .print-section {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-  }
-
-  .print-muted {
-    color: #888 !important;
-    font-size: 10px !important;
-    font-weight: 500 !important;
-  }
-
-  /* safer tables */
-  table.print-table {
-    border-collapse: collapse !important;
-    width: 100% !important;
-  }
-  table.print-table th,
-  table.print-table td {
-    border: 1px solid #ddd !important;
-    padding: 6px !important;
-  }
-  thead {
-    display: table-header-group;
-  }
-  tr {
-    page-break-inside: avoid;
-  }
-
-  /* let scroll containers print fully */
-  .overflow-auto {
-    overflow: visible !important;
-  }
-
-  /* safety for Tailwind max-height utilities used in reports */
-  .max-h-\[520px\] {
-    max-height: none !important;
-    overflow: visible !important;
-  }
-
-  /* remove heavy UI shadows on paper */
-  .shadow,
-  .shadow-sm,
-  .shadow-md,
-  .shadow-lg {
-    box-shadow: none !important;
-  }
-
-  /* Tighten paper density */
-  .print-doc table {
-    font-size: 11px;
-  }
-  .print-doc th,
-  .print-doc td {
-    padding: 4px 6px !important;
-  }
-
-  /* =========================
-     PRINT LETTERHEAD (V2)
-     Clean + sharp + minimal
-     ========================= */
+  /* Logo/letterhead can break if needed */
   .print-letterhead {
     text-align: center;
     margin-bottom: 8px;
   }
 
-  .print-letterhead__logoWrap {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 4px;
-  }
-
-  .print-letterhead__logo {
-    height: 52px;
-    width: auto;
-    object-fit: contain;
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-  }
-
-  .print-letterhead__schoolName {
-    font-size: 16.5px;
-    font-weight: 900;
-    letter-spacing: 0.25px;
-    line-height: 1.1;
-  }
-
-  .print-letterhead__headerText {
-    margin-top: 3px;
-    font-size: 10.5px;
-    color: #444;
-    line-height: 1.3;
-  }
-
-  .print-letterhead__rule {
-    margin: 8px 0 10px;
-    height: 1px;
-    background: #ddd;
-  }
-
-  /* =========================
-     PRINT FOOTER
-     ========================= */
-  .print-footer {
-    margin-top: 12px;
+  /* Footer & signature shouldn’t break */
+  .print-footer,
+  .print-doc .signature {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
     text-align: center;
-    font-size: 10px;
-    color: #666;
+  }
+
+  /* Images */
+  img {
+    max-height: 70px !important;
+    object-fit: contain !important;
+    display: block !important;
+    margin: 0 auto 8px auto !important;
+  }
+
+  /* Tables */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 10pt !important;
+    margin-top: 4mm !important;
+    page-break-inside: auto !important; /* allow break if long */
+  }
+
+  th, td {
+    border: 1px solid #ddd !important;
+    padding: 5px 6px !important;
+    vertical-align: middle !important;
+  }
+
+  th {
+    background: #f4f4f4 !important;
+    font-weight: 600 !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important; /* keep rows together */
+  }
+
+  td {
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+
+  /* Remove shadows / scroll containers */
+  .shadow,
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg,
+  .overflow-auto {
+    box-shadow: none !important;
+    overflow: visible !important;
   }
 }
 

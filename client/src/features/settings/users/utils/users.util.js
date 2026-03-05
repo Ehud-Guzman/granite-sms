@@ -37,8 +37,8 @@ export async function copyToClipboard(text) {
 
 export function allowedCreateRoles(actorRole) {
   const r = String(actorRole || "").toUpperCase();
-  if (r === "SYSTEM_ADMIN") return ["ADMIN", "TEACHER", "STUDENT"];
-  if (r === "ADMIN") return ["TEACHER", "STUDENT"];
+  if (r === "SYSTEM_ADMIN") return ["ADMIN", "TEACHER", "STUDENT", "BURSAR"];
+  if (r === "ADMIN") return ["TEACHER", "STUDENT", "BURSAR"];
   return [];
 }
 

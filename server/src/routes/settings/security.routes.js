@@ -18,7 +18,7 @@ router.get("/", requireAuth, async (req, res) => {
       lockout: {
         enabled: true,
         maxAttempts: 5,
-        lockMinutes: 30,
+        lockMinutes: 10,
         fields: ["failedLoginAttempts", "lockUntil", "lastLoginAt"],
       },
       auditLogs: { enabled: true },

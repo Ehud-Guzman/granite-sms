@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { requireEntitlement } from "../../middleware/entitlements.js";
+import { tenantContext, requireTenant } from "../../middleware/tenant.js";
 import * as ctrl from "./reports.controllers.js";
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuth, tenantContext, requireTenant);
 
 // Reports: ADMIN only for now (MVP)
 router.get(

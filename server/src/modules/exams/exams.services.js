@@ -1,5 +1,5 @@
 // src/modules/exams/exams.services.js
-import { PrismaClient, MarkSheetStatus, ExamSessionStatus, ExamAuditAction } from "@prisma/client";
+import { MarkSheetStatus, ExamSessionStatus, ExamAuditAction } from "@prisma/client";
 import {
   assertCuid,
   assertInt,
@@ -10,18 +10,14 @@ import {
 import { buildAuditPayload } from "./exams.utils.js";
 import { examTypeSelect, examSessionSelect, markSheetSelect } from "./exams.selectors.js";
 import { gradeFromScore, DEFAULT_GRADE_BANDS } from "./exams.grades.js";
-
-const prisma = new PrismaClient();
+import { prisma } from "../../lib/prisma.js";
+import { cleanStr } from "../../utils/validate.js";
 
 // ────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────
 async function audit(schoolId, data) {
   return prisma.examAuditLog.create({ data: { schoolId, ...data } });
-}
-
-function cleanStr(v) {
-  return typeof v === "string" ? v.trim() : "";
 }
 
 async function getTeacherIdFromReq(req) {
@@ -653,21 +649,38 @@ export async function listSessionMarkSheets(req) {
 // ────────────────────────────────────────────────
 // Results
 // ────────────────────────────────────────────────
+/**
+ * Canonical results engine for a session: fetches marks once and computes
+ * total/average/grade/position in exactly one place. Both the class results
+ * screen and the class-performance report consume this — no re-derivation
+ * elsewhere (previously duplicated, and drifted, in three separate places:
+ * this file, reports.services.js, and the client table component).
+ *
+ * Shape:
+ * {
+ *   session: { id, classId, term, year },
+ *   subjects: [{ id, name }],
+ *   results: [{
+ *     student: { id, admissionNo, firstName, lastName },
+ *     subjectScores: [{ subjectId, subjectName, score }],
+ *     total, average, overallGrade, missingCount, position
+ *   }]
+ * }
+ */
 export async function getClassResults(req) {
   const schoolId = req.user.schoolId;
   const sessionId = assertCuid("sessionId", req.params?.id);
 
   const session = await prisma.examSession.findFirst({
     where: { id: sessionId, schoolId },
-    select: { id: true, classId: true, term: true, year: true },
+    select: { id: true, classId: true, term: true, year: true, name: true, status: true },
   });
 
   if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
 
-  console.log(`[getClassResults] Fetching marks for session ${sessionId} (school ${schoolId})`);
-
   const marks = await prisma.mark.findMany({
     where: {
+      schoolId,
       markSheet: { examSessionId: sessionId },
       student: { isActive: true },
     },
@@ -675,91 +688,144 @@ export async function getClassResults(req) {
       studentId: true,
       score: true,
       student: {
-        select: {
-          admissionNo: true,
-          firstName: true,
-          lastName: true,
-        },
+        select: { id: true, admissionNo: true, firstName: true, lastName: true },
       },
       markSheet: {
         select: {
           subjectId: true,
-          subject: {  // ← make sure this is present
-            select: {
-              name: true,
-              // code: true,  // if you have it
-            },
-          },
+          subject: { select: { id: true, name: true } },
         },
       },
     },
   });
 
-  // ← Log right after query to confirm we got subject names
-  console.log(`[getClassResults] Fetched ${marks.length} marks`);
-  if (marks.length > 0) {
-    console.log(
-      "[getClassResults] Sample mark object:",
-      JSON.stringify(marks[0], null, 2)
-    );
-    // Check if subject.name exists in the first few
-    const hasSubjectName = marks.some(
-      (m) => m.markSheet?.subject?.name
-    );
-    console.log(`[getClassResults] Has subject.name in at least one mark? ${hasSubjectName}`);
-  }
+  const subjectsById = new Map();
+  const byStudent = new Map();
 
-  const studentMap = {};
   for (const m of marks) {
-    const sid = m.studentId;
-    studentMap[sid] = studentMap[sid] || [];
+    const subjectId = m.markSheet.subjectId;
+    if (!subjectsById.has(subjectId)) {
+      subjectsById.set(subjectId, {
+        id: subjectId,
+        name: m.markSheet.subject?.name || "NO_SUBJECT_NAME",
+      });
+    }
 
-    studentMap[sid].push({
-      subjectId: m.markSheet.subjectId,
+    if (!byStudent.has(m.studentId)) {
+      byStudent.set(m.studentId, { student: m.student, subjectScores: [] });
+    }
+
+    byStudent.get(m.studentId).subjectScores.push({
+      subjectId,
       subjectName: m.markSheet.subject?.name || "NO_SUBJECT_NAME",
       score: m.score,
     });
   }
 
-  // ← Final log: check if subjectName made it into the response
-  if (Object.keys(studentMap).length > 0) {
-    const firstStudentId = Object.keys(studentMap)[0];
-    console.log(
-      `[getClassResults] First student's first mark:`,
-      JSON.stringify(studentMap[firstStudentId][0], null, 2)
+  const results = Array.from(byStudent.values()).map(({ student, subjectScores }) => {
+    const validScores = subjectScores.filter((s) => s.score != null).map((s) => Number(s.score));
+    const total = validScores.reduce((a, b) => a + b, 0);
+    const average = validScores.length ? total / validScores.length : 0;
+    const missingCount = subjectScores.filter((s) => s.score == null).length;
+
+    return {
+      student,
+      subjectScores,
+      total,
+      average: Number(average.toFixed(2)),
+      overallGrade: validScores.length ? gradeFromScore(Math.round(average)) : null,
+      missingCount,
+    };
+  });
+
+  // Ranking: dense-ish (ties share a position)
+  results.sort((a, b) => b.total - a.total || b.average - a.average);
+  let position = 0;
+  let prevTotal = null;
+  let prevAvg = null;
+  results.forEach((r, idx) => {
+    if (prevTotal === null || r.total !== prevTotal || r.average !== prevAvg) {
+      position = idx + 1;
+      prevTotal = r.total;
+      prevAvg = r.average;
+    }
+    r.position = position;
+  });
+
+  return {
+    session,
+    subjects: Array.from(subjectsById.values()),
+    results,
+  };
+}
+
+/**
+ * A single student's results for one exam session (the "student slip").
+ * Route: GET /sessions/:id/results/students/:studentId
+ * - :id is the exam session id (NOT the student id — this was previously
+ *   misread as the student id, which meant this endpoint always returned
+ *   an empty result set in production).
+ * - STUDENT-role callers may only fetch their own record (enforced here,
+ *   not just at the router role-gate, to close an IDOR: nothing previously
+ *   stopped a STUDENT token from passing any studentId in the URL).
+ */
+export async function getStudentResults(req) {
+  const schoolId = req.user.schoolId;
+  const sessionId = assertCuid("sessionId", req.params?.id);
+  const studentId = assertCuid("studentId", req.params?.studentId);
+
+  if (req.user.role === "STUDENT" && req.user.studentId !== studentId) {
+    throw Object.assign(
+      new Error("Students can only view their own results."),
+      { statusCode: 403 }
     );
   }
 
-  return studentMap;
-}
+  const session = await prisma.examSession.findFirst({
+    where: { id: sessionId, schoolId },
+    select: { id: true, classId: true, term: true, year: true, name: true, status: true },
+  });
+  if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
 
-export async function getStudentResults(req) {
-  const schoolId = req.user.schoolId;
-  const studentId = assertCuid("studentId", req.params?.id);
+  const student = await prisma.student.findFirst({
+    where: { id: studentId, schoolId },
+    select: { id: true, admissionNo: true, firstName: true, lastName: true },
+  });
+  if (!student) throw Object.assign(new Error("Student not found."), { statusCode: 404 });
 
   const marks = await prisma.mark.findMany({
-    where: { schoolId, studentId },
+    where: {
+      schoolId,
+      studentId,
+      markSheet: { examSessionId: sessionId },
+    },
     select: {
       score: true,
       markSheet: {
-        select: {
-          examSession: {
-            select: { id: true, term: true, year: true, classId: true },
-          },
-          subject: { select: { name: true } },
-        },
+        select: { subjectId: true, subject: { select: { id: true, name: true } } },
       },
     },
   });
 
-  return marks.map(m => ({
-    examSessionId: m.markSheet.examSession.id,
-    term: m.markSheet.examSession.term,
-    year: m.markSheet.examSession.year,
-    classId: m.markSheet.examSession.classId,
-    subjectName: m.markSheet.subject?.name || null,
+  const subjectScores = marks.map((m) => ({
+    subjectId: m.markSheet.subjectId,
+    subjectName: m.markSheet.subject?.name || "NO_SUBJECT_NAME",
     score: m.score,
   }));
+
+  const validScores = subjectScores.filter((s) => s.score != null).map((s) => Number(s.score));
+  const total = validScores.reduce((a, b) => a + b, 0);
+  const average = validScores.length ? total / validScores.length : 0;
+
+  return {
+    session,
+    student,
+    subjectScores,
+    total,
+    average: Number(average.toFixed(2)),
+    overallGrade: validScores.length ? gradeFromScore(Math.round(average)) : null,
+    missingCount: subjectScores.filter((s) => s.score == null).length,
+  };
 }
 
 export async function publishResults(req) {

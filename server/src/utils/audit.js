@@ -1,5 +1,6 @@
 // src/utils/audit.js
 import { prisma } from "../lib/prisma.js";
+import { upper } from "./validate.js";
 
 /**
  * Auto-categorize based on action naming conventions.
@@ -28,10 +29,6 @@ const MAX_UA_LENGTH = 512;
 const MAX_ACTION_LENGTH = 80;
 const MAX_TARGET_TYPE_LENGTH = 40;
 const MAX_TARGET_ID_LENGTH = 80;
-
-function upper(v) {
-  return String(v || "").trim().toUpperCase();
-}
 
 function clampStr(v, maxLen) {
   if (v === null || v === undefined) return null;
@@ -111,24 +108,67 @@ function parseClientIp(req) {
 }
 
 /**
+ * actorCtx: standard { actorId, actorRole, actorEmail } derived from a request.
+ *
+ * Was previously copy-pasted (with minor fallback-order drift) across ~11 route
+ * files. req.role/req.userEmail are the DB-verified values set by tenantContext;
+ * req.user.role/req.user.email are the raw-JWT fallback for routes that run
+ * before/without tenantContext (e.g. the SYSTEM_ADMIN-only /api/schools router).
+ */
+export function actorCtx(req) {
+  return {
+    actorId: req?.user?.id || null,
+    actorRole: req?.role || req?.user?.role || null,
+    actorEmail: req?.userEmail || req?.user?.email || null,
+  };
+}
+
+/**
  * logAudit: "never fail main request" logging utility.
  *
  * Usage:
  * await logAudit({ req, action: "FEES_PAYMENT_POSTED", schoolId, targetType:"FeePayment", targetId, metadata:{...} })
+ *
+ * IMPORTANT: takes exactly ONE options object. A previous bug pattern in this
+ * codebase called it as `logAudit(req, { action, ... })` — a two-argument
+ * positional call. Since this function only declares one parameter, the
+ * second argument (the real payload) was silently dropped and `action` ended
+ * up undefined, so the audit wrote nothing with zero indication anything was
+ * wrong. Both failure modes below are now loud (console.error + stack) so a
+ * regression like that is caught immediately instead of discovered months
+ * later as "why is this action missing from the audit log".
  */
-export async function logAudit({
-  req = null,
-  actorId = null,
-  actorRole = null,
-  actorEmail = null,
-  schoolId = null,
-  action,
-  targetType = null,
-  targetId = null,
-  metadata = null,
-} = {}) {
+export async function logAudit(opts = {}) {
   try {
-    if (!action) return;
+    if (arguments.length > 1) {
+      console.error(
+        "AUDIT LOG ERROR: logAudit() called with multiple positional arguments " +
+          "(expected a single options object: logAudit({ req, action, ... })). " +
+          "Nothing was audited.",
+        new Error().stack
+      );
+      return;
+    }
+
+    const {
+      req = null,
+      actorId = null,
+      actorRole = null,
+      actorEmail = null,
+      schoolId = null,
+      action,
+      targetType = null,
+      targetId = null,
+      metadata = null,
+    } = opts || {};
+
+    if (!action) {
+      console.error(
+        "AUDIT LOG ERROR: logAudit() called without an `action`. Nothing was audited.",
+        new Error().stack
+      );
+      return;
+    }
 
     const actionNorm = clampStr(upper(action), MAX_ACTION_LENGTH);
     if (!actionNorm) return;

@@ -1,12 +1,16 @@
 import { useMemo, useState } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { listClasses } from "@/api/classes.api";
 import { getFeesClassSummary } from "@/api/feesReports.api";
-import { printId } from "../utils/print";
+import { printSection } from "@/lib/print";
+import { normalizeArray, fmtClass, fmtMoney } from "../utils/format";
 
 import PrintDocument from "@/components/print/PrintDocument";
+import ReportPrintTitle from "../components/ReportPrintTitle";
+import ReportPrintFooter from "../components/ReportPrintFooter";
+import FinanceNav from "./FinanceNav";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,40 +23,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function normalizeArray(maybe) {
-  if (Array.isArray(maybe)) return maybe;
-  if (Array.isArray(maybe?.data)) return maybe.data;
-  if (Array.isArray(maybe?.data?.data)) return maybe.data.data;
-  return [];
-}
-
-function fmtClass(c) {
-  return `${c.name}${c.stream ? ` ${c.stream}` : ""} (${c.year})`;
-}
-
-function fmtMoney(n) {
-  return Number(n || 0).toLocaleString();
-}
-
 const TERMS = ["TERM1", "TERM2", "TERM3"];
 
-function FinanceNav() {
-  const linkCls = ({ isActive }) =>
-    `px-3 py-2 rounded-md border text-sm ${
-      isActive ? "bg-black text-white" : "bg-white"
-    }`;
-
+function Metric({ label, value }) {
   return (
-    <div className="flex gap-2 no-print flex-wrap">
-      <NavLink className={linkCls} to="/app/reports/fees/summary" end>
-        Summary
-      </NavLink>
-      <NavLink className={linkCls} to="/app/reports/fees/defaulters">
-        Defaulters
-      </NavLink>
-      <NavLink className={linkCls} to="/app/reports/fees/collections">
-        Collections
-      </NavLink>
+    <div>
+      <div className="text-xs opacity-70">{label}</div>
+      <div className="font-medium">{value}</div>
     </div>
   );
 }
@@ -95,6 +72,10 @@ export default function FeesSummaryReport() {
     return billed ? (paid / billed) * 100 : 0;
   }, [report]);
 
+  const printSubtitle = `${
+    selectedClass ? fmtClass(selectedClass) : classId ? `Class ${classId}` : "-"
+  } • ${term} ${year}`;
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -108,7 +89,7 @@ export default function FeesSummaryReport() {
 
         <Button
           variant="outline"
-          onClick={() => printId("print-fees-summary")}
+          onClick={() => printSection("print-fees-summary")}
           disabled={!report}
         >
           Print
@@ -188,20 +169,9 @@ export default function FeesSummaryReport() {
         </div>
       )}
 
-      {/* PRINT BLOCK — ALWAYS MOUNTED */}
+      {/* PRINT BLOCK — always mounted so print works right after load */}
       <PrintDocument id="print-fees-summary" className="space-y-3 bg-white">
-        {/* Print-only heading */}
-        <div className="hidden print:block">
-          <div className="text-base font-semibold">Fees Summary Report</div>
-          <div className="text-sm opacity-70">
-            {selectedClass
-              ? fmtClass(selectedClass)
-              : classId
-              ? `Class ${classId}`
-              : "-"}{" "}
-            • {term} {year}
-          </div>
-        </div>
+        <ReportPrintTitle title="Fees Summary Report" subtitle={printSubtitle} />
 
         {!report ? (
           <div className="p-6 text-sm opacity-70">
@@ -251,16 +221,9 @@ export default function FeesSummaryReport() {
               </CardContent>
             </Card>
 
-            {/* Footer */}
             <Card>
               <CardContent>
-                <div className="mt-4 text-xs opacity-70">
-                  Printed: {new Date().toLocaleString()}
-                </div>
-                <div className="mt-6 flex justify-between text-xs">
-                  <div>Signature: ____________________</div>
-                  <div>Date: ____________________</div>
-                </div>
+                <ReportPrintFooter />
               </CardContent>
             </Card>
           </>
@@ -273,15 +236,6 @@ export default function FeesSummaryReport() {
           <Link to="/app/dashboard">Back to Dashboard</Link>
         </Button>
       </div>
-    </div>
-  );
-}
-
-function Metric({ label, value }) {
-  return (
-    <div>
-      <div className="text-xs opacity-70">{label}</div>
-      <div className="font-medium">{value}</div>
     </div>
   );
 }

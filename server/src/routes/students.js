@@ -4,7 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
 import { loadSubscription, requireLimit } from "../middleware/subscription.js";
-import { logAudit } from "../utils/audit.js";
+import { logAudit, actorCtx } from "../utils/audit.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -54,14 +54,6 @@ const pickStudentUpdate = (body) => {
   Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);
   return data;
 };
-
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.user?.role || req.role || null,
-    actorEmail: req.userEmail || req.user?.email || null,
-  };
-}
 
 // --------------------
 // STUDENTS

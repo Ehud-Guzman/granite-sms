@@ -3,11 +3,10 @@ import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireFeature } from "../middleware/features.js";
 import { requireTenant } from "../middleware/tenant.js";
+import { cleanStr } from "../utils/validate.js";
 
 const router = Router();
 router.use(requireTenant);
-
-const cleanStr = (v) => (typeof v === "string" ? v.trim() : "");
 
 /**
  * SUBJECTS

@@ -1,5 +1,6 @@
 // src/middleware/auth.js
 import { verifyToken } from "../utils/jwt.js";
+import { upper } from "../utils/validate.js";
 
 /**
  * Parse token from:
@@ -23,10 +24,6 @@ function getToken(req) {
   if (typeof x === "string" && x.trim()) return x.trim();
 
   return null;
-}
-
-function upper(v) {
-  return String(v || "").trim().toUpperCase();
 }
 
 function safeStr(v, max = 120) {

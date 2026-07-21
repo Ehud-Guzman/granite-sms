@@ -9,7 +9,7 @@ import { prisma } from "../../lib/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { resolveSchoolScope } from "../../utils/roleScope.js";
 import { clearSettingsCache } from "../../middleware/features.js";
-import { logAudit } from "../../utils/audit.js";
+import { logAudit, actorCtx } from "../../utils/audit.js";
 
 const router = Router();
 
@@ -24,14 +24,6 @@ const __dirname = path.dirname(__filename);
 
 // ✅ FIX: go up 4 levels to project root (where server.js is)
 const SERVER_ROOT = path.join(__dirname, "..", "..", "..", "..");
-
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.role || null,
-    actorEmail: req.userEmail || null,
-  };
-}
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -261,8 +253,9 @@ router.patch("/", requireAuth, async (req, res) => {
 });
 
 // ✅ POST /api/settings/branding/logo
-// Restrict uploads to ADMIN/SYSTEM_ADMIN only
-router.post("/logo", requireAuth, async (req, res, next) => {
+// Restrict uploads to ADMIN/SYSTEM_ADMIN only.
+// Single handler: authorize FIRST, then run multer, then persist.
+function authorizeLogoUpload(req, res, next) {
   try {
     const resolved = resolveSchoolScope(req, {
       allowPlatform: false,
@@ -270,7 +263,10 @@ router.post("/logo", requireAuth, async (req, res, next) => {
     });
     if (!resolved.ok) return res.status(resolved.code).json({ message: resolved.message });
 
-    // pass control to multer ONLY if authorized
+    // Stash the resolved scope so the final handler doesn't recompute it.
+    req.brandingScope = resolved;
+
+    // Only touch multer (which writes to disk) after authorization passes.
     return upload.single("logo")(req, res, (err) => {
       if (err) return res.status(400).json({ message: err?.message || "Upload failed" });
       return next();
@@ -279,15 +275,12 @@ router.post("/logo", requireAuth, async (req, res, next) => {
     console.error("AUTH UPLOAD LOGO ERROR:", err);
     return res.status(500).json({ message: "Server error" });
   }
-});
+}
 
-router.post("/logo", requireAuth, async (req, res) => {
+router.post("/logo", requireAuth, authorizeLogoUpload, async (req, res) => {
   try {
-    const resolved = resolveSchoolScope(req, {
-      allowPlatform: false,
-      allowRoles: ["SYSTEM_ADMIN", "ADMIN"],
-    });
-    if (!resolved.ok) return res.status(resolved.code).json({ message: resolved.message });
+    const resolved = req.brandingScope;
+    if (!resolved?.ok) return res.status(403).json({ message: "Forbidden" });
 
     const { schoolId } = resolved;
     if (!req.file) return res.status(400).json({ message: "No logo uploaded" });

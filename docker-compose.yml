@@ -25,7 +25,9 @@ services:
       NODE_ENV: development
       PORT: 5000
       DATABASE_URL: postgresql://app:apppass@db:5432/appdb
-      JWT_SECRET: "change-this-to-your-real-secret"
+      # Provide a strong secret via your shell/host env, e.g. `export JWT_SECRET=$(openssl rand -base64 48)`.
+      # The API refuses to boot on a weak/default secret (see assertJwtSecretStrong).
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a random 32+ char value}
     ports:
       - "5000:5000"
     volumes:

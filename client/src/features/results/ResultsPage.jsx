@@ -19,7 +19,7 @@ import ClassResultsTable from "./components/ClassResultsTable";
 import StudentSlipPanel from "./components/StudentSlipPanel";
 
 import { fmtClass } from "./utils/format";
-import { printNow } from "./utils/print";
+import { printSection } from "@/lib/print";
 
 function currentYear() {
   return new Date().getFullYear();
@@ -152,14 +152,6 @@ export default function ResultsPage() {
     queryFn: () => listStudents({ classId, active: true }),
   });
 
-  const studentsById = useMemo(() => {
-    if (!Array.isArray(studentsQ.data)) return {};
-    return studentsQ.data.reduce((acc, s) => {
-      acc[s.id] = s;
-      return acc;
-    }, {});
-  }, [studentsQ.data]);
-
   /* ================= STUDENT RESULTS ================= */
   const effectiveStudentId =
     role === "STUDENT" ? myStudentId : activeStudentId;
@@ -201,10 +193,6 @@ export default function ResultsPage() {
     return classLabelById.get(cid) || cid || "-";
   }, [classPayload, activeSession, classLabelById]);
 
-  const gradingMeta =
-    classPayload?.meta?.grading ||
-    studentResultsQ.data?.data?.meta?.grading;
-
   const canPrintClass =
     (role === "ADMIN" || role === "TEACHER") &&
     !!activeSessionId &&
@@ -237,7 +225,7 @@ export default function ResultsPage() {
         message: "Open class results first.",
       });
     }
-    printNow("print-class-results");
+    printSection("print-class-results");
   };
 
   const isLoadingProfile = meLoading || !role;
@@ -319,7 +307,6 @@ export default function ResultsPage() {
               term={sessionTerm}
               year={sessionYear}
               status={sessionStatus}
-              gradingMode={gradingMeta?.mode}
               role={role}
               canPrintClass={canPrintClass}
               onPrintClass={onPrintClass}
@@ -372,8 +359,6 @@ export default function ResultsPage() {
                   <ClassResultsTable
                     classPayload={classPayload}
                     showGrades={showGrades}
-                    students={studentsById}
-                    logoUrl={branding?.brandLogoUrl}  // ← Pass logo here too
                   />
                 </>
               ) : (

@@ -3,7 +3,8 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { prisma } from "../lib/prisma.js";
-import { logAudit } from "../utils/audit.js";
+import { logAudit, actorCtx } from "../utils/audit.js";
+import { isValidId as isValidSchoolId } from "../utils/validate.js";
 
 import { loadSubscription, requireLimit } from "../middleware/subscription.js";
 
@@ -54,10 +55,6 @@ const validatePassword = (password) => {
   return p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
 };
 
-function isValidSchoolId(v) {
-  return /^[a-zA-Z0-9_-]{3,40}$/.test(String(v || "").trim());
-}
-
 // Never allow SYSTEM_ADMIN creation/modification via this UI API
 const UI_ALLOWED_ROLES = ["ADMIN", "TEACHER", "BURSAR", "STUDENT"];
 
@@ -100,14 +97,6 @@ async function assertSchoolActive(schoolId) {
 function isActor(role, ...allowed) {
   const r = String(role || "").toUpperCase();
   return allowed.includes(r);
-}
-
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.role || null,
-    actorEmail: req.userEmail || null,
-  };
 }
 
 // -----------------------------
@@ -237,7 +226,10 @@ router.post(
         select: safeUserSelect(),
       });
 
-   await logAudit(req, {
+   await logAudit({
+  req,
+  ...actorCtx(req),
+  schoolId,
   action: "USER_CREATED",
   targetType: "USER",
   targetId: user.id,
@@ -332,12 +324,14 @@ router.patch("/:id", async (req, res) => {
 
     const action = changed.role ? "USER_ROLE_CHANGED" : "USER_UPDATED";
 
-await logAudit(req, {
+await logAudit({
+  req,
+  ...actorCtx(req),
+  schoolId: updated.schoolId,
   action,
   targetType: "USER",
   targetId: updated.id,
   metadata: {
-    schoolId: updated.schoolId,
     changed,
     from: { email: target.email, role: target.role, schoolId: target.schoolId },
     to: { email: updated.email, role: updated.role, schoolId: updated.schoolId },
@@ -386,11 +380,14 @@ router.post("/:id/status", async (req, res) => {
       select: safeUserSelect(),
     });
 
-  await logAudit(req, {
+  await logAudit({
+  req,
+  ...actorCtx(req),
+  schoolId: updated.schoolId,
   action: isActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
   targetType: "USER",
   targetId: updated.id,
-  metadata: { schoolId: updated.schoolId, from: target.isActive, to: isActive },
+  metadata: { from: target.isActive, to: isActive },
 });
 
 
@@ -450,11 +447,14 @@ router.post("/:id/reset-password", async (req, res) => {
       },
     });
 
-   await logAudit(req, {
+   await logAudit({
+  req,
+  ...actorCtx(req),
+  schoolId: target.schoolId,
   action: "PASSWORD_RESET",
   targetType: "USER",
   targetId: target.id,
-  metadata: { schoolId: target.schoolId, generatedPassword },
+  metadata: { generatedPassword },
 });
 
 

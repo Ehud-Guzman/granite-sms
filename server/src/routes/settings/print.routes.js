@@ -3,17 +3,9 @@ import { prisma } from "../../lib/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { resolveSchoolScope } from "../../utils/roleScope.js";
 import { clearSettingsCache } from "../../middleware/features.js";
-import { logAudit } from "../../utils/audit.js";
+import { logAudit, actorCtx } from "../../utils/audit.js";
 
 const router = Router();
-
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.role || null,
-    actorEmail: req.userEmail || null,
-  };
-}
 
 async function getOrCreateSettings(schoolId) {
   let settings = await prisma.schoolSettings.findUnique({ where: { schoolId } });

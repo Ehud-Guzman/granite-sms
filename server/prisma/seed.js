@@ -322,6 +322,14 @@ async function applyPayment({
 }
 
 async function main() {
+  // Guard: this seed provisions accounts with well-known passwords. Never let it
+  // run against a production database unless explicitly forced.
+  if (process.env.NODE_ENV === "production" && process.env.SEED_ALLOW_PROD !== "true") {
+    throw new Error(
+      "Refusing to seed in production. Set SEED_ALLOW_PROD=true only if you truly mean it."
+    );
+  }
+
   console.log("🌱 Seeding start...");
 
   // -------------------------

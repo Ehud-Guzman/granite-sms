@@ -6,6 +6,7 @@ import { signToken } from "../utils/jwt.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { tenantContext } from "../middleware/tenant.js";
 import { logAudit } from "../utils/audit.js";
+import { upper } from "../utils/validate.js";
 
 const router = Router();
 
@@ -23,10 +24,6 @@ const normalizeId = (v) => {
   const s = String(v || "").trim();
   return s ? s : null;
 };
-
-function upper(v) {
-  return String(v || "").trim().toUpperCase();
-}
 
 async function resolveSchoolByIdOrCode(key) {
   const k = normalizeId(key);

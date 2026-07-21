@@ -1,7 +1,7 @@
 // src/routes/settings/backup.routes.js
 import { Router } from "express";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
-import { logAudit } from "../../utils/audit.js";
+import { logAudit, actorCtx } from "../../utils/audit.js";
 import { resolveSchoolScope } from "../../utils/roleScope.js";
 import {
   createSchoolBackup,
@@ -13,14 +13,6 @@ import {
 const router = Router();
 
 const isProd = process.env.NODE_ENV === "production";
-
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.user?.role || null,
-    actorEmail: req.user?.email || null,
-  };
-}
 
 function sendError(res, code, message, debug) {
   const payload = { message: message || "Server error" };

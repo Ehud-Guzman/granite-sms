@@ -6,9 +6,12 @@ import { useQuery } from "@tanstack/react-query";
 import { listExamSessions } from "@/api/exams.api";
 import { listClasses } from "@/api/classes.api";
 import { useClassPerformanceReport } from "../hooks/useClassPerformanceReport";
-import { printId } from "../utils/print";
+import { printSection } from "@/lib/print";
+import { normalizeArray, fmtClass, fmtNumber } from "../utils/format";
 
 import PrintDocument from "@/components/print/PrintDocument";
+import ReportPrintTitle from "../components/ReportPrintTitle";
+import ReportPrintFooter from "../components/ReportPrintFooter";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,30 +23,33 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function fmtClass(c) {
-  return `${c.name}${c.stream ? ` ${c.stream}` : ""} (${c.year})`;
-}
-
-function normalizeArray(maybe) {
-  if (Array.isArray(maybe)) return maybe;
-  if (Array.isArray(maybe?.data)) return maybe.data;
-  if (Array.isArray(maybe?.sessions)) return maybe.sessions;
-  if (Array.isArray(maybe?.data?.data)) return maybe.data.data;
-  return [];
-}
-
-function fmtNumber(n, dp = 0) {
-  const v = Number(n ?? 0);
-  if (!Number.isFinite(v)) return dp ? "0.00" : "0";
-  return dp > 0 ? v.toFixed(dp) : v.toLocaleString();
-}
-
-function fmtDateTime(d = new Date()) {
-  try {
-    return new Date(d).toLocaleString();
-  } catch {
-    return "";
-  }
+function RankingTable({ ranking, sticky }) {
+  return (
+    <table className="w-full text-sm">
+      <thead className={`text-left opacity-70 border-b ${sticky ? "sticky top-0 bg-white" : ""}`}>
+        <tr>
+          <th className="py-2">Pos</th>
+          <th>Adm</th>
+          <th>Student</th>
+          <th className="text-right">Avg</th>
+          <th className="text-right">Total</th>
+          <th className="text-right">Grade</th>
+        </tr>
+      </thead>
+      <tbody>
+        {ranking.map((r) => (
+          <tr key={r.studentId} className={`border-t ${sticky ? "hover:bg-gray-50" : ""}`}>
+            <td className="py-2">{r.position}</td>
+            <td>{r.admissionNo}</td>
+            <td>{r.name}</td>
+            <td className="text-right">{fmtNumber(r.average ?? 0, 2)}</td>
+            <td className="text-right">{fmtNumber(r.total ?? 0)}</td>
+            <td className="text-right">{r.grade || "-"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 export default function ClassPerformanceReport() {
@@ -93,6 +99,7 @@ export default function ClassPerformanceReport() {
     return `${c} • ${s}`;
   }, [selectedClass, selectedSession]);
 
+  const ranking = report?.ranking || [];
   const showHint =
     !classId || !sessionId || (!report && !isLoading && !error);
 
@@ -111,7 +118,7 @@ export default function ClassPerformanceReport() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => printId("print-class-performance")}
+            onClick={() => printSection("print-class-performance")}
             disabled={!report}
             title={!report ? "Load a report first" : "Print this report"}
           >
@@ -237,11 +244,7 @@ export default function ClassPerformanceReport() {
       {/* Report */}
       {report && (
         <PrintDocument id="print-class-performance" className="space-y-3 bg-white">
-          {/* optional: report title/subtitle for print-only */}
-          <div className="hidden print:block">
-            <div className="text-base font-semibold">Class Performance Report</div>
-            <div className="text-sm opacity-70">{printSubtitle}</div>
-          </div>
+          <ReportPrintTitle title="Class Performance Report" subtitle={printSubtitle} />
 
           <Card>
             <CardHeader>
@@ -310,72 +313,15 @@ export default function ClassPerformanceReport() {
             </CardHeader>
             <CardContent className="overflow-auto">
               <div className="max-h-[520px] overflow-auto no-print">
-                <table className="w-full text-sm">
-                  <thead className="text-left opacity-70 sticky top-0 bg-white border-b">
-                    <tr>
-                      <th className="py-2">Pos</th>
-                      <th>Adm</th>
-                      <th>Student</th>
-                      <th className="text-right">Avg</th>
-                      <th className="text-right">Total</th>
-                      <th className="text-right">Grade</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(report.ranking || []).map((r) => (
-                      <tr key={r.studentId} className="border-t hover:bg-gray-50">
-                        <td className="py-2">{r.position}</td>
-                        <td>{r.admissionNo}</td>
-                        <td>{r.name}</td>
-                        <td className="text-right">
-                          {fmtNumber(r.average ?? 0, 2)}
-                        </td>
-                        <td className="text-right">{fmtNumber(r.total ?? 0)}</td>
-                        <td className="text-right">{r.grade || "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <RankingTable ranking={ranking} sticky />
               </div>
 
-              {/* Print table (no sticky header) */}
+              {/* Print version (no sticky header/hover — irrelevant on paper) */}
               <div className="hidden print:block">
-                <table className="w-full text-sm">
-                  <thead className="text-left opacity-70">
-                    <tr>
-                      <th className="py-2">Pos</th>
-                      <th>Adm</th>
-                      <th>Student</th>
-                      <th className="text-right">Avg</th>
-                      <th className="text-right">Total</th>
-                      <th className="text-right">Grade</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(report.ranking || []).map((r) => (
-                      <tr key={r.studentId} className="border-t">
-                        <td className="py-2">{r.position}</td>
-                        <td>{r.admissionNo}</td>
-                        <td>{r.name}</td>
-                        <td className="text-right">
-                          {fmtNumber(r.average ?? 0, 2)}
-                        </td>
-                        <td className="text-right">{fmtNumber(r.total ?? 0)}</td>
-                        <td className="text-right">{r.grade || "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <RankingTable ranking={ranking} />
               </div>
 
-              {/* keep this local meta block for now */}
-              <div className="mt-4 text-xs opacity-70">
-                Printed: {fmtDateTime()}
-              </div>
-              <div className="mt-6 flex justify-between text-xs">
-                <div>Signature: ____________________</div>
-                <div>Date: ____________________</div>
-              </div>
+              <ReportPrintFooter />
             </CardContent>
           </Card>
 

@@ -191,8 +191,13 @@ body,
 
 /* =========================================================
    PRINT ENGINE (ONE STRATEGY)
-   We print ONE target by setting:
-     document.documentElement.dataset.printing = "print-..."
+   Every printable section renders as <div class="print-only" id="...">,
+   always mounted but hidden. To print exactly one of them, JS (see
+   src/lib/print.js) adds `.is-printing` to that element only; only a
+   `.print-only` element that ALSO has `.is-printing` is shown at print
+   time. This is what makes it safe for multiple print-only blocks to be
+   mounted simultaneously (e.g. the Results page mounts both a class-results
+   and a student-slip block) — only the one actually requested prints.
    ========================================================= */
 
 .print-only {
@@ -230,8 +235,8 @@ body,
     display: none !important;
   }
 
-  /* Print container */
-  .print-only {
+  /* Print container: only the section explicitly marked for printing shows */
+  .print-only.is-printing {
     display: block !important;
     width: 100% !important;
     max-width: 100% !important;

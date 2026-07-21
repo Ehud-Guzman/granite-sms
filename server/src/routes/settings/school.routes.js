@@ -3,19 +3,11 @@ import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { resolveSchoolScope } from "../../utils/roleScope.js";
-import { logAudit } from "../../utils/audit.js";
+import { logAudit, actorCtx } from "../../utils/audit.js";
 
 const router = Router();
 
 const ALLOWED_KEYS = ["name", "shortName", "code", "contactEmail", "contactPhone"];
-
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.role || null,
-    actorEmail: req.userEmail || null,
-  };
-}
 
 function isNonEmptyString(v, max = 200) {
   return typeof v === "string" && v.trim().length > 0 && v.trim().length <= max;

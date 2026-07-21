@@ -1,25 +1,7 @@
 // src/middleware/subscription.js
 import { prisma } from "../lib/prisma.js";
-
-// -------------------------------------
-// Plan defaults (Phase 1)
-// NOTE: maxUsers is JSON-only in limits.USERS_MAX (since Prisma model lacks maxUsers)
-// -------------------------------------
-const PLAN_DEFAULTS = {
-  FREE: { status: "TRIAL", maxStudents: 50, maxTeachers: 10, maxClasses: 5, maxUsers: null },
-  BASIC: { status: "ACTIVE", maxStudents: 300, maxTeachers: 30, maxClasses: 15, maxUsers: 15 },
-  PRO: { status: "ACTIVE", maxStudents: 1200, maxTeachers: 80, maxClasses: 40, maxUsers: 60 },
-  ENTERPRISE: { status: "ACTIVE", maxStudents: null, maxTeachers: null, maxClasses: null, maxUsers: null },
-};
-
-function normalizePlan(planCode) {
-  const p = String(planCode || "FREE").toUpperCase();
-  return PLAN_DEFAULTS[p] ? p : "FREE";
-}
-
-function upper(s) {
-  return String(s || "").trim().toUpperCase();
-}
+import { PLAN_DEFAULTS, normalizePlanCode as normalizePlan } from "../config/plans.js";
+import { upper } from "../utils/validate.js";
 
 function isWriteEnabledStatus(status) {
   const s = upper(status);

@@ -3,19 +3,11 @@ import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { clearSettingsCache } from "../../middleware/features.js";
-import { logAudit } from "../../utils/audit.js";
+import { logAudit, actorCtx } from "../../utils/audit.js";
 
 const router = Router();
 
 const FLAG_KEYS = ["enableClassTeachers", "enableSubjectAssignments"];
-
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.role || null,
-    actorEmail: req.userEmail || null,
-  };
-}
 
 // GET /api/settings (ADMIN)
 router.get("/", requireAuth, requireRole("ADMIN"), async (req, res) => {

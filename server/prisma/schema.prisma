@@ -159,7 +159,6 @@ model SchoolSettings {
   updatedAt DateTime @updatedAt
 }
 
-
 // --------------------
 // PRIMARY MODE: Class Teacher (one teacher "in charge" of a class)
 // --------------------
@@ -303,11 +302,9 @@ model School {
   feePlans            FeePlan[]
   feeInvoices         FeeInvoice[]
   feePayments         FeePayment[]
-  examResultPublishes ExamResultPublish[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
-  onboardingCompleted Boolean @default(false)
-
+  onboardingCompleted Boolean              @default(false)
 }
 
 model Subscription {
@@ -436,7 +433,7 @@ model FeeInvoice {
   year      Int
   term      Term
 
-  invoiceNo String?   // ✅ NEW
+  invoiceNo String? // ✅ NEW
 
   voidedAt   DateTime?
   voidedBy   String?
@@ -456,11 +453,10 @@ model FeeInvoice {
   payments FeePayment[]
 
   @@unique([schoolId, studentId, year, term])
-  @@unique([schoolId, invoiceNo])      // ✅ IMPORTANT
+  @@unique([schoolId, invoiceNo]) // ✅ IMPORTANT
   @@index([schoolId, classId, year, term])
   @@index([schoolId, studentId])
 }
-
 
 model FeeInvoiceLine {
   id        String @id @default(cuid())
@@ -677,8 +673,8 @@ model ExamSession {
   markSheets MarkSheet[]
   publish    ResultPublish?
 
-  publishedAt     DateTime?            
-  publishedById   String?
+  publishedAt   DateTime?
+  publishedById String?
 
   class Class @relation(fields: [classId], references: [id], onDelete: Restrict)
 
@@ -861,60 +857,6 @@ model ExamAuditLog {
 
   @@index([schoolId, entityType, entityId])
   @@index([schoolId, actorUserId, createdAt])
-}
-
-enum ExamResultStatus {
-  PUBLISHED
-}
-
-model ExamResultPublish {
-  id            String @id @default(cuid())
-  schoolId      String
-  examSessionId String
-
-  gradeScaleId String?
-
-  publishedById String
-  publishedAt   DateTime @default(now())
-
-  totalsComputed Boolean @default(true)
-
-  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-
-  @@unique([schoolId, examSessionId])
-  @@index([schoolId, publishedAt])
-}
-
-model StudentExamResult {
-  id            String @id @default(cuid())
-  schoolId      String
-  examSessionId String
-  studentId     String
-
-  total   Float @default(0)
-  average Float @default(0)
-
-  createdAt DateTime @default(now())
-
-  @@unique([schoolId, examSessionId, studentId])
-  @@index([schoolId, examSessionId])
-  @@index([schoolId, studentId])
-}
-
-model SubjectExamResult {
-  id            String @id @default(cuid())
-  schoolId      String
-  examSessionId String
-  studentId     String
-  subjectId     String
-
-  score Float
-  grade String?
-
-  createdAt DateTime @default(now())
-
-  @@unique([schoolId, examSessionId, studentId, subjectId])
-  @@index([schoolId, examSessionId, subjectId])
 }
 
 model AuditLog {

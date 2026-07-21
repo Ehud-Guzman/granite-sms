@@ -5,6 +5,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { tenantContext, requireTenant } from "../../middleware/tenant.js";
 import { logAudit } from "../../utils/audit.js";
 import { invalidateEntitlementsCache } from "../../middleware/entitlements.js";
+import { upper } from "../../utils/validate.js";
 
 const router = Router();
 
@@ -14,10 +15,6 @@ const router = Router();
 const ALLOWED_STATUS = ["TRIAL", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"];
 const WRITE_ENABLED_STATUS = new Set(["TRIAL", "ACTIVE"]);
 const LIMIT_KEYS = ["STUDENTS_MAX", "TEACHERS_MAX", "CLASSES_MAX", "USERS_MAX"];
-
-function upper(v) {
-  return String(v || "").trim().toUpperCase();
-}
 
 function isSystemAdmin(role) {
   return upper(role) === "SYSTEM_ADMIN";
@@ -279,7 +276,12 @@ router.patch("/", requireTenant, async (req, res) => {
     // ✅ IMPORTANT: bust entitlement cache (status/expiry impacts gating)
     invalidateEntitlementsCache(schoolId);
 
-    await logAudit(req, {
+    await logAudit({
+      req,
+      actorId: req.user?.id || null,
+      actorRole: req.role || null,
+      actorEmail: req.userEmail || null,
+      schoolId,
       action: "SETTINGS_SUBSCRIPTION_UPDATED",
       targetType: "SCHOOL",
       targetId: schoolId,
@@ -347,7 +349,12 @@ router.patch("/limits", requireTenant, async (req, res) => {
     // ✅ optional but recommended: keep gating consistent after any sub update
     invalidateEntitlementsCache(schoolId);
 
-    await logAudit(req, {
+    await logAudit({
+      req,
+      actorId: req.user?.id || null,
+      actorRole: req.role || null,
+      actorEmail: req.userEmail || null,
+      schoolId,
       action: "SETTINGS_LIMITS_UPDATED",
       targetType: "SCHOOL",
       targetId: schoolId,
@@ -404,7 +411,12 @@ router.patch("/entitlements", requireTenant, async (req, res) => {
     // ✅ CRITICAL: bust cache so new entitlements apply immediately
     invalidateEntitlementsCache(schoolId);
 
-    await logAudit(req, {
+    await logAudit({
+      req,
+      actorId: req.user?.id || null,
+      actorRole: req.role || null,
+      actorEmail: req.userEmail || null,
+      schoolId,
       action: "SETTINGS_ENTITLEMENTS_UPDATED",
       targetType: "SCHOOL",
       targetId: schoolId,

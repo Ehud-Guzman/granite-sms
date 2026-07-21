@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 
 import PrintDocument from "@/components/print/PrintDocument";
 import StudentResultsCard from "../StudentResultsCard";
-import { printNow } from "../utils/print";
+import { printSection } from "@/lib/print";
 import { fmtPrintedAt, fmtStudentName } from "../utils/format";
 
 export default function StudentSlipPanel({
@@ -20,7 +20,7 @@ export default function StudentSlipPanel({
 
   const handlePrint = () => {
     if (!payload) return alert("Open a student first.");
-    printNow("print-student-slip");
+    printSection("print-student-slip");
   };
 
   if (!payload) return null;

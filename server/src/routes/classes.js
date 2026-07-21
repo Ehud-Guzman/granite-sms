@@ -4,7 +4,8 @@ import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
 import { loadSubscription, requireLimit } from "../middleware/subscription.js";
-import { logAudit } from "../utils/audit.js";
+import { logAudit, actorCtx } from "../utils/audit.js";
+import { cleanStr, toInt } from "../utils/validate.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -13,27 +14,12 @@ router.use(loadSubscription);
 // --------------------
 // Helpers
 // --------------------
-const cleanStr = (v) => (v == null ? "" : String(v).trim());
-
 const cleanNullable = (v) => {
   const s = cleanStr(v);
   return s.length ? s : null;
 };
 
-const toInt = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : NaN;
-};
-
 const isValidYear = (y) => Number.isInteger(y) && y >= 2000 && y <= 2100;
-
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.user?.role || req.role || null,
-    actorEmail: req.userEmail || req.user?.email || null,
-  };
-}
 
 function pickClassAudit(row) {
   if (!row) return null;

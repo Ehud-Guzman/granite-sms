@@ -1,157 +1,75 @@
-// src/features/results/components/ClassResultsTable.jsx
-import { Badge } from "@/components/ui/badge";
-import { gradeFromCell } from "../../features/results/utils/format";
-import { useMemo } from "react";
+// src/features/results/StudentResultsCard.jsx
+import { fmtStudentName } from "./utils/format";
 
-export default function ClassResultsTable({
-  classPayload,
-  showGrades = true,
-  students = {},
-}) {
-  const studentData = classPayload || {};
+/**
+ * Renders one student's result slip for a single exam session.
+ * `payload` is the response of GET /api/exams/sessions/:id/results/students/:studentId
+ * — shape: { session, student, subjectScores, total, average, overallGrade, missingCount }.
+ * All grading/totals are computed server-side (exams.services#getStudentResults);
+ * this component only displays them.
+ */
+export default function StudentResultsCard({ payload, classLabel, showGrades = true }) {
+  if (!payload) return null;
 
-  // Grab first student to get subjects
-  const firstStudentMarks = useMemo(() => {
-    const values = Object.values(studentData);
-    return Array.isArray(values[0]) ? values[0] : [];
-  }, [studentData]);
-
-  // Build subjects list
-  const subjects = useMemo(() => {
-    return firstStudentMarks.map((mark, idx) => {
-      const fullName = mark.subjectName || `Subject ${idx + 1}`;
-      const code = mark.subjectCode
-        ? mark.subjectCode.substring(0, 5).toUpperCase()
-        : fullName.substring(0, 3).toUpperCase();
-      return {
-        id: mark.subjectId || `sub-${idx}`,
-        name: fullName,
-        code,
-      };
-    });
-  }, [firstStudentMarks]);
-
-  // Process results per student
-  const results = useMemo(() => {
-    return Object.entries(studentData).map(([studentId, marks], index) => {
-      const safeMarks = Array.isArray(marks) ? marks : [];
-
-      const student = students[studentId] || {
-        id: studentId,
-        admissionNo: `ADM-${studentId.slice(0, 3).toUpperCase()}`,
-        firstName: "Learner",
-        lastName: `#${index + 1}`,
-      };
-
-      // Map subject scores
-      const subjectScores = safeMarks.map((m) => {
-        const score = m.score != null ? Number(m.score) : null;
-        return {
-          score,
-          grade: score != null ? gradeFromCell({ score }) : null,
-          missing: score == null,
-        };
-      });
-
-      const total = subjectScores.reduce((sum, cell) => sum + (cell.score || 0), 0);
-      const validScoresCount = subjectScores.filter((c) => c.score != null).length;
-      const average = validScoresCount > 0 ? total / validScoresCount : 0;
-
-      return {
-        student,
-        subjectScores,
-        total,
-        average, // keep numeric for grade calculation
-        overallGrade: gradeFromCell({ score: average }),
-        missingCount: subjectScores.filter((c) => c.missing).length,
-      };
-    });
-  }, [studentData, students]);
-
-  // Rank students (handle ties)
-  const rankedResults = useMemo(() => {
-    const sorted = [...results].sort(
-      (a, b) => b.total - a.total || b.average - a.average
-    );
-
-    let rank = 1;
-    let prevTotal = null;
-    let prevAvg = null;
-
-    return sorted.map((r, idx) => {
-      if (prevTotal === null || r.total !== prevTotal || r.average !== prevAvg) {
-        rank = idx + 1;
-        prevTotal = r.total;
-        prevAvg = r.average;
-      }
-      return { ...r, position: rank };
-    });
-  }, [results]);
-
-  // Nothing to display
-  if (!subjects.length && !rankedResults.length) {
-    return (
-      <div className="text-center py-12 text-muted-foreground border rounded-lg bg-muted/30">
-        No results data available.
-      </div>
-    );
-  }
+  const { student, subjectScores = [], total, average, overallGrade, missingCount } = payload;
 
   return (
     <div className="border rounded-lg overflow-hidden print:border-0 print:shadow-none print:m-0">
+      <div className="p-3 border-b bg-muted/60 print:bg-white">
+        <div className="font-medium">{fmtStudentName(student)}</div>
+        <div className="text-sm opacity-70">
+          {student?.admissionNo ? `Adm No: ${student.admissionNo}` : null}
+          {classLabel ? ` • ${classLabel}` : null}
+        </div>
+      </div>
+
       <div className="overflow-x-auto print:overflow-visible">
         <table className="w-full text-sm border-collapse print:text-[9.5pt]">
-          <thead className="bg-muted/60 print:bg-white">
-            <tr>
-              <th className="text-left p-2">Adm No</th>
-              <th className="text-left p-2">Student</th>
-
-              {subjects.map((sub) => (
-                <th key={sub.id} className="text-right p-2">{sub.code}</th>
-              ))}
-
-              {showGrades && <th className="text-right p-2">Overall</th>}
-              <th className="text-right p-2">Total</th>
-              <th className="text-right p-2">Avg</th>
-              <th className="text-right p-2">Pos</th>
-              <th className="text-right p-2">Missing</th>
+          <thead>
+            <tr className="text-left">
+              <th className="p-2">Subject</th>
+              <th className="p-2 text-right">Score</th>
             </tr>
           </thead>
-
           <tbody>
-            {rankedResults.map((r) => {
-              const st = r.student;
-
-              return (
-                <tr key={st.id} className="border-t print:page-break-inside-avoid">
-                  <td className="p-2">{st.admissionNo}</td>
-                  <td className="p-2">{st.firstName} {st.lastName}</td>
-
-                  {r.subjectScores.map((cell, idx) => (
-                    <td key={idx} className="p-2 text-right">
-                      {cell.missing ? "—" : cell.score}
-                    </td>
-                  ))}
-
-                  {showGrades && (
-                    <td className="p-2 text-right">{r.overallGrade || "—"}</td>
-                  )}
-
-                  <td className="p-2 text-right">{r.total}</td>
-                  <td className="p-2 text-right">{r.average.toFixed(2)}</td>
-                  <td className="p-2 text-right">{r.position}</td>
-                  <td className="p-2 text-right">
-                    <Badge
-                      variant={r.missingCount > 0 ? "destructive" : "secondary"}
-                      className="text-xs"
-                    >
-                      {r.missingCount}
-                    </Badge>
-                  </td>
+            {subjectScores.length === 0 ? (
+              <tr>
+                <td className="p-2 text-muted-foreground" colSpan={2}>
+                  No marks recorded for this session.
+                </td>
+              </tr>
+            ) : (
+              subjectScores.map((s) => (
+                <tr key={s.subjectId} className="border-t">
+                  <td className="p-2">{s.subjectName}</td>
+                  <td className="p-2 text-right">{s.score == null ? "—" : s.score}</td>
                 </tr>
-              );
-            })}
+              ))
+            )}
           </tbody>
+          <tfoot>
+            <tr className="border-t font-medium">
+              <td className="p-2">Total</td>
+              <td className="p-2 text-right">{total}</td>
+            </tr>
+            <tr>
+              <td className="p-2">Average</td>
+              <td className="p-2 text-right">{Number(average ?? 0).toFixed(2)}</td>
+            </tr>
+            {showGrades && (
+              <tr>
+                <td className="p-2">Overall Grade</td>
+                <td className="p-2 text-right">{overallGrade || "—"}</td>
+              </tr>
+            )}
+            {missingCount > 0 && (
+              <tr>
+                <td className="p-2 text-amber-600" colSpan={2}>
+                  {missingCount} subject(s) missing a score.
+                </td>
+              </tr>
+            )}
+          </tfoot>
         </table>
       </div>
     </div>

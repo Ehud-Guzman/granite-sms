@@ -1,13 +1,15 @@
 // src/routes/fees.js
 import { Router } from "express";
+import crypto from "crypto";
 import PDFDocument from "pdfkit";
 
 import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
 import { loadSubscription, requireEntitlement } from "../middleware/subscription.js";
-import { logAudit } from "../utils/audit.js";
+import { logAudit, actorCtx } from "../utils/audit.js";
 import { exportCSV, exportXLSX } from "../utils/export.js";
+import { toInt, toNumber } from "../utils/validate.js";
 
 
 const router = Router();
@@ -31,17 +33,6 @@ function normalizePaymentMethod(method) {
   return ALLOWED_PAYMENT_METHODS.includes(m) ? m : null;
 }
 
-function toInt(v, fallback = null) {
-  if (v === undefined || v === null || v === "") return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : fallback;
-}
-
-function toNumber(v, fallback = null) {
-  if (v === undefined || v === null || v === "") return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
 
 function computeInvoiceStatus(total, paid) {
   const t = Math.max(Number(total) || 0, 0);
@@ -51,11 +42,14 @@ function computeInvoiceStatus(total, paid) {
   return { balance, status };
 }
 
+function randToken(bytes) {
+  // Uppercase base36-ish token from CSPRNG bytes (collisions still guarded by a unique index).
+  return crypto.randomBytes(bytes).toString("hex").toUpperCase();
+}
+
 function makeInvoiceNo() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `INV-${y}-${rand}`;
+  const y = new Date().getFullYear();
+  return `INV-${y}-${randToken(3)}`;
 }
 
 function makeReceiptNo() {
@@ -63,8 +57,7 @@ function makeReceiptNo() {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
-  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `RCPT-${y}${m}${day}-${rand}`;
+  return `RCPT-${y}${m}${day}-${randToken(4)}`;
 }
 
 function normalizeExportType(v) {
@@ -75,14 +68,6 @@ function normalizeExportType(v) {
 
 
 /* ------------ Audit helpers ------------ */
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.role || req.user?.role || null,
-    actorEmail: req.user?.email || null,
-  };
-}
-
 async function feesAudit(req, { schoolId, action, targetType, targetId, metadata }) {
   return logAudit({
     req,
@@ -855,6 +840,11 @@ router.post(
       const amt = toNumber(amount, null);
       if (!Number.isFinite(amt) || amt <= 0) {
         return res.status(400).json({ message: "amount must be > 0." });
+      }
+      // FeePayment.amount is an integer column — reject fractional input up front
+      // instead of letting Prisma throw a 500 downstream.
+      if (!Number.isInteger(amt)) {
+        return res.status(400).json({ message: "amount must be a whole number." });
       }
 
       const normalizedMethod = normalizePaymentMethod(method);

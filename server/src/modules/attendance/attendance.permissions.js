@@ -19,18 +19,11 @@ export async function getSchoolEntitlements(schoolId) {
   };
 }
 
-export function requireSchool(req, res, next) {
-  const schoolId = req.user?.schoolId;
-  if (!schoolId) {
-    return res.status(401).json({ message: "Missing schoolId in token" });
-  }
-  next();
-}
-
 export async function requireAttendanceWrite(req, res, next) {
   try {
-    const schoolId = req.user?.schoolId;
-    if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
+    // req.schoolId is the DB-verified tenant (set by tenantContext), not the raw token.
+    const schoolId = req.schoolId || req.user?.schoolId;
+    if (!schoolId) return res.status(401).json({ message: "Tenant required" });
 
     const { status, entitlements } = await getSchoolEntitlements(schoolId);
 

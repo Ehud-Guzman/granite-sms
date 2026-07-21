@@ -32,7 +32,7 @@ function getUserId(req) {
 
 export async function createOrOpenSession(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const userId = getUserId(req);
     const role = req.user.role;
 
@@ -70,7 +70,7 @@ export async function createOrOpenSession(req, res) {
 
 export async function getSession(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const sessionId = req.params.id;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
@@ -84,7 +84,7 @@ export async function getSession(req, res) {
 
 export async function list(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const { classId, from, to } = req.query;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
@@ -101,7 +101,7 @@ export async function list(req, res) {
 
 export async function updateRecords(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const editorUserId = getUserId(req);
     const sessionId = req.params.id;
 
@@ -120,7 +120,7 @@ export async function updateRecords(req, res) {
 
 export async function submit(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const editorUserId = getUserId(req);
     const sessionId = req.params.id;
 
@@ -136,7 +136,7 @@ export async function submit(req, res) {
 
 export async function unlock(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const editorUserId = getUserId(req);
     const sessionId = req.params.id;
 
@@ -152,7 +152,7 @@ export async function unlock(req, res) {
 
 export async function lock(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const editorUserId = getUserId(req);
     const sessionId = req.params.id;
 
@@ -168,7 +168,7 @@ export async function lock(req, res) {
 
 export async function studentSummary(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const studentId = req.params.studentId;
     const { from, to } = req.query;
 
@@ -186,7 +186,7 @@ export async function studentSummary(req, res) {
 
 export async function classSummary(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const classId = req.params.classId;
     const { from, to } = req.query;
 
@@ -204,7 +204,7 @@ export async function classSummary(req, res) {
 
 export async function defaultersList(req, res) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.schoolId || req.user.schoolId;
     const { classId, from, to, minAbsences } = req.query;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });

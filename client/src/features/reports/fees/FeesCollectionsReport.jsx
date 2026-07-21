@@ -1,47 +1,47 @@
 import { useMemo, useState } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { getFeesCollections } from "@/api/feesReports.api";
-import { printId } from "../utils/print";
+import { printSection } from "@/lib/print";
+import { fmtMoney, fmtDateTime } from "../utils/format";
 
 import PrintDocument from "@/components/print/PrintDocument";
+import ReportPrintTitle from "../components/ReportPrintTitle";
+import ReportPrintFooter from "../components/ReportPrintFooter";
+import FinanceNav from "./FinanceNav";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-function fmtMoney(n) {
-  const v = Number(n || 0);
-  return v.toLocaleString();
-}
-
-function fmtDateTime(d = new Date()) {
-  try {
-    return new Date(d).toLocaleString();
-  } catch {
-    return "";
-  }
-}
-
-function FinanceNav() {
-  const linkCls = ({ isActive }) =>
-    `px-3 py-2 rounded-md border text-sm ${
-      isActive ? "bg-black text-white" : "bg-white"
-    }`;
-
+function PaymentsTable({ payments, sticky }) {
   return (
-    <div className="flex gap-2 no-print flex-wrap">
-      <NavLink className={linkCls} to="/app/reports/fees/summary">
-        Summary
-      </NavLink>
-      <NavLink className={linkCls} to="/app/reports/fees/defaulters">
-        Defaulters
-      </NavLink>
-      <NavLink className={linkCls} to="/app/reports/fees/collections" end>
-        Collections
-      </NavLink>
-    </div>
+    <table className="w-full text-sm">
+      <thead className={`text-left opacity-70 border-b ${sticky ? "sticky top-0 bg-white" : ""}`}>
+        <tr>
+          <th className="py-2">Date</th>
+          <th>Receipt</th>
+          <th>Method</th>
+          <th>Ref</th>
+          <th className="text-right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {payments.map((p, idx) => (
+          <tr
+            key={p.receiptNo || `${p.invoiceId}-${p.receivedAt}-${idx}`}
+            className="border-t"
+          >
+            <td className="py-2">{fmtDateTime(p.receivedAt)}</td>
+            <td>{p.receiptNo || "-"}</td>
+            <td>{p.method || "-"}</td>
+            <td>{p.reference || "-"}</td>
+            <td className="text-right">{fmtMoney(p.amount)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -68,6 +68,7 @@ export default function FeesCollectionsReport() {
   const canPrint = Boolean(report);
   const printSubtitle = report ? `From ${report.from} to ${report.to}` : "";
   const showHint = !report && !isLoading && !error;
+  const payments = report?.payments || [];
 
   return (
     <div className="space-y-4">
@@ -83,7 +84,7 @@ export default function FeesCollectionsReport() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => printId("print-fees-collections")}
+            onClick={() => printSection("print-fees-collections")}
             disabled={!canPrint}
             title={!canPrint ? "Load a report first" : "Print this report"}
           >
@@ -139,15 +140,7 @@ export default function FeesCollectionsReport() {
           id="print-fees-collections"
           className="space-y-3 bg-white"
         >
-          {/* optional: report title/subtitle for print-only */}
-          <div className="hidden print:block mb-2">
-            <div className="text-base font-semibold">
-              Fees Collections Report
-            </div>
-            {printSubtitle ? (
-              <div className="text-sm opacity-70">{printSubtitle}</div>
-            ) : null}
-          </div>
+          <ReportPrintTitle title="Fees Collections Report" subtitle={printSubtitle} />
 
           {/* empty state */}
           {Number(report.count ?? 0) === 0 ? (
@@ -158,13 +151,7 @@ export default function FeesCollectionsReport() {
                   There were no posted payments for this period.
                 </div>
 
-                <div className="mt-4 text-xs opacity-70">
-                  Printed: {fmtDateTime()}
-                </div>
-                <div className="mt-6 flex justify-between text-xs">
-                  <div>Signature: ____________________</div>
-                  <div>Date: ____________________</div>
-                </div>
+                <ReportPrintFooter />
               </CardContent>
             </Card>
           ) : (
@@ -217,79 +204,15 @@ export default function FeesCollectionsReport() {
                 </CardHeader>
                 <CardContent className="overflow-auto">
                   <div className="max-h-[520px] overflow-auto no-print">
-                    <table className="w-full text-sm">
-                      <thead className="text-left opacity-70 sticky top-0 bg-white border-b">
-                        <tr>
-                          <th className="py-2">Date</th>
-                          <th>Receipt</th>
-                          <th>Method</th>
-                          <th>Ref</th>
-                          <th className="text-right">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(report.payments || []).map((p, idx) => (
-                          <tr
-                            key={
-                              p.receiptNo ||
-                              `${p.invoiceId}-${p.receivedAt}-${idx}`
-                            }
-                            className="border-t"
-                          >
-                            <td className="py-2">
-                              {fmtDateTime(p.receivedAt)}
-                            </td>
-                            <td>{p.receiptNo || "-"}</td>
-                            <td>{p.method || "-"}</td>
-                            <td>{p.reference || "-"}</td>
-                            <td className="text-right">{fmtMoney(p.amount)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <PaymentsTable payments={payments} sticky />
                   </div>
 
                   {/* Print table (no sticky header) */}
                   <div className="hidden print:block">
-                    <table className="w-full text-sm">
-                      <thead className="text-left opacity-70">
-                        <tr>
-                          <th className="py-2">Date</th>
-                          <th>Receipt</th>
-                          <th>Method</th>
-                          <th>Ref</th>
-                          <th className="text-right">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(report.payments || []).map((p, idx) => (
-                          <tr
-                            key={
-                              p.receiptNo ||
-                              `${p.invoiceId}-${p.receivedAt}-${idx}`
-                            }
-                            className="border-t"
-                          >
-                            <td className="py-2">
-                              {fmtDateTime(p.receivedAt)}
-                            </td>
-                            <td>{p.receiptNo || "-"}</td>
-                            <td>{p.method || "-"}</td>
-                            <td>{p.reference || "-"}</td>
-                            <td className="text-right">{fmtMoney(p.amount)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <PaymentsTable payments={payments} />
                   </div>
 
-                  <div className="mt-4 text-xs opacity-70">
-                    Printed: {fmtDateTime()}
-                  </div>
-                  <div className="mt-6 flex justify-between text-xs">
-                    <div>Signature: ____________________</div>
-                    <div>Date: ____________________</div>
-                  </div>
+                  <ReportPrintFooter />
                 </CardContent>
               </Card>
             </>

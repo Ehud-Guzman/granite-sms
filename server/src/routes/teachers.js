@@ -6,6 +6,7 @@ import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
 import { loadSubscription, requireLimit } from "../middleware/subscription.js";
 import { logAudit } from "../utils/audit.js";
+import { cleanStr } from "../utils/validate.js";
 
 const router = Router();
 
@@ -18,7 +19,6 @@ router.use(loadSubscription);
 // -----------------------------
 // Helpers
 // -----------------------------
-const cleanStr = (v) => (typeof v === "string" ? v.trim() : "");
 const cleanEmail = (email) => String(email || "").trim().toLowerCase();
 
 const validatePassword = (password) => {

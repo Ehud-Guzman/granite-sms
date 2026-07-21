@@ -1,11 +1,7 @@
 // src/utils/roleScope.js
-export function upper(s) {
-  return String(s || "").trim().toUpperCase();
-}
+import { upper, isValidId as isValidSchoolId } from "./validate.js";
 
-export function isValidSchoolId(v) {
-  return /^[a-zA-Z0-9_-]{3,40}$/.test(String(v || "").trim());
-}
+export { upper, isValidSchoolId };
 
 /**
  * Resolve school scope depending on role.

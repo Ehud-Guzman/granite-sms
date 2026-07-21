@@ -1,10 +1,37 @@
 // src/utils/jwt.js
 import jwt from "jsonwebtoken";
 
+// Secrets that must never be used — trivially guessable defaults that have
+// appeared in this repo / docker-compose. Forgeable secret == full auth bypass.
+const WEAK_SECRETS = new Set([
+  "supersecretkey",
+  "change-this-to-your-real-secret",
+  "secret",
+  "changeme",
+  "jwtsecret",
+]);
+
 function requireEnv(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env: ${name}`);
   return v;
+}
+
+/**
+ * Validate JWT_SECRET strength at startup. Call once from the server entrypoint.
+ * Throws (crashes boot) on a missing/weak secret so we fail loud, not silent.
+ */
+export function assertJwtSecretStrong() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET is not set. Refusing to start.");
+  }
+  if (WEAK_SECRETS.has(secret.trim().toLowerCase()) || secret.trim().length < 32) {
+    throw new Error(
+      "JWT_SECRET is weak or a known default. Set a random secret of at least 32 chars " +
+        "(e.g. `openssl rand -base64 48`). Refusing to start."
+    );
+  }
 }
 
 function normalizeId(v) {

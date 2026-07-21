@@ -1,9 +1,8 @@
-// src/routes/reports/reports.services.js (or wherever it lives)
-import { PrismaClient, ExamSessionStatus } from "@prisma/client";
-import { getClassResults } from "../exams/exams.services.js"; // ✅ reuse your engine
+// src/modules/reports/reports.services.js
+import { ExamSessionStatus } from "@prisma/client";
+import { prisma } from "../../lib/prisma.js";
+import { getClassResults } from "../exams/exams.services.js";
 import { assertCuid } from "../exams/exams.validators.js";
-
-const prisma = new PrismaClient();
 
 function safeName(st) {
   const first = st?.firstName || "";
@@ -13,42 +12,48 @@ function safeName(st) {
 
 function mean(nums) {
   if (!nums.length) return 0;
-  const sum = nums.reduce((a, b) => a + b, 0);
-  return sum / nums.length;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
+/**
+ * Class performance report for a PUBLISHED exam session.
+ * Reuses the canonical results engine (exams.services#getClassResults) for
+ * totals/averages/grades/ranking instead of recomputing them — that math
+ * lives in exactly one place now.
+ */
 export async function getClassPerformanceReport(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId || req.user?.schoolId;
   const sessionId = assertCuid("sessionId", req.query?.sessionId);
 
-  // 1) Validate session (tenant + published)
-const session = await prisma.examSession.findFirst({
-  where: { id: sessionId, schoolId },
-  select: {
-    id: true,
-    name: true,
-    year: true,
-    term: true,
-    status: true,
-    classId: true,
-    class: { select: { id: true, name: true, stream: true, year: true } }, // ✅ works now
-    examType: { select: { id: true, name: true, code: true, weight: true } },
-  },
-});
+  const session = await prisma.examSession.findFirst({
+    where: { id: sessionId, schoolId },
+    select: {
+      id: true,
+      name: true,
+      year: true,
+      term: true,
+      status: true,
+      classId: true,
+      examType: { select: { id: true, name: true, code: true, weight: true } },
+    },
+  });
 
-
-  if (!session) throw new Error("ExamSession not found.");
+  if (!session) throw Object.assign(new Error("ExamSession not found."), { statusCode: 404 });
   if (session.status !== ExamSessionStatus.PUBLISHED) {
-    throw new Error("Report available only for PUBLISHED exam sessions.");
+    throw Object.assign(
+      new Error("Report available only for PUBLISHED exam sessions."),
+      { statusCode: 400 }
+    );
   }
 
-  // 1b) Fetch class info separately (because ExamSession has no relation `class`)
   const klass = await prisma.class.findFirst({
     where: { id: session.classId, schoolId },
     select: { id: true, name: true, stream: true, year: true },
   });
 
-  // 2) Reuse your existing class-results engine (same grading + ranking + missing policy)
+  // Reuse the same engine the class-results screen uses (spoof req.params.id
+  // the way this call site already relied on before — same technique, now
+  // pointed at a service that returns the shape we actually need).
   const classResults = await getClassResults({
     ...req,
     params: { id: sessionId },
@@ -56,28 +61,21 @@ const session = await prisma.examSession.findFirst({
 
   const rows = classResults.results || [];
   const studentCount = rows.length;
+  const classMean = Number(mean(rows.map((r) => r.average)).toFixed(2));
 
-  const averages = rows.map((r) => Number(r.average || 0));
-  const classMean = mean(averages);
-
-  // 3) Grade distribution
   const dist = new Map();
   for (const r of rows) {
     const g = r.overallGrade || "N/A";
     dist.set(g, (dist.get(g) || 0) + 1);
   }
-
   const gradeDistribution = [...dist.entries()]
     .map(([grade, count]) => ({ grade, count }))
     .sort((a, b) => String(a.grade).localeCompare(String(b.grade)));
 
-  // 4) Pass/fail (MVP rule): average >= 50
   const passThreshold = 50;
-  let passCount = 0;
-  for (const r of rows) if (Number(r.average || 0) >= passThreshold) passCount += 1;
+  const passCount = rows.filter((r) => Number(r.average || 0) >= passThreshold).length;
   const failCount = studentCount - passCount;
 
-  // 5) Ranking table
   const ranking = rows.map((r) => ({
     studentId: r.student.id,
     admissionNo: r.student.admissionNo,
@@ -97,7 +95,7 @@ const session = await prisma.examSession.findFirst({
       computedAt: new Date().toISOString(),
       passThreshold,
     },
-    class: klass, // ✅ now comes from Class table
+    class: klass,
     session: {
       id: session.id,
       name: session.name,

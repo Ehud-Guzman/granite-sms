@@ -11,24 +11,24 @@ import { ensureEditable } from "./attendance.validators.js";
  * - Admin bypass is handled in controller
  */
 async function teacherCanAccessClass({ schoolId, userId, classId }) {
-  // tenant safety: teacher table is per school in your design? (if not, still ok)
-  const teacher = await prisma.teacher.findUnique({
-    where: { userId },
+  // Teacher must belong to this tenant.
+  const teacher = await prisma.teacher.findFirst({
+    where: { userId, schoolId },
     select: { id: true },
   });
 
   if (!teacher) return false;
 
-  // Primary: class teacher
+  // Primary: class teacher (tenant-scoped)
   const isClassTeacher = await prisma.classTeacher.findFirst({
-    where: { classId, teacherId: teacher.id, isActive: true },
+    where: { schoolId, classId, teacherId: teacher.id, isActive: true },
     select: { id: true },
   });
   if (isClassTeacher) return true;
 
-  // Secondary: teaching assignment
+  // Secondary: teaching assignment (tenant-scoped)
   const isAssigned = await prisma.teachingAssignment.findFirst({
-    where: { classId, teacherId: teacher.id, isActive: true },
+    where: { schoolId, classId, teacherId: teacher.id, isActive: true },
     select: { id: true },
   });
 
@@ -45,6 +45,22 @@ export async function assertTeacherAccessOrThrow({ schoolId, userId, classId }) 
 }
 
 /**
+ * Ensure a class actually belongs to this tenant before we touch its students.
+ * Prevents an admin from opening a session against another school's classId.
+ */
+export async function assertClassInSchool({ schoolId, classId }) {
+  const klass = await prisma.class.findFirst({
+    where: { id: classId, schoolId },
+    select: { id: true },
+  });
+  if (!klass) {
+    const err = new Error("Class not found in this school.");
+    err.statusCode = 404;
+    throw err;
+  }
+}
+
+/**
  * Create or reopen a session (upsert) and ensure records exist for all active students
  */
 export async function upsertSessionAndEnsureRecords({
@@ -56,6 +72,9 @@ export async function upsertSessionAndEnsureRecords({
   takenByUserId,
   role,
 }) {
+  // Tenant guard: the class must belong to this school.
+  await assertClassInSchool({ schoolId, classId });
+
   const session = await prisma.attendanceSession.upsert({
     where: { schoolId_classId_date: { schoolId, classId, date } },
     create: {
@@ -75,7 +94,7 @@ export async function upsertSessionAndEnsureRecords({
   });
 
   const students = await prisma.student.findMany({
-    where: { classId, isActive: true },
+    where: { schoolId, classId, isActive: true },
     select: { id: true },
   });
 
@@ -260,7 +279,7 @@ export async function submitSession({ schoolId, sessionId, editorUserId }) {
   ensureEditable(session);
 
   const activeCount = await prisma.student.count({
-    where: { classId: session.classId, isActive: true },
+    where: { schoolId, classId: session.classId, isActive: true },
   });
 
   const recordCount = await prisma.attendanceRecord.count({
@@ -430,7 +449,7 @@ export async function summaryClass({ schoolId, classId, from, to }) {
 
 export async function defaulters({ schoolId, classId, from, to, minAbsences = 5 }) {
   const students = await prisma.student.findMany({
-    where: { classId, isActive: true },
+    where: { schoolId, classId, isActive: true },
     select: { id: true, admissionNo: true, firstName: true, lastName: true },
   });
 

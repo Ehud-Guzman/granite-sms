@@ -2,7 +2,9 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { logAudit } from "../utils/audit.js";
+import { logAudit, actorCtx } from "../utils/audit.js";
+import { PLAN_DEFAULTS, normalizePlanCode as normalizePlan } from "../config/plans.js";
+import { isValidId } from "../utils/validate.js";
 
 const router = Router();
 
@@ -16,33 +18,8 @@ function cleanId(v) {
     .replace(/[^a-zA-Z0-9_-]/g, "");
 }
 
-function isValidId(id) {
-  return /^[a-zA-Z0-9_-]{3,40}$/.test(id);
-}
-
 function cleanName(v) {
   return String(v || "").trim();
-}
-
-function actorCtx(req) {
-  return {
-    actorId: req.user?.id || null,
-    actorRole: req.user?.role || "SYSTEM_ADMIN",
-    actorEmail: null, // no tenantContext here
-  };
-}
-
-// Plan defaults (Phase 1)
-const PLAN_DEFAULTS = {
-  FREE: { maxStudents: 50, maxTeachers: 10, maxClasses: 5, status: "TRIAL" },
-  BASIC: { maxStudents: 300, maxTeachers: 30, maxClasses: 15, status: "ACTIVE" },
-  PRO: { maxStudents: 1200, maxTeachers: 80, maxClasses: 40, status: "ACTIVE" },
-  ENTERPRISE: { maxStudents: null, maxTeachers: null, maxClasses: null, status: "ACTIVE" },
-};
-
-function normalizePlan(planCode) {
-  const p = String(planCode || "FREE").toUpperCase();
-  return PLAN_DEFAULTS[p] ? p : "FREE";
 }
 
 // Ensures a school has at least one subscription.

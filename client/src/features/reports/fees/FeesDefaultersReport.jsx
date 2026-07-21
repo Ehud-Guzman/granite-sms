@@ -1,12 +1,16 @@
 import { useMemo, useState } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { listClasses } from "@/api/classes.api";
 import { getFeesDefaulters } from "@/api/feesReports.api";
-import { printId } from "../utils/print";
+import { printSection } from "@/lib/print";
+import { normalizeArray, fmtClass, fmtMoney, fmtStudentName } from "../utils/format";
 
 import PrintDocument from "@/components/print/PrintDocument";
+import ReportPrintTitle from "../components/ReportPrintTitle";
+import ReportPrintFooter from "../components/ReportPrintFooter";
+import FinanceNav from "./FinanceNav";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,50 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function normalizeArray(maybe) {
-  if (Array.isArray(maybe)) return maybe;
-  if (Array.isArray(maybe?.data)) return maybe.data;
-  if (Array.isArray(maybe?.data?.data)) return maybe.data.data;
-  return [];
-}
-
-function fmtClass(c) {
-  return `${c.name}${c.stream ? ` ${c.stream}` : ""} (${c.year})`;
-}
-
-function fmtMoney(n) {
-  const v = Number(n || 0);
-  return v.toLocaleString();
-}
-
 const TERMS = ["TERM1", "TERM2", "TERM3"];
-
-function fmtName(s) {
-  const first = s?.firstName || "";
-  const last = s?.lastName || "";
-  return `${first} ${last}`.trim() || "-";
-}
-
-function FinanceNav() {
-  const linkCls = ({ isActive }) =>
-    `px-3 py-2 rounded-md border text-sm ${
-      isActive ? "bg-black text-white" : "bg-white"
-    }`;
-
-  return (
-    <div className="flex gap-2 no-print flex-wrap">
-      <NavLink className={linkCls} to="/app/reports/fees/summary">
-        Summary
-      </NavLink>
-      <NavLink className={linkCls} to="/app/reports/fees/defaulters" end>
-        Defaulters
-      </NavLink>
-      <NavLink className={linkCls} to="/app/reports/fees/collections">
-        Collections
-      </NavLink>
-    </div>
-  );
-}
 
 export default function FeesDefaultersReport() {
   const [classId, setClassId] = useState("");
@@ -100,6 +61,10 @@ export default function FeesDefaultersReport() {
     enabled: Boolean(params),
   });
 
+  const printSubtitle = `${
+    selectedClass ? fmtClass(selectedClass) : `Class ${String(classId)}`
+  } • ${term} ${year} • Min Balance: ${minBalance}`;
+
   return (
     <div className="space-y-4">
       {/* top bar */}
@@ -114,7 +79,7 @@ export default function FeesDefaultersReport() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => printId("print-fees-defaulters")}
+            onClick={() => printSection("print-fees-defaulters")}
             disabled={!report}
             title={!report ? "Load a report first" : "Print this report"}
           >
@@ -210,16 +175,7 @@ export default function FeesDefaultersReport() {
           id="print-fees-defaulters"
           className="space-y-3 bg-white"
         >
-          {/* optional: report title/subtitle for print-only */}
-          <div className="hidden print:block">
-            <div className="text-base font-semibold">Fees Defaulters Report</div>
-            <div className="text-sm opacity-70">
-              {selectedClass
-                ? fmtClass(selectedClass)
-                : `Class ${String(classId)}`}{" "}
-              • {term} {year} • Min Balance: {minBalance}
-            </div>
-          </div>
+          <ReportPrintTitle title="Fees Defaulters Report" subtitle={printSubtitle} />
 
           <Card>
             <CardHeader>
@@ -244,7 +200,7 @@ export default function FeesDefaultersReport() {
                     <tr key={r.invoiceId} className="border-t">
                       <td className="py-2">{idx + 1}</td>
                       <td>{r.student?.admissionNo || "-"}</td>
-                      <td>{fmtName(r.student)}</td>
+                      <td>{fmtStudentName(r.student)}</td>
                       <td className="text-right">{fmtMoney(r.balance)}</td>
                       <td className="text-right">{fmtMoney(r.paid)}</td>
                       <td className="text-right">{fmtMoney(r.total)}</td>
@@ -253,13 +209,7 @@ export default function FeesDefaultersReport() {
                 </tbody>
               </table>
 
-              <div className="mt-4 text-xs opacity-70">
-                Printed: {new Date().toLocaleString()}
-              </div>
-              <div className="mt-6 flex justify-between text-xs">
-                <div>Signature: ____________________</div>
-                <div>Date: ____________________</div>
-              </div>
+              <ReportPrintFooter />
             </CardContent>
           </Card>
 

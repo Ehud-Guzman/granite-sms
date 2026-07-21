@@ -3,6 +3,8 @@ import path from "path";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
 import { fileURLToPath } from "url";
 
 import { prisma } from "./src/lib/prisma.js";
@@ -31,8 +33,12 @@ import usersRoutes from "./src/routes/users.js";
 
 import { requireAuth } from "./src/middleware/auth.js";
 import { tenantContext } from "./src/middleware/tenant.js";
+import { assertJwtSecretStrong } from "./src/utils/jwt.js";
 
 dotenv.config();
+
+// Fail loud at boot if the signing secret is missing/weak (auth bypass otherwise).
+assertJwtSecretStrong();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -42,21 +48,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 
-/** ✅ Serve uploads with CORS headers */
-const uploadsPath = path.join(PROJECT_ROOT, "uploads");
-console.log("Serving static /uploads from:", uploadsPath);
-
-// Add CORS middleware for /uploads
-app.use("/uploads", (req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "http://localhost:5173"); // add your prod frontend URL too
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-  next();
-}, express.static(uploadsPath));
-
 // If you're behind a proxy (Render, Nginx, etc.)
 app.set("trust proxy", 1);
 
-// ---- CORS for API routes ----
+// ---- Allowed origins (single source of truth for both API CORS and /uploads) ----
 const envOrigins = String(process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
@@ -68,6 +63,29 @@ const allowedOrigins = new Set([
   ...envOrigins,
 ]);
 
+// ---- Security headers ----
+// crossOriginResourcePolicy relaxed so uploaded assets (branding logos) can be
+// fetched cross-origin by the real frontend domain, not just same-origin.
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+
+/** ✅ Serve uploads with CORS headers matching the real allowlist (not a hardcoded localhost origin) */
+const uploadsPath = path.join(PROJECT_ROOT, "uploads");
+console.log("Serving static /uploads from:", uploadsPath);
+
+app.use("/uploads", (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.has(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  next();
+}, express.static(uploadsPath));
+
+// ---- CORS for API routes ----
 app.use(
   cors({
     origin: (origin, cb) => {
@@ -80,6 +98,27 @@ app.use(
 );
 
 app.use(express.json({ limit: "1mb" }));
+
+// ---- Rate limiting ----
+// Global safety net across the API.
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 300, // per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests. Please slow down.", code: "RATE_LIMITED" },
+});
+
+// Tighter limiter for auth endpoints (credential stuffing / brute force).
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // per IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many auth attempts. Try again later.", code: "AUTH_RATE_LIMITED" },
+});
+
+app.use("/api", globalLimiter);
 
 // ---- Dev request logger ----
 app.use((req, res, next) => {
@@ -103,7 +142,7 @@ app.disable("etag");
 // ===============================
 // PUBLIC ROUTES
 // ===============================
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
 
 // ===============================
 // PLATFORM ROUTES (SYSTEM_ADMIN)

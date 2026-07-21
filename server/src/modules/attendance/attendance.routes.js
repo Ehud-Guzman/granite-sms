@@ -1,7 +1,8 @@
 // src/modules/attendance/attendance.routes.js
 import { Router } from "express";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
-import { requireSchool, requireAttendanceWrite } from "./attendance.permissions.js";
+import { tenantContext, requireTenant } from "../../middleware/tenant.js";
+import { requireAttendanceWrite } from "./attendance.permissions.js";
 
 import {
   createOrOpenSession,
@@ -18,8 +19,9 @@ import {
 
 const router = Router();
 
-// Must be authenticated + have schoolId
-router.use(requireAuth, requireSchool);
+// Must be authenticated + DB-verified tenant context (active user, active school).
+// tenantContext sets req.schoolId (DB truth); requireTenant enforces its presence.
+router.use(requireAuth, tenantContext, requireTenant);
 
 // READ endpoints (allow ADMIN/TEACHER)
 router.get("/sessions", requireRole("ADMIN", "TEACHER"), list);

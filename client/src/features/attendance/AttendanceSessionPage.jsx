@@ -384,6 +384,14 @@ export default function AttendanceSessionPage() {
                               >
                                 Late
                               </Button>
+                              <Button
+                                size="sm"
+                                variant={r.status === "EXCUSED" ? "default" : "outline"}
+                                onClick={() => setStatus(r.studentId, "EXCUSED")}
+                                disabled={disableEdits}
+                              >
+                                Excused
+                              </Button>
                             </div>
 
                             <div className="flex gap-2 items-center">

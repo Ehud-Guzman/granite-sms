@@ -32,6 +32,7 @@ export default function ReportsPage() {
 
   const canSeeAcademic = role === "ADMIN";
   const canSeeFees = role === "ADMIN" || role === "BURSAR";
+  const canSeeAttendance = role === "ADMIN" || role === "TEACHER";
 
   // If user lands on /app/reports directly (or /app/reports/),
   // redirect to the best allowed section to avoid "blank outlet" feeling.
@@ -41,6 +42,7 @@ export default function ReportsPage() {
   if (atRoot) {
     if (canSeeFees) return <Navigate to="/app/reports/fees/summary" replace />;
     if (canSeeAcademic) return <Navigate to="/app/reports/academic" replace />;
+    if (canSeeAttendance) return <Navigate to="/app/reports/attendance/summary" replace />;
     // Should never happen because App.jsx already guards /reports,
     // but keep as a safe fallback:
     return <Navigate to="/app/dashboard" replace />;
@@ -67,8 +69,10 @@ export default function ReportsPage() {
 
           {canSeeFees && <Tab to="/app/reports/fees/summary">Finance (Fees)</Tab>}
 
+          {canSeeAttendance && <Tab to="/app/reports/attendance/summary">Attendance</Tab>}
+
           {/* If somehow no tabs are available */}
-          {!canSeeAcademic && !canSeeFees && (
+          {!canSeeAcademic && !canSeeFees && !canSeeAttendance && (
             <div className="text-sm text-muted-foreground">
               No report sections are available for your role.
             </div>

@@ -1,5 +1,7 @@
 // src/modules/attendance/attendance.controller.js
 
+import { prisma } from "../../lib/prisma.js";
+import { exportCSV, exportXLSX } from "../../utils/export.js";
 import {
   upsertSessionAndEnsureRecords,
   getSessionWithRecords,
@@ -85,14 +87,22 @@ export async function getSession(req, res) {
 export async function list(req, res) {
   try {
     const schoolId = req.schoolId || req.user.schoolId;
-    const { classId, from, to } = req.query;
+    const { classId, from, to, date, status } = req.query;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
 
     const fromD = from ? parseISODateOnly(from) : null;
     const toD = to ? parseISODateOnly(to) : null;
+    const dateD = date ? parseISODateOnly(date) : null;
 
-    const sessions = await listSessions({ schoolId, classId, from: fromD, to: toD });
+    const sessions = await listSessions({
+      schoolId,
+      classId,
+      from: fromD,
+      to: toD,
+      date: dateD,
+      status: status || null,
+    });
     return res.json(sessions);
   } catch (err) {
     return res.status(err.statusCode || 400).json({ message: err.message });
@@ -188,7 +198,7 @@ export async function classSummary(req, res) {
   try {
     const schoolId = req.schoolId || req.user.schoolId;
     const classId = req.params.classId;
-    const { from, to } = req.query;
+    const { from, to, export: exportType } = req.query;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
 
@@ -196,6 +206,43 @@ export async function classSummary(req, res) {
     const toD = to ? parseISODateOnly(to) : null;
 
     const data = await summaryClass({ schoolId, classId, from: fromD, to: toD });
+
+    if (exportType === "csv" || exportType === "xlsx") {
+      const classRow = await prisma.class.findFirst({
+        where: { id: classId, schoolId },
+        select: { name: true, stream: true },
+      });
+      const fileBase = `attendance-summary-${classRow?.name || classId}`
+        .replace(/\s+/g, "-")
+        .toLowerCase();
+      const rows = data.days.map((d) => ({
+        date: new Date(d.date).toISOString().slice(0, 10),
+        present: d.present,
+        absent: d.absent,
+        late: d.late,
+        excused: d.excused,
+        total: d.total,
+        attendanceRatePct: d.attendanceRatePct,
+      }));
+
+      if (exportType === "csv") return exportCSV(res, fileBase, rows);
+      return exportXLSX(
+        res,
+        fileBase,
+        "Attendance Summary",
+        [
+          { header: "Date", key: "date", width: 14 },
+          { header: "Present", key: "present", width: 10 },
+          { header: "Absent", key: "absent", width: 10 },
+          { header: "Late", key: "late", width: 10 },
+          { header: "Excused", key: "excused", width: 10 },
+          { header: "Total", key: "total", width: 10 },
+          { header: "Rate %", key: "attendanceRatePct", width: 10 },
+        ],
+        rows
+      );
+    }
+
     return res.json(data);
   } catch (err) {
     return res.status(err.statusCode || 400).json({ message: err.message });
@@ -205,7 +252,7 @@ export async function classSummary(req, res) {
 export async function defaultersList(req, res) {
   try {
     const schoolId = req.schoolId || req.user.schoolId;
-    const { classId, from, to, minAbsences } = req.query;
+    const { classId, from, to, minAbsences, export: exportType } = req.query;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
     if (!classId) return res.status(400).json({ message: "classId is required" });
@@ -220,6 +267,29 @@ export async function defaultersList(req, res) {
       to: toD,
       minAbsences: minAbsences ?? 5,
     });
+
+    if (exportType === "csv" || exportType === "xlsx") {
+      const classRow = await prisma.class.findFirst({
+        where: { id: classId, schoolId },
+        select: { name: true, stream: true },
+      });
+      const fileBase = `attendance-defaulters-${classRow?.name || classId}`
+        .replace(/\s+/g, "-")
+        .toLowerCase();
+
+      if (exportType === "csv") return exportCSV(res, fileBase, data);
+      return exportXLSX(
+        res,
+        fileBase,
+        "Defaulters",
+        [
+          { header: "Admission No", key: "admissionNo", width: 14 },
+          { header: "Name", key: "name", width: 22 },
+          { header: "Absences", key: "absences", width: 12 },
+        ],
+        data
+      );
+    }
 
     return res.json(data);
   } catch (err) {

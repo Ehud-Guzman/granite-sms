@@ -67,3 +67,45 @@ export async function attendanceDefaulters(params = {}) {
   const { data } = await api.get(`/api/attendance/defaulters`, { params });
   return data;
 }
+
+function pickFilenameFromDisposition(disposition, fallback) {
+  try {
+    if (!disposition) return fallback;
+    const m = /filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i.exec(disposition);
+    if (!m?.[1]) return fallback;
+    return decodeURIComponent(m[1]);
+  } catch {
+    return fallback;
+  }
+}
+
+async function downloadReport(path, params, format, fallbackBase) {
+  const res = await api.get(path, {
+    params: { ...params, export: format },
+    responseType: "blob",
+  });
+
+  const ext = format === "xlsx" ? "xlsx" : "csv";
+  const fallback = `${fallbackBase}.${ext}`;
+  const filename = pickFilenameFromDisposition(res.headers?.["content-disposition"], fallback);
+
+  const blob = new Blob([res.data], { type: res.headers?.["content-type"] || undefined });
+  const url = window.URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export function exportAttendanceClassSummary(classId, params, format) {
+  return downloadReport(`/api/attendance/summary/class/${classId}`, params, format, "attendance-summary");
+}
+
+export function exportAttendanceDefaulters(params, format) {
+  return downloadReport("/api/attendance/defaulters", params, format, "attendance-defaulters");
+}

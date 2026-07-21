@@ -41,6 +41,8 @@ import ClassPerformanceReport from "@/features/reports/academic/ClassPerformance
 import FeesSummaryReport from "@/features/reports/fees/FeesSummaryReport.jsx";
 import FeesDefaultersReport from "@/features/reports/fees/FeesDefaultersReport.jsx";
 import FeesCollectionsReport from "@/features/reports/fees/FeesCollectionsReport.jsx";
+import AttendanceSummaryReport from "@/features/reports/attendance/AttendanceSummaryReport.jsx";
+import AttendanceDefaultersReport from "@/features/reports/attendance/AttendanceDefaultersReport.jsx";
 
 // Select School
 import SelectSchoolPage from "./pages/SelectSchoolPage.jsx";
@@ -70,8 +72,9 @@ const ADMIN_OR_SYSTEM = [R.ADMIN, R.SYSTEM_ADMIN];
 const ADMIN_OR_TEACHER = [R.ADMIN, R.TEACHER];
 const ADMIN_TEACHER_STUDENT = [R.ADMIN, R.TEACHER, R.STUDENT];
 const FEES_ACCESS = [R.ADMIN, R.BURSAR, R.STUDENT];
-const REPORTS_ACCESS = [R.ADMIN, R.BURSAR];
+const REPORTS_ACCESS = [R.ADMIN, R.BURSAR, R.TEACHER];
 const FINANCE_REPORTS_ACCESS = [R.ADMIN, R.BURSAR];
+const ATTENDANCE_REPORTS_ACCESS = [R.ADMIN, R.TEACHER];
 
 export default function App() {
   return (
@@ -272,6 +275,23 @@ export default function App() {
               element={
                 <RoleGuard allow={FINANCE_REPORTS_ACCESS}>
                   <FeesCollectionsReport />
+                </RoleGuard>
+              }
+            />
+
+            <Route
+              path="attendance/summary"
+              element={
+                <RoleGuard allow={ATTENDANCE_REPORTS_ACCESS}>
+                  <AttendanceSummaryReport />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="attendance/defaulters"
+              element={
+                <RoleGuard allow={ATTENDANCE_REPORTS_ACCESS}>
+                  <AttendanceDefaultersReport />
                 </RoleGuard>
               }
             />

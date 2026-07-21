@@ -170,6 +170,28 @@ export async function bulkUpdateRecords({ schoolId, sessionId, editorUserId, rec
       });
 
       const byStudentId = new Map(existingRecords.map((x) => [x.studentId, x]));
+
+      // Tenant/roster guard: any studentId with no existing record for this
+      // session is about to be CREATEd below — verify it's actually an
+      // active student in this session's class first, so a crafted payload
+      // can't plant an AttendanceRecord for an arbitrary/foreign id.
+      const newIds = [...new Set(studentIds)].filter((id) => !byStudentId.has(id));
+      if (newIds.length) {
+        const roster = await tx.student.findMany({
+          where: { schoolId, classId: session.classId, id: { in: newIds }, isActive: true },
+          select: { id: true },
+        });
+        const rosterIds = new Set(roster.map((s) => s.id));
+        const invalidIds = newIds.filter((id) => !rosterIds.has(id));
+        if (invalidIds.length) {
+          const err = new Error(
+            `Invalid studentId(s) for this class: ${invalidIds.join(", ")}`
+          );
+          err.statusCode = 400;
+          throw err;
+        }
+      }
+
       const CHUNK = 40;
 
       for (let i = 0; i < records.length; i += CHUNK) {
@@ -376,12 +398,25 @@ export async function lockSession({ schoolId, sessionId, editorUserId }) {
   return updated;
 }
 
-export async function listSessions({ schoolId, classId, from, to }) {
+export async function listSessions({ schoolId, classId, from, to, date, status }) {
+  let statusFilter;
+  if (status) {
+    if (!Object.values(AttendanceSessionStatus).includes(status)) {
+      const err = new Error(
+        `Invalid status. Allowed: ${Object.values(AttendanceSessionStatus).join(", ")}`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+    statusFilter = status;
+  }
+
   return prisma.attendanceSession.findMany({
     where: {
       schoolId,
       classId: classId || undefined,
-      date: { gte: from || undefined, lte: to || undefined },
+      status: statusFilter,
+      date: date ? date : { gte: from || undefined, lte: to || undefined },
     },
     orderBy: { date: "desc" },
   });

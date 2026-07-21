@@ -78,12 +78,11 @@ export default function AttendancePage() {
   );
 
   const sessionsQ = useQuery({
-    queryKey: ["attendanceSessions", { classId, date, term, status: status || null }],
+    queryKey: ["attendanceSessions", { classId, date, status: status || null }],
     queryFn: () =>
       listAttendanceSessions({
         classId,
         date,
-        term,
         status: status || undefined,
       }),
     enabled: !!classId,

@@ -11,7 +11,6 @@ import FeePlansTab from "../fees/tabs/FeePlansTab";
 import InvoicesTab from "../fees/tabs/InvoicesTab";
 import FeeCashierTab from "../fees/tabs/FeeCashierTab";
 import StudentStatementTab from "../fees/tabs/StudentStatementTab";
-import ReportsTab from "../fees/tabs/ReportsTab";
 
 // Print target (mounted once)
 import ReceiptPrint from "./print/ReceiptPrint";
@@ -36,7 +35,6 @@ const TAB = {
   INVOICES: "invoices",
   CASHIER: "cashier",
   STUDENT: "student",
-  REPORTS: "reports",
 };
 
 function getAllowedTabsByRole(role) {
@@ -49,7 +47,6 @@ function getAllowedTabsByRole(role) {
       TAB.INVOICES,
       TAB.CASHIER,
       TAB.STUDENT,
-      TAB.REPORTS,
     ];
   }
 
@@ -60,7 +57,6 @@ function getAllowedTabsByRole(role) {
       TAB.INVOICES,
       TAB.CASHIER,
       TAB.STUDENT,
-      TAB.REPORTS,
     ];
   }
 
@@ -168,7 +164,6 @@ export default function FeesPage() {
       )}
 
       {tab === TAB.STUDENT && <StudentStatementTab />}
-      {tab === TAB.REPORTS && <ReportsTab />}
 
       {/* Print target mounted ONCE */}
       <ReceiptPrint receipt={receiptToPrint} />

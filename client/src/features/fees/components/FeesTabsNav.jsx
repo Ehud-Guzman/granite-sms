@@ -16,9 +16,6 @@ const ALL_TABS = [
   { key: "invoices", label: "Invoices" },
   { key: "cashier", label: "Receive Payment" },
   { key: "student", label: "Student Statement" },
-
-  // Reports / Audit
-  { key: "reports", label: "Reports" },
 ];
 
 export default function FeesTabsNav({

@@ -41,6 +41,14 @@ export async function createFeePlan(payload) {
   const { data } = await api.post("/api/fees/plans", payload);
   return data;
 }
+export async function updateFeePlan(id, payload) {
+  const { data } = await api.patch(`/api/fees/plans/${id}`, payload);
+  return data;
+}
+export async function deactivateFeePlan(id) {
+  const { data } = await api.delete(`/api/fees/plans/${id}`);
+  return data;
+}
 
 // --------------------
 // Invoices
@@ -56,6 +64,10 @@ export async function getFeeInvoice(id) {
 export async function generateInvoice(payload) {
   const { data } = await api.post("/api/fees/invoices/generate", payload);
   return data;
+}
+export async function generateInvoicesBulk(payload) {
+  const { data } = await api.post("/api/fees/invoices/generate-bulk", payload);
+  return data; // { createdCount, skippedCount, created, skipped }
 }
 
 // --------------------
@@ -102,6 +114,11 @@ export async function reverseFeePayment(paymentId, payload) {
 
 export async function voidFeeInvoice(invoiceId, payload) {
   const { data } = await api.post(`/api/fees/invoices/${invoiceId}/void`, payload);
+  return data;
+}
+
+export async function applyInvoiceDiscount(invoiceId, payload) {
+  const { data } = await api.post(`/api/fees/invoices/${invoiceId}/discount`, payload);
   return data;
 }
 

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { getFeesCollections } from "@/api/feesReports.api";
+import { getFeesCollections, exportFeesCollections } from "@/api/feesReports.api";
 import { printSection } from "@/lib/print";
 import { fmtMoney, fmtDateTime } from "../utils/format";
 
@@ -70,6 +70,20 @@ export default function FeesCollectionsReport() {
   const showHint = !report && !isLoading && !error;
   const payments = report?.payments || [];
 
+  const [exporting, setExporting] = useState(false);
+  const doExport = async (format) => {
+    if (!params) return;
+    setExporting(true);
+    try {
+      await exportFeesCollections(params, format);
+    } catch (err) {
+      console.error("EXPORT FEES COLLECTIONS ERROR:", err);
+      alert("Export failed. Check your network and try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* top bar */}
@@ -82,6 +96,20 @@ export default function FeesCollectionsReport() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => doExport("csv")}
+            disabled={!canPrint || exporting}
+          >
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => doExport("xlsx")}
+            disabled={!canPrint || exporting}
+          >
+            Export Excel
+          </Button>
           <Button
             variant="outline"
             onClick={() => printSection("print-fees-collections")}

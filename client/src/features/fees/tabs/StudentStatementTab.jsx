@@ -35,6 +35,7 @@ export default function StudentStatementTab() {
   // ✅ Normalize summary so UI never crashes
   const summary = summaryQ.data ?? null;
   const total = summary?.total ?? 0;
+  const discount = summary?.discount ?? 0;
   const paid = summary?.paid ?? 0;
   const balance = summary?.balance ?? 0;
   const count = summary?.count ?? 0;
@@ -107,6 +108,11 @@ export default function StudentStatementTab() {
                   <div>
                     Total billed: <b>{money(total)}</b>
                   </div>
+                  {!!discount && (
+                    <div>
+                      Discount: <b>{money(discount)}</b>
+                    </div>
+                  )}
                   <div>
                     Total paid: <b>{money(paid)}</b>
                   </div>

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { listClasses } from "@/api/classes.api";
-import { getFeesDefaulters } from "@/api/feesReports.api";
+import { getFeesDefaulters, exportFeesDefaulters } from "@/api/feesReports.api";
 import { printSection } from "@/lib/print";
 import { normalizeArray, fmtClass, fmtMoney, fmtStudentName } from "../utils/format";
 
@@ -65,6 +65,20 @@ export default function FeesDefaultersReport() {
     selectedClass ? fmtClass(selectedClass) : `Class ${String(classId)}`
   } • ${term} ${year} • Min Balance: ${minBalance}`;
 
+  const [exporting, setExporting] = useState(false);
+  const doExport = async (format) => {
+    if (!params) return;
+    setExporting(true);
+    try {
+      await exportFeesDefaulters(params, format);
+    } catch (err) {
+      console.error("EXPORT FEES DEFAULTERS ERROR:", err);
+      alert("Export failed. Check your network and try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* top bar */}
@@ -77,6 +91,20 @@ export default function FeesDefaultersReport() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => doExport("csv")}
+            disabled={!report || exporting}
+          >
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => doExport("xlsx")}
+            disabled={!report || exporting}
+          >
+            Export Excel
+          </Button>
           <Button
             variant="outline"
             onClick={() => printSection("print-fees-defaulters")}

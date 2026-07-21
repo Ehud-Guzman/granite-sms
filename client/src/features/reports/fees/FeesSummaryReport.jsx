@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { listClasses } from "@/api/classes.api";
-import { getFeesClassSummary } from "@/api/feesReports.api";
+import { getFeesClassSummary, exportFeesClassSummary } from "@/api/feesReports.api";
 import { printSection } from "@/lib/print";
 import { normalizeArray, fmtClass, fmtMoney } from "../utils/format";
 
@@ -76,6 +76,20 @@ export default function FeesSummaryReport() {
     selectedClass ? fmtClass(selectedClass) : classId ? `Class ${classId}` : "-"
   } • ${term} ${year}`;
 
+  const [exporting, setExporting] = useState(false);
+  const doExport = async (format) => {
+    if (!params) return;
+    setExporting(true);
+    try {
+      await exportFeesClassSummary(params, format);
+    } catch (err) {
+      console.error("EXPORT FEES CLASS SUMMARY ERROR:", err);
+      alert("Export failed. Check your network and try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -87,13 +101,29 @@ export default function FeesSummaryReport() {
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          onClick={() => printSection("print-fees-summary")}
-          disabled={!report}
-        >
-          Print
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => doExport("csv")}
+            disabled={!report || exporting}
+          >
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => doExport("xlsx")}
+            disabled={!report || exporting}
+          >
+            Export Excel
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => printSection("print-fees-summary")}
+            disabled={!report}
+          >
+            Print
+          </Button>
+        </div>
       </div>
 
       <FinanceNav />

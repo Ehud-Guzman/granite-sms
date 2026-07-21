@@ -445,6 +445,11 @@ model FeeInvoice {
   paid    Int @default(0)
   balance Int @default(0)
 
+  discount       Int       @default(0)
+  discountReason String?
+  discountedBy   String?
+  discountedAt   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

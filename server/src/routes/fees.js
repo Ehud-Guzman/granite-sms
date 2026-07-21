@@ -6,7 +6,7 @@ import PDFDocument from "pdfkit";
 import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
-import { loadSubscription, requireEntitlement } from "../middleware/subscription.js";
+import { loadSubscription, requireEntitlement, requireEntitlementRead } from "../middleware/subscription.js";
 import { logAudit, actorCtx } from "../utils/audit.js";
 import { exportCSV, exportXLSX } from "../utils/export.js";
 import { toInt, toNumber } from "../utils/validate.js";
@@ -34,12 +34,45 @@ function normalizePaymentMethod(method) {
 }
 
 
-function computeInvoiceStatus(total, paid) {
+function computeInvoiceStatus(total, paid, discount = 0) {
   const t = Math.max(Number(total) || 0, 0);
+  const d = Math.max(Number(discount) || 0, 0);
+  const payable = Math.max(t - d, 0);
   const p = Math.max(Number(paid) || 0, 0);
-  const balance = Math.max(t - p, 0);
+  const balance = Math.max(payable - p, 0);
   const status = balance === 0 ? "PAID" : p > 0 ? "PARTIALLY_PAID" : "ISSUED";
   return { balance, status };
+}
+
+/**
+ * Creates a single FeeInvoice (+ lines) from a FeePlan, inside the given
+ * prisma client (pass `tx` inside a $transaction, or `prisma` standalone).
+ * Shared by both the single-student and bulk invoice generation routes.
+ */
+async function createInvoiceForStudent(client, { schoolId, studentId, classId, year, term, plan }) {
+  const total = (plan.items || []).reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+
+  return client.feeInvoice.create({
+    data: {
+      schoolId,
+      studentId: String(studentId),
+      classId: String(classId),
+      year: Number(year),
+      term: String(term),
+      invoiceNo: makeInvoiceNo(),
+      status: "ISSUED",
+      total,
+      paid: 0,
+      balance: total,
+      lines: {
+        create: plan.items.map((it) => ({
+          feeItemId: it.feeItemId,
+          amount: it.amount,
+        })),
+      },
+    },
+    include: { lines: true },
+  });
 }
 
 function randToken(bytes) {
@@ -78,16 +111,6 @@ async function feesAudit(req, { schoolId, action, targetType, targetId, metadata
     targetId: targetId ? String(targetId) : null,
     metadata: metadata ?? null,
   });
-}
-
-/* --------------------------------------
- * Subscription gating for specific reports
- * -------------------------------------- */
-function requireSubscriptionForReports(req, res, next) {
-  if (!req.subscription) {
-    return res.status(402).json({ message: "Subscription required.", mode: "READ_ONLY" });
-  }
-  return next();
 }
 
 /* --------------------------------------
@@ -313,6 +336,7 @@ router.get("/plans", requireRole("ADMIN"), async (req, res) => {
   const classId = req.query?.classId ? String(req.query.classId) : null;
   const year = toInt(req.query?.year, null);
   const term = req.query?.term ? String(req.query.term) : null;
+  const includeInactive = String(req.query?.includeInactive || "") === "1";
 
   const plans = await prisma.feePlan.findMany({
     where: {
@@ -320,6 +344,7 @@ router.get("/plans", requireRole("ADMIN"), async (req, res) => {
       classId: classId || undefined,
       year: year ?? undefined,
       term: term || undefined,
+      isActive: includeInactive ? undefined : true,
     },
     include: { items: { include: { feeItem: true } } },
     orderBy: { createdAt: "desc" },
@@ -393,6 +418,107 @@ router.post(
         message: "Plan already exists for class/year/term OR invalid input.",
       });
     }
+  }
+);
+
+router.patch(
+  "/plans/:id",
+  requireRole("ADMIN"),
+  requireEntitlement("FEES_WRITE"),
+  async (req, res) => {
+    const { id } = req.params;
+    const { title, isActive, items } = req.body || {};
+
+    const existing = await prisma.feePlan.findFirst({
+      where: { id: String(id), schoolId: req.schoolId },
+    });
+    if (!existing) return res.status(404).json({ message: "Fee plan not found." });
+
+    if (items !== undefined) {
+      if (!Array.isArray(items) || items.length < 1) {
+        return res.status(400).json({ message: "items[] must be a non-empty array." });
+      }
+
+      const feeItemIds = items.map((it) => String(it.feeItemId));
+      if (new Set(feeItemIds).size !== feeItemIds.length) {
+        return res.status(400).json({ message: "Duplicate feeItemId in items[]." });
+      }
+
+      const validItems = await prisma.feeItem.findMany({
+        where: { id: { in: feeItemIds }, schoolId: req.schoolId, isActive: true },
+        select: { id: true },
+      });
+      const validSet = new Set(validItems.map((x) => x.id));
+      const bad = feeItemIds.filter((fid) => !validSet.has(fid));
+      if (bad.length) {
+        return res.status(400).json({ message: `Invalid feeItemId(s): ${bad.join(", ")}` });
+      }
+    }
+
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        if (items !== undefined) {
+          await tx.feePlanItem.deleteMany({ where: { feePlanId: existing.id } });
+        }
+
+        return tx.feePlan.update({
+          where: { id: existing.id },
+          data: {
+            title: title !== undefined ? (title ? String(title) : null) : undefined,
+            isActive: isActive !== undefined ? Boolean(isActive) : undefined,
+            items:
+              items !== undefined
+                ? {
+                    create: items.map((it) => ({
+                      feeItemId: String(it.feeItemId),
+                      amount: Number(it.amount),
+                      required: it.required !== undefined ? Boolean(it.required) : true,
+                    })),
+                  }
+                : undefined,
+          },
+          include: { items: { include: { feeItem: true } } },
+        });
+      });
+
+      await feesAudit(req, {
+        action: "FEES_PLAN_UPDATED",
+        targetType: "FEE_PLAN",
+        targetId: id,
+        metadata: { before: existing, itemsReplaced: items !== undefined },
+      });
+
+      return res.json(updated);
+    } catch (err) {
+      console.error("UPDATE PLAN ERROR:", err);
+      return res.status(409).json({ message: "Update failed (duplicate fee item?)" });
+    }
+  }
+);
+
+router.delete(
+  "/plans/:id",
+  requireRole("ADMIN"),
+  requireEntitlement("FEES_WRITE"),
+  async (req, res) => {
+    const { id } = req.params;
+
+    const updated = await prisma.feePlan.updateMany({
+      where: { id: String(id), schoolId: req.schoolId },
+      data: { isActive: false },
+    });
+
+    if (updated.count === 0) {
+      return res.status(404).json({ message: "Fee plan not found." });
+    }
+
+    await feesAudit(req, {
+      action: "FEES_PLAN_DEACTIVATED",
+      targetType: "FEE_PLAN",
+      targetId: id,
+    });
+
+    return res.json({ message: "Fee plan deactivated." });
   }
 );
 
@@ -506,56 +632,24 @@ router.post(
     });
     if (!plan) return res.status(404).json({ message: "Fee plan not found." });
 
-    const total = (plan.items || []).reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
-
     try {
-      const invoice = await prisma.feeInvoice.create({
-        data: {
-          schoolId: req.schoolId,
-          studentId: String(studentId),
-          classId: String(classId),
-          year: y,
-          term: String(term),
-          invoiceNo: makeInvoiceNo(), // ok if your schema has it; ignored if not mapped
-          status: "ISSUED",
-          total,
-          paid: 0,
-          balance: total,
-          lines: {
-            create: plan.items.map((it) => ({
-              feeItemId: it.feeItemId,
-              amount: it.amount,
-            })),
-          },
-        },
-        include: {
-          lines: true,
-          payments: {
-            orderBy: { receivedAt: "desc" },
-            select: {
-              id: true,
-              amount: true,
-              method: true,
-              reference: true,
-              receiptNo: true,
-              receivedAt: true,
-              isReversed: true,
-              reversedAt: true,
-              reversalReason: true,
-              createdAt: true,
-            },
-          },
-        },
+      const invoice = await createInvoiceForStudent(prisma, {
+        schoolId: req.schoolId,
+        studentId,
+        classId,
+        year: y,
+        term,
+        plan,
       });
 
       await feesAudit(req, {
         action: "FEES_INVOICE_GENERATED",
         targetType: "FEE_INVOICE",
         targetId: invoice.id,
-        metadata: { studentId, classId, year: y, term, total },
+        metadata: { studentId, classId, year: y, term, total: invoice.total },
       });
 
-      return res.status(201).json(invoice);
+      return res.status(201).json({ ...invoice, payments: [] });
     } catch (err) {
       if (err?.code === "P2002") {
         return res.status(409).json({
@@ -563,6 +657,126 @@ router.post(
         });
       }
       console.error("GENERATE INVOICE ERROR:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  }
+);
+
+router.post(
+  "/invoices/generate-bulk",
+  requireRole("ADMIN"),
+  requireEntitlement("FEES_WRITE"),
+  async (req, res) => {
+    const { classId, year, term, feePlanId } = req.body || {};
+    const y = toInt(year, null);
+
+    if (!classId || !y || !term || !feePlanId) {
+      return res.status(400).json({
+        message: "classId, year, term, feePlanId are required.",
+      });
+    }
+
+    const classRow = await prisma.class.findFirst({
+      where: { id: String(classId), schoolId: req.schoolId },
+      select: { id: true },
+    });
+    if (!classRow) return res.status(400).json({ message: "Invalid classId" });
+
+    const plan = await prisma.feePlan.findFirst({
+      where: { id: String(feePlanId), schoolId: req.schoolId },
+      include: { items: true },
+    });
+    if (!plan) return res.status(404).json({ message: "Fee plan not found." });
+
+    const students = await prisma.student.findMany({
+      where: { schoolId: req.schoolId, classId: String(classId), isActive: true },
+      select: { id: true, admissionNo: true, firstName: true, lastName: true },
+    });
+
+    if (!students.length) {
+      return res.status(400).json({ message: "No active students found in this class." });
+    }
+
+    // Pre-check which students are already invoiced for this year/term so we can
+    // skip them up front. NOTE: each invoice below is created via its own call
+    // (not one shared $transaction) — on Postgres, a unique-constraint error
+    // inside a shared interactive transaction aborts the whole transaction, so
+    // "catch P2002 and keep looping" would silently break after the first skip.
+    const existing = await prisma.feeInvoice.findMany({
+      where: {
+        schoolId: req.schoolId,
+        studentId: { in: students.map((s) => s.id) },
+        year: y,
+        term: String(term),
+      },
+      select: { studentId: true },
+    });
+    const alreadyInvoiced = new Set(existing.map((e) => e.studentId));
+
+    const created = [];
+    const skipped = [];
+
+    try {
+      for (const student of students) {
+        if (alreadyInvoiced.has(student.id)) {
+          skipped.push({
+            studentId: student.id,
+            admissionNo: student.admissionNo,
+            reason: "Invoice already exists for that student/year/term.",
+          });
+          continue;
+        }
+
+        try {
+          const invoice = await createInvoiceForStudent(prisma, {
+            schoolId: req.schoolId,
+            studentId: student.id,
+            classId,
+            year: y,
+            term,
+            plan,
+          });
+          created.push({
+            studentId: student.id,
+            admissionNo: student.admissionNo,
+            invoiceId: invoice.id,
+            total: invoice.total,
+          });
+        } catch (err) {
+          if (err?.code === "P2002") {
+            skipped.push({
+              studentId: student.id,
+              admissionNo: student.admissionNo,
+              reason: "Invoice already exists for that student/year/term.",
+            });
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      await feesAudit(req, {
+        action: "FEES_INVOICES_BULK_GENERATED",
+        targetType: "CLASS",
+        targetId: classId,
+        metadata: {
+          classId: String(classId),
+          year: y,
+          term: String(term),
+          feePlanId: String(feePlanId),
+          createdCount: created.length,
+          skippedCount: skipped.length,
+        },
+      });
+
+      return res.status(201).json({
+        createdCount: created.length,
+        skippedCount: skipped.length,
+        created,
+        skipped,
+      });
+    } catch (err) {
+      console.error("BULK GENERATE INVOICE ERROR:", err);
       return res.status(500).json({ message: "Server error" });
     }
   }
@@ -627,6 +841,88 @@ router.post(
   }
 );
 
+/**
+ * Sets the invoice's discount to an absolute amount (not additive) — e.g. a
+ * bursary or sibling waiver. Balance/status are recomputed against
+ * (total - discount). Reapplying with a new amount replaces the prior one.
+ */
+router.post(
+  "/invoices/:id/discount",
+  requireRole("ADMIN"),
+  requireEntitlement("FEES_WRITE"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const reason = String(req.body?.reason || "").trim();
+      const amt = toNumber(req.body?.amount, null);
+
+      if (!reason) return res.status(400).json({ message: "Discount reason is required." });
+      if (!Number.isFinite(amt) || amt < 0) {
+        return res.status(400).json({ message: "amount must be a number >= 0." });
+      }
+      if (!Number.isInteger(amt)) {
+        return res.status(400).json({ message: "amount must be a whole number." });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const invoice = await tx.feeInvoice.findFirst({
+          where: { id: String(id), schoolId: req.schoolId },
+        });
+        if (!invoice) {
+          const e = new Error("Invoice not found.");
+          e.status = 404;
+          throw e;
+        }
+
+        if (invoice.status === "VOID") {
+          const e = new Error("Cannot discount a VOID invoice.");
+          e.status = 400;
+          throw e;
+        }
+
+        const maxDiscount = Math.max(Number(invoice.total || 0) - Number(invoice.paid || 0), 0);
+        if (amt > maxDiscount) {
+          const e = new Error(
+            `Discount cannot exceed ${maxDiscount} (total minus amount already paid).`
+          );
+          e.status = 400;
+          throw e;
+        }
+
+        const { balance: newBalance, status: newStatus } = computeInvoiceStatus(
+          invoice.total,
+          invoice.paid,
+          amt
+        );
+
+        return tx.feeInvoice.update({
+          where: { id: invoice.id },
+          data: {
+            discount: amt,
+            discountReason: reason,
+            discountedBy: req.user?.id || null,
+            discountedAt: new Date(),
+            balance: newBalance,
+            status: newStatus,
+          },
+        });
+      });
+
+      await feesAudit(req, {
+        action: "FEES_INVOICE_DISCOUNTED",
+        targetType: "FEE_INVOICE",
+        targetId: id,
+        metadata: { amount: amt, reason },
+      });
+
+      return res.json({ message: "Discount applied successfully.", invoice: result });
+    } catch (err) {
+      console.error("DISCOUNT INVOICE ERROR:", err);
+      return res.status(err?.status || 500).json({ message: err?.message || "Server error" });
+    }
+  }
+);
+
 /* --------------------
  * Student summary / statement
  * --------------------
@@ -672,12 +968,13 @@ router.get(
     const summary = invoices.reduce(
       (acc, inv) => {
         acc.total += Number(inv.total || 0);
+        acc.discount += Number(inv.discount || 0);
         acc.paid += Number(inv.paid || 0);
         acc.balance += Number(inv.balance || 0);
         acc.count += 1;
         return acc;
       },
-      { total: 0, paid: 0, balance: 0, count: 0 }
+      { total: 0, discount: 0, paid: 0, balance: 0, count: 0 }
     );
 
     await feesAudit(req, {
@@ -789,12 +1086,13 @@ router.get(
       const totals = invoices.reduce(
         (acc, inv) => {
           acc.totalBilled += Number(inv.total || 0);
+          acc.totalDiscount += Number(inv.discount || 0);
           acc.totalPaid += Number(inv.paid || 0);
           acc.totalBalance += Number(inv.balance || 0);
           acc.invoiceCount += 1;
           return acc;
         },
-        { totalBilled: 0, totalPaid: 0, totalBalance: 0, invoiceCount: 0 }
+        { totalBilled: 0, totalDiscount: 0, totalPaid: 0, totalBalance: 0, invoiceCount: 0 }
       );
 
       await feesAudit(req, {
@@ -904,7 +1202,11 @@ router.post(
         });
 
         const newPaid = Number(invoice.paid || 0) + amt;
-        const { balance: newBalance, status: newStatus } = computeInvoiceStatus(invoice.total, newPaid);
+        const { balance: newBalance, status: newStatus } = computeInvoiceStatus(
+          invoice.total,
+          newPaid,
+          invoice.discount
+        );
 
         const updatedInvoice = await tx.feeInvoice.update({
           where: { id: invoice.id },
@@ -976,7 +1278,11 @@ router.post(
         }
 
         const newPaid = Math.max(Number(invoice.paid || 0) - Number(payment.amount || 0), 0);
-        const { balance: newBalance, status: newStatus } = computeInvoiceStatus(invoice.total, newPaid);
+        const { balance: newBalance, status: newStatus } = computeInvoiceStatus(
+          invoice.total,
+          newPaid,
+          invoice.discount
+        );
 
         const reversedPayment = await tx.feePayment.update({
           where: { id: payment.id },
@@ -1056,6 +1362,7 @@ router.get("/payments/:id/receipt", requireRole("ADMIN", "BURSAR"), async (req, 
         year: payment.invoice.year,
         term: payment.invoice.term,
         total: payment.invoice.total,
+        discount: payment.invoice.discount,
         paid: payment.invoice.paid,
         balance: payment.invoice.balance,
         status: payment.invoice.status,
@@ -1137,6 +1444,7 @@ router.get("/payments/:id/receipt.pdf", requireRole("ADMIN", "BURSAR"), async (r
     doc.moveDown();
 
     doc.text(`Invoice Total: ${payment.invoice.total}`);
+    if (payment.invoice.discount) doc.text(`Discount: ${payment.invoice.discount}`);
     doc.text(`Total Paid: ${payment.invoice.paid}`);
     doc.text(`Balance: ${payment.invoice.balance}`);
     doc.moveDown();
@@ -1158,7 +1466,7 @@ router.get("/payments/:id/receipt.pdf", requireRole("ADMIN", "BURSAR"), async (r
 router.get(
   "/reports/class-summary",
   requireRole("ADMIN", "BURSAR"),
-  requireEntitlement("FEES_READ"),
+  requireEntitlementRead("FEES_READ"),
   async (req, res) => {
     try {
       const { classId, year, term, export: exportType } = req.query;
@@ -1285,7 +1593,7 @@ router.get(
 router.get(
   "/reports/defaulters",
   requireRole("ADMIN", "BURSAR"),
-  requireEntitlement("FEES_READ"),
+  requireEntitlementRead("FEES_READ"),
   async (req, res) => {
     try {
       const { classId, year, term, minBalance = 1, limit = 50, export: exportType } = req.query;
@@ -1422,8 +1730,7 @@ router.get(
 router.get(
   "/reports/collections",
   requireRole("ADMIN", "BURSAR"),
-  requireSubscriptionForReports,
-  requireEntitlement("FEES_READ"),
+  requireEntitlementRead("FEES_READ"),
   async (req, res) => {
     try {
       const { from, to, export: exportType } = req.query;

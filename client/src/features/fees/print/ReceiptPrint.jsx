@@ -47,6 +47,7 @@ function normalizeReceipt(raw) {
     (r.invoice?.id ? String(r.invoice.id).slice(0, 8).toUpperCase() : "");
 
   const invoiceTotal = Number(r.invoice?.total ?? r.invoiceTotal ?? 0);
+  const discount = Number(r.invoice?.discount ?? r.discount ?? 0);
   const paid = Number(r.invoice?.paid ?? r.totalPaid ?? 0);
   const balance = Number(r.invoice?.balance ?? r.balance ?? 0);
 
@@ -77,6 +78,7 @@ function normalizeReceipt(raw) {
     term,
     invoiceNo,
     invoiceTotal,
+    discount,
     paid,
     balance,
     receivedBy,
@@ -174,6 +176,13 @@ function A4Receipt({ r }) {
           <span>Invoice Total</span>
           <b>KSh {money(r.invoiceTotal)}</b>
         </div>
+
+        {!!r.discount && (
+          <div className="fees-a4__totalsRow">
+            <span>Discount</span>
+            <b>KSh {money(r.discount)}</b>
+          </div>
+        )}
 
         <div className="fees-a4__totalsRow">
           <span>Total Paid</span>

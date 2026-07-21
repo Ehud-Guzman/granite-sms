@@ -2,7 +2,13 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { listClasses } from "@/api/classes.api";
-import { listFeeItems, listFeePlans, createFeePlan } from "@/api/fees.api";
+import {
+  listFeeItems,
+  listFeePlans,
+  createFeePlan,
+  updateFeePlan,
+  deactivateFeePlan,
+} from "@/api/fees.api";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 
 import QueryBlock from "../components/QueryBlock";
+import SimpleModal from "../components/SimpleModal";
 import { money, toNumberOrZero } from "../components/FeeMoney";
 
 export default function FeePlansTab() {
@@ -51,6 +58,53 @@ export default function FeePlansTab() {
       qc.invalidateQueries({ queryKey: ["feePlans"] });
       setPlanLines([{ feeItemId: "", amount: 0, required: true }]);
       setTitle("");
+    },
+  });
+
+  // -------------------------
+  // Edit / deactivate a plan
+  // -------------------------
+  const [editingPlan, setEditingPlan] = useState(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editLines, setEditLines] = useState([]);
+
+  const editSelectedIds = useMemo(
+    () => editLines.map((l) => l.feeItemId).filter(Boolean),
+    [editLines]
+  );
+  const editTotal = useMemo(
+    () => editLines.reduce((sum, l) => sum + toNumberOrZero(l.amount), 0),
+    [editLines]
+  );
+  const canSaveEdit =
+    editLines.every((l) => l.feeItemId && toNumberOrZero(l.amount) > 0) &&
+    new Set(editSelectedIds).size === editSelectedIds.length;
+
+  const openEdit = (plan) => {
+    setEditingPlan(plan);
+    setEditTitle(plan.title || "");
+    setEditLines(
+      (plan.items || []).map((it) => ({
+        feeItemId: it.feeItemId,
+        amount: it.amount,
+        required: it.required,
+      }))
+    );
+  };
+  const closeEdit = () => setEditingPlan(null);
+
+  const updatePlanMut = useMutation({
+    mutationFn: ({ id, payload }) => updateFeePlan(id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["feePlans"] });
+      closeEdit();
+    },
+  });
+
+  const deactivatePlanMut = useMutation({
+    mutationFn: (id) => deactivateFeePlan(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["feePlans"] });
     },
   });
 
@@ -220,9 +274,26 @@ export default function FeePlansTab() {
                       <div className="font-medium">
                         {p.title || "Fee Plan"} • {p.term} {p.year}
                       </div>
-                      <Badge variant="outline" className="text-[10px]">
-                        {p.items?.length || 0} items
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px]">
+                          {p.items?.length || 0} items
+                        </Badge>
+                        <Button size="sm" variant="outline" onClick={() => openEdit(p)}>
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            if (window.confirm("Deactivate this fee plan?")) {
+                              deactivatePlanMut.mutate(p.id);
+                            }
+                          }}
+                          disabled={deactivatePlanMut.isPending}
+                        >
+                          Deactivate
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="mt-2 text-xs text-muted-foreground">
@@ -247,6 +318,133 @@ export default function FeePlansTab() {
           </QueryBlock>
         </CardContent>
       </Card>
+
+      <SimpleModal
+        title={`Edit plan${editingPlan ? ` — ${editingPlan.title || "Fee Plan"}` : ""}`}
+        open={!!editingPlan}
+        onClose={closeEdit}
+        footer={
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm text-muted-foreground">
+              Total: <span className="font-medium text-foreground">{money(editTotal)}</span>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={closeEdit}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() =>
+                  updatePlanMut.mutate({
+                    id: editingPlan.id,
+                    payload: {
+                      title: editTitle || null,
+                      items: editLines.map((l) => ({
+                        feeItemId: l.feeItemId,
+                        amount: Number(l.amount),
+                        required: !!l.required,
+                      })),
+                    },
+                  })
+                }
+                disabled={!canSaveEdit || updatePlanMut.isPending}
+              >
+                {updatePlanMut.isPending ? "Saving…" : "Save changes"}
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <Input
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            placeholder="Title (optional)"
+          />
+
+          <Separator />
+
+          <div className="space-y-2">
+            {editLines.map((l, idx) => (
+              <div key={idx} className="grid gap-2 md:grid-cols-12 items-center">
+                <div className="md:col-span-6">
+                  <select
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                    value={l.feeItemId}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setEditLines((prev) => prev.map((x, i) => (i === idx ? { ...x, feeItemId: v } : x)));
+                    }}
+                  >
+                    <option value="">Select fee item…</option>
+                    {feeItems.map((it) => (
+                      <option
+                        key={it.id}
+                        value={it.id}
+                        disabled={editSelectedIds.includes(it.id) && it.id !== l.feeItemId}
+                      >
+                        {it.name} {it.code ? `(${it.code})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-3">
+                  <Input
+                    type="number"
+                    placeholder="Amount"
+                    value={l.amount}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setEditLines((prev) => prev.map((x, i) => (i === idx ? { ...x, amount: v } : x)));
+                    }}
+                  />
+                </div>
+
+                <div className="md:col-span-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!l.required}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setEditLines((prev) => prev.map((x, i) => (i === idx ? { ...x, required: v } : x)));
+                    }}
+                  />
+                  <span className="text-sm">Required</span>
+                </div>
+
+                <div className="md:col-span-1 flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditLines((prev) => prev.filter((_, i) => i !== idx))}
+                    disabled={editLines.length === 1}
+                  >
+                    X
+                  </Button>
+                </div>
+              </div>
+            ))}
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setEditLines((p) => [...p, { feeItemId: "", amount: 0, required: true }])}
+            >
+              + Add line
+            </Button>
+
+            {new Set(editSelectedIds).size !== editSelectedIds.length && (
+              <div className="text-sm text-destructive">Duplicate fee items detected — remove duplicates.</div>
+            )}
+          </div>
+
+          {updatePlanMut.isError && (
+            <div className="text-sm text-destructive">
+              {updatePlanMut.error?.response?.data?.message || "Failed to update plan."}
+            </div>
+          )}
+        </div>
+      </SimpleModal>
     </div>
   );
 }

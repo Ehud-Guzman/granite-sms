@@ -235,7 +235,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
       toast.success("Invoice generated");
     },
     onError: (err) => {
-      console.log("GENERATE INVOICE ERROR:", err?.response?.data || err);
+      console.error("GENERATE INVOICE ERROR:", err?.response?.data || err);
       toast.error(err?.response?.data?.message || "Failed to generate invoice");
     },
   });
@@ -270,7 +270,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
       await printPaymentId(payment.id);
     },
     onError: (err) => {
-      console.log("PAYMENT ERROR:", err?.response?.data || err);
+      console.error("PAYMENT ERROR:", err?.response?.data || err);
       toast.error(err?.response?.data?.message || "Payment failed");
     },
   });
@@ -285,7 +285,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
       toast.success("Payment reversed");
     },
     onError: (err) => {
-      console.log("REVERSE ERROR:", err?.response?.data || err);
+      console.error("REVERSE ERROR:", err?.response?.data || err);
       toast.error(err?.response?.data?.message || "Failed to reverse payment");
     },
   });
@@ -299,7 +299,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
       toast.success("Invoice voided");
     },
     onError: (err) => {
-      console.log("VOID ERROR:", err?.response?.data || err);
+      console.error("VOID ERROR:", err?.response?.data || err);
       toast.error(err?.response?.data?.message || "Failed to void invoice");
     },
   });
@@ -600,7 +600,9 @@ export default function FeeCashierTab({ onReceiptReady }) {
                             {voided && <span className="text-xs text-muted-foreground">(VOID)</span>}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            Total: {money(inv.total)} • Paid: {money(inv.paid)} • Balance:{" "}
+                            Total: {money(inv.total)}
+                            {!!inv.discount && <> • Discount: {money(inv.discount)}</>} • Paid:{" "}
+                            {money(inv.paid)} • Balance:{" "}
                             <span className={bal > 0 ? "text-destructive" : ""}>{money(bal)}</span>
                           </div>
                         </div>

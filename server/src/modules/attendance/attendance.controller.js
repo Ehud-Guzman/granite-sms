@@ -21,6 +21,7 @@ import {
   assertTerm,
   assertYear,
   assertRecordsPayload,
+  assertMinAbsences,
 } from "./attendance.validators.js";
 
 /**
@@ -74,10 +75,12 @@ export async function getSession(req, res) {
   try {
     const schoolId = req.schoolId || req.user.schoolId;
     const sessionId = req.params.id;
+    const userId = getUserId(req);
+    const role = req.user.role;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
 
-    const session = await getSessionWithRecords({ schoolId, sessionId });
+    const session = await getSessionWithRecords({ schoolId, sessionId, role, userId });
     return res.json(session);
   } catch (err) {
     return res.status(err.statusCode || 400).json({ message: err.message });
@@ -88,6 +91,8 @@ export async function list(req, res) {
   try {
     const schoolId = req.schoolId || req.user.schoolId;
     const { classId, from, to, date, status } = req.query;
+    const userId = getUserId(req);
+    const role = req.user.role;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
 
@@ -102,6 +107,8 @@ export async function list(req, res) {
       to: toD,
       date: dateD,
       status: status || null,
+      role,
+      userId,
     });
     return res.json(sessions);
   } catch (err) {
@@ -114,6 +121,7 @@ export async function updateRecords(req, res) {
     const schoolId = req.schoolId || req.user.schoolId;
     const editorUserId = getUserId(req);
     const sessionId = req.params.id;
+    const role = req.user.role;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
     if (!editorUserId) return res.status(401).json({ message: "Missing user id in token" });
@@ -121,7 +129,7 @@ export async function updateRecords(req, res) {
     const { records } = req.body;
     assertRecordsPayload(records);
 
-    const session = await bulkUpdateRecords({ schoolId, sessionId, editorUserId, records });
+    const session = await bulkUpdateRecords({ schoolId, sessionId, editorUserId, records, role });
     return res.json(session);
   } catch (err) {
     return res.status(err.statusCode || 400).json({ message: err.message });
@@ -133,11 +141,12 @@ export async function submit(req, res) {
     const schoolId = req.schoolId || req.user.schoolId;
     const editorUserId = getUserId(req);
     const sessionId = req.params.id;
+    const role = req.user.role;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
     if (!editorUserId) return res.status(401).json({ message: "Missing user id in token" });
 
-    const updated = await submitSession({ schoolId, sessionId, editorUserId });
+    const updated = await submitSession({ schoolId, sessionId, editorUserId, role });
     return res.json(updated);
   } catch (err) {
     return res.status(err.statusCode || 400).json({ message: err.message });
@@ -181,13 +190,15 @@ export async function studentSummary(req, res) {
     const schoolId = req.schoolId || req.user.schoolId;
     const studentId = req.params.studentId;
     const { from, to } = req.query;
+    const userId = getUserId(req);
+    const role = req.user.role;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
 
     const fromD = from ? parseISODateOnly(from) : null;
     const toD = to ? parseISODateOnly(to) : null;
 
-    const data = await summaryStudent({ schoolId, studentId, from: fromD, to: toD });
+    const data = await summaryStudent({ schoolId, studentId, from: fromD, to: toD, role, userId });
     return res.json(data);
   } catch (err) {
     return res.status(err.statusCode || 400).json({ message: err.message });
@@ -199,13 +210,15 @@ export async function classSummary(req, res) {
     const schoolId = req.schoolId || req.user.schoolId;
     const classId = req.params.classId;
     const { from, to, export: exportType } = req.query;
+    const userId = getUserId(req);
+    const role = req.user.role;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
 
     const fromD = from ? parseISODateOnly(from) : null;
     const toD = to ? parseISODateOnly(to) : null;
 
-    const data = await summaryClass({ schoolId, classId, from: fromD, to: toD });
+    const data = await summaryClass({ schoolId, classId, from: fromD, to: toD, role, userId });
 
     if (exportType === "csv" || exportType === "xlsx") {
       const classRow = await prisma.class.findFirst({
@@ -253,19 +266,24 @@ export async function defaultersList(req, res) {
   try {
     const schoolId = req.schoolId || req.user.schoolId;
     const { classId, from, to, minAbsences, export: exportType } = req.query;
+    const userId = getUserId(req);
+    const role = req.user.role;
 
     if (!schoolId) return res.status(401).json({ message: "Missing schoolId in token" });
     if (!classId) return res.status(400).json({ message: "classId is required" });
 
     const fromD = from ? parseISODateOnly(from) : null;
     const toD = to ? parseISODateOnly(to) : null;
+    const minAbsencesN = assertMinAbsences(minAbsences);
 
     const data = await defaulters({
       schoolId,
       classId,
       from: fromD,
       to: toD,
-      minAbsences: minAbsences ?? 5,
+      minAbsences: minAbsencesN,
+      role,
+      userId,
     });
 
     if (exportType === "csv" || exportType === "xlsx") {

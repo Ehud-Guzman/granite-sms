@@ -43,6 +43,21 @@ export function assertYear(year) {
 }
 
 /**
+ * Validates the `minAbsences` defaulters-list query param.
+ * Previously an unparseable value (e.g. "abc") silently became NaN and
+ * the filter (`absences >= NaN`) always failed, returning an empty list
+ * with no indication anything was wrong with the input.
+ */
+export function assertMinAbsences(minAbsences) {
+  if (minAbsences == null) return 5;
+  const n = Number(minAbsences);
+  if (!Number.isInteger(n) || n < 0) {
+    throw httpError("minAbsences must be a non-negative integer.", 400);
+  }
+  return n;
+}
+
+/**
  * Validates bulk records payload.
  * Rules:
  * - records must be a non-empty array
@@ -54,6 +69,21 @@ export function assertYear(year) {
 export function assertRecordsPayload(records) {
   if (!Array.isArray(records) || records.length === 0) {
     throw httpError("records must be a non-empty array.", 400);
+  }
+
+  // Reject duplicate studentIds in the same payload up front. Without this,
+  // two entries for the same student racing inside the bulk-update
+  // transaction's Promise.all can both take the "create" branch and collide
+  // on the (sessionId, studentId) unique constraint, surfacing as a raw
+  // Prisma error instead of a clean validation message.
+  const seen = new Set();
+  for (const r of records) {
+    if (r && typeof r === "object" && typeof r.studentId === "string") {
+      if (seen.has(r.studentId)) {
+        throw httpError(`Duplicate studentId in records payload: ${r.studentId}.`, 400);
+      }
+      seen.add(r.studentId);
+    }
   }
 
   for (const r of records) {

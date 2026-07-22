@@ -45,6 +45,37 @@ export async function assertTeacherAccessOrThrow({ schoolId, userId, classId }) 
 }
 
 /**
+ * All classIds a teacher is currently allowed to touch (class-teacher OR
+ * active teaching assignment), tenant-scoped. Used to restrict list-style
+ * endpoints for TEACHER callers that don't pass an explicit classId.
+ */
+async function getTeacherAssignedClassIds({ schoolId, userId }) {
+  const teacher = await prisma.teacher.findFirst({
+    where: { userId, schoolId },
+    select: { id: true },
+  });
+  if (!teacher) return [];
+
+  const [classTeacherRows, assignmentRows] = await Promise.all([
+    prisma.classTeacher.findMany({
+      where: { schoolId, teacherId: teacher.id, isActive: true },
+      select: { classId: true },
+    }),
+    prisma.teachingAssignment.findMany({
+      where: { schoolId, teacherId: teacher.id, isActive: true },
+      select: { classId: true },
+    }),
+  ]);
+
+  return [
+    ...new Set([
+      ...classTeacherRows.map((r) => r.classId),
+      ...assignmentRows.map((r) => r.classId),
+    ]),
+  ];
+}
+
+/**
  * Ensure a class actually belongs to this tenant before we touch its students.
  * Prevents an admin from opening a session against another school's classId.
  */
@@ -75,6 +106,13 @@ export async function upsertSessionAndEnsureRecords({
   // Tenant guard: the class must belong to this school.
   await assertClassInSchool({ schoolId, classId });
 
+  // Snapshot for the audit log: was this a brand-new session or a reopen of
+  // an existing one? (mirrors exams.services.js createExamSession logging)
+  const existing = await prisma.attendanceSession.findUnique({
+    where: { schoolId_classId_date: { schoolId, classId, date } },
+    select: { id: true, status: true },
+  });
+
   const session = await prisma.attendanceSession.upsert({
     where: { schoolId_classId_date: { schoolId, classId, date } },
     create: {
@@ -90,6 +128,17 @@ export async function upsertSessionAndEnsureRecords({
       year,
       term,
       takenByUserId: takenByUserId || undefined,
+    },
+  });
+
+  await prisma.attendanceEditLog.create({
+    data: {
+      schoolId,
+      sessionId: session.id,
+      editedByUserId: takenByUserId,
+      action: existing ? "REOPEN_SESSION" : "CREATE_SESSION",
+      before: existing ? { status: existing.status } : null,
+      after: { status: session.status, classId, date, year, term },
     },
   });
 
@@ -115,7 +164,7 @@ export async function upsertSessionAndEnsureRecords({
   return { session, createdRecords: result.count };
 }
 
-export async function getSessionWithRecords({ schoolId, sessionId }) {
+export async function getSessionWithRecords({ schoolId, sessionId, role, userId }) {
   const session = await prisma.attendanceSession.findFirst({
     where: { id: sessionId, schoolId },
     include: { records: true },
@@ -126,6 +175,11 @@ export async function getSessionWithRecords({ schoolId, sessionId }) {
     err.statusCode = 404;
     throw err;
   }
+
+  if (role === "TEACHER") {
+    await assertTeacherAccessOrThrow({ schoolId, userId, classId: session.classId });
+  }
+
   return session;
 }
 
@@ -146,7 +200,7 @@ function isSame(existing, next) {
   );
 }
 
-export async function bulkUpdateRecords({ schoolId, sessionId, editorUserId, records }) {
+export async function bulkUpdateRecords({ schoolId, sessionId, editorUserId, records, role }) {
   const session = await prisma.attendanceSession.findFirst({
     where: { id: sessionId, schoolId },
     include: { records: false },
@@ -156,6 +210,10 @@ export async function bulkUpdateRecords({ schoolId, sessionId, editorUserId, rec
     const err = new Error("Attendance session not found.");
     err.statusCode = 404;
     throw err;
+  }
+
+  if (role === "TEACHER") {
+    await assertTeacherAccessOrThrow({ schoolId, userId: editorUserId, classId: session.classId });
   }
 
   ensureEditable(session);
@@ -285,7 +343,7 @@ export async function bulkUpdateRecords({ schoolId, sessionId, editorUserId, rec
 
 // ---------- Session lifecycle ----------
 
-export async function submitSession({ schoolId, sessionId, editorUserId }) {
+export async function submitSession({ schoolId, sessionId, editorUserId, role }) {
   const session = await prisma.attendanceSession.findFirst({
     where: { id: sessionId, schoolId },
     include: { records: false },
@@ -295,6 +353,10 @@ export async function submitSession({ schoolId, sessionId, editorUserId }) {
     const err = new Error("Attendance session not found.");
     err.statusCode = 404;
     throw err;
+  }
+
+  if (role === "TEACHER") {
+    await assertTeacherAccessOrThrow({ schoolId, userId: editorUserId, classId: session.classId });
   }
 
   // block submit if already submitted/locked (admin unlock route exists)
@@ -398,7 +460,7 @@ export async function lockSession({ schoolId, sessionId, editorUserId }) {
   return updated;
 }
 
-export async function listSessions({ schoolId, classId, from, to, date, status }) {
+export async function listSessions({ schoolId, classId, from, to, date, status, role, userId }) {
   let statusFilter;
   if (status) {
     if (!Object.values(AttendanceSessionStatus).includes(status)) {
@@ -411,10 +473,23 @@ export async function listSessions({ schoolId, classId, from, to, date, status }
     statusFilter = status;
   }
 
+  // Teachers may only list sessions for classes they're actually assigned to.
+  // With an explicit classId, verify assignment; without one, scope the
+  // query to their assigned classes instead of returning the whole school.
+  let classFilter = classId || undefined;
+  if (role === "TEACHER") {
+    if (classId) {
+      await assertTeacherAccessOrThrow({ schoolId, userId, classId });
+    } else {
+      const assignedClassIds = await getTeacherAssignedClassIds({ schoolId, userId });
+      classFilter = { in: assignedClassIds };
+    }
+  }
+
   return prisma.attendanceSession.findMany({
     where: {
       schoolId,
-      classId: classId || undefined,
+      classId: classFilter,
       status: statusFilter,
       date: date ? date : { gte: from || undefined, lte: to || undefined },
     },
@@ -422,7 +497,25 @@ export async function listSessions({ schoolId, classId, from, to, date, status }
   });
 }
 
-export async function summaryStudent({ schoolId, studentId, from, to }) {
+export async function summaryStudent({ schoolId, studentId, from, to, role, userId }) {
+  // Tenant guard: studentId must actually belong to this school (previously
+  // an unrelated/foreign studentId silently produced an all-zero summary
+  // instead of a clear 404). Also needed to resolve classId for the
+  // TEACHER access check below.
+  const student = await prisma.student.findFirst({
+    where: { id: studentId, schoolId },
+    select: { id: true, classId: true },
+  });
+  if (!student) {
+    const err = new Error("Student not found in this school.");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (role === "TEACHER") {
+    await assertTeacherAccessOrThrow({ schoolId, userId, classId: student.classId });
+  }
+
   const where = {
     schoolId,
     studentId,
@@ -440,7 +533,11 @@ export async function summaryStudent({ schoolId, studentId, from, to }) {
   return { studentId, total, present, absent, late, excused, attendanceRatePct: rate };
 }
 
-export async function summaryClass({ schoolId, classId, from, to }) {
+export async function summaryClass({ schoolId, classId, from, to, role, userId }) {
+  if (role === "TEACHER") {
+    await assertTeacherAccessOrThrow({ schoolId, userId, classId });
+  }
+
   const sessions = await prisma.attendanceSession.findMany({
     where: {
       schoolId,
@@ -482,7 +579,11 @@ export async function summaryClass({ schoolId, classId, from, to }) {
   return { classId, days };
 }
 
-export async function defaulters({ schoolId, classId, from, to, minAbsences = 5 }) {
+export async function defaulters({ schoolId, classId, from, to, minAbsences = 5, role, userId }) {
+  if (role === "TEACHER") {
+    await assertTeacherAccessOrThrow({ schoolId, userId, classId });
+  }
+
   const students = await prisma.student.findMany({
     where: { schoolId, classId, isActive: true },
     select: { id: true, admissionNo: true, firstName: true, lastName: true },

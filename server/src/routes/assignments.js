@@ -97,4 +97,29 @@ router.get(
   }
 );
 
+// ADMIN: deactivate assignment (soft delete, tenant scoped)
+router.patch(
+  "/:id/deactivate",
+  requireRole("ADMIN"),
+  requireFeature("enableSubjectAssignments"),
+  async (req, res) => {
+    try {
+      const schoolId = req.schoolId;
+      const id = String(req.params.id);
+
+      const result = await prisma.teachingAssignment.updateMany({
+        where: { id, schoolId },
+        data: { isActive: false },
+      });
+
+      if (result.count === 0) return res.status(404).json({ message: "Assignment not found" });
+
+      return res.json({ message: "Assignment deactivated" });
+    } catch (err) {
+      console.error("DEACTIVATE ASSIGNMENT ERROR:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  }
+);
+
 export default router;

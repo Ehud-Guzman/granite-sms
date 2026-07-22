@@ -21,11 +21,13 @@ import SubscriptionLimitsTab from "@/features/settings/subs/SubscriptionLimitsTa
 import BackupsRestoreTab from "@/features/settings/backup/BackupsRestoreTab.jsx";
 import AuditLogsTab from "@/features/settings/logs/AuditLogsTab.jsx";
 import BrandingPrintTab from "@/features/settings/branding/BrandingPrintTab.jsx";
+import CurriculumSettingsTab from "@/features/settings/curriculum/CurriculumSettingsTab.jsx";
 
 const ALL_TABS = [
   { key: "general", label: "General" },
   { key: "schools", label: "Schools" },
   { key: "users", label: "Users" },
+  { key: "curriculum", label: "Curriculum" },
   { key: "security", label: "Security" },
   { key: "subs", label: "Subscriptions" },
   { key: "backup", label: "Backups" },
@@ -39,6 +41,7 @@ const SYSTEM_ONLY = new Set(["schools", "backup", "subs"]);
 // Tabs that require tenant scope for SYSTEM_ADMIN (selected school)
 const TENANT_SCOPE_REQUIRED_FOR_SYSADMIN = new Set([
   "users",
+  "curriculum",
   "security",
   "subs",
   "backup",
@@ -203,6 +206,8 @@ export default function SettingsPage() {
         return <SchoolsSettingsTab />;
       case "users":
         return <UsersSettingsTab />;
+      case "curriculum":
+        return <CurriculumSettingsTab />;
       case "security":
         return <SecuritySettingsTab />;
       case "subs":

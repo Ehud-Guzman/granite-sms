@@ -129,10 +129,21 @@ router.get("/", async (req, res) => {
       }
     }
 
+    const qRole = req.query?.role ? String(req.query.role).trim().toUpperCase() : "";
+    if (qRole) {
+      if (!UI_ALLOWED_ROLES.includes(qRole)) {
+        return res.status(400).json({ message: "Invalid role filter" });
+      }
+      where.role = qRole;
+    }
+
     const users = await prisma.user.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      select: safeUserSelect(),
+      select: {
+        ...safeUserSelect(),
+        teacher: { select: { id: true, firstName: true, lastName: true, phone: true } },
+      },
     });
 
     return res.json({ users });

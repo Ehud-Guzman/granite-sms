@@ -10,6 +10,11 @@ function normSchoolId(schoolId) {
   return String(schoolId || "").trim();
 }
 
+function isExpired(sub) {
+  if (!sub?.currentPeriodEnd) return false;
+  return new Date(sub.currentPeriodEnd).getTime() < Date.now();
+}
+
 function getCachedSub(schoolId) {
   const sid = normSchoolId(schoolId);
   const hit = subCache.get(sid);
@@ -88,7 +93,7 @@ export function requireEntitlement(key) {
         sub = await prisma.subscription.findFirst({
           where: { schoolId },
           orderBy: { createdAt: "desc" },
-          select: { status: true, entitlements: true },
+          select: { status: true, entitlements: true, currentPeriodEnd: true },
         });
 
         // Cache even null to avoid repeated lookups (short TTL)
@@ -102,9 +107,21 @@ export function requireEntitlement(key) {
       }
 
       const ent = sub.entitlements || {};
+      const expired = isExpired(sub);
 
-      // ✅ Trial experience: READ allowed by default
-      if (sub.status === "TRIAL" && isRead) return next();
+      // ✅ Trial experience: READ allowed by default (while the trial hasn't lapsed)
+      if (sub.status === "TRIAL" && isRead && !expired) return next();
+
+      // A CANCELED/EXPIRED/PAST_DUE subscription (or one past currentPeriodEnd)
+      // must not keep working just because `entitlements` still has a stale
+      // `true` from when the school was paying — status/expiry is the source
+      // of truth here, same as middleware/subscription.js's requireEntitlement.
+      const statusOk = sub.status === "ACTIVE" || sub.status === "TRIAL";
+      if (!statusOk || expired) {
+        return res.status(403).json({
+          message: `Feature locked: subscription not active`,
+        });
+      }
 
       const allowed = Boolean(ent?.[key]);
       if (!allowed) {

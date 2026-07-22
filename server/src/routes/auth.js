@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { signToken } from "../utils/jwt.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+import { tenantContext } from "../middleware/tenant.js";
 import { logAudit } from "../utils/audit.js";
 import { upper } from "../utils/validate.js";
 
@@ -197,18 +198,24 @@ router.post("/login", async (req, res) => {
     // Password check
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) {
-      const nextAttempts = (user.failedLoginAttempts || 0) + 1;
+      // Atomic increment: two concurrent failed attempts must not race each
+      // other on a read-then-write of failedLoginAttempts (a lost update here
+      // would let an attacker get more than MAX_ATTEMPTS guesses before lock).
+      const bumped = await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: { increment: 1 } },
+        select: { failedLoginAttempts: true },
+      });
+
+      const nextAttempts = bumped.failedLoginAttempts;
       const shouldLock = nextAttempts >= MAX_ATTEMPTS;
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          failedLoginAttempts: nextAttempts,
-          ...(shouldLock
-            ? { lockUntil: new Date(Date.now() + LOCK_MINUTES * 60 * 1000) }
-            : {}),
-        },
-      });
+      if (shouldLock) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lockUntil: new Date(Date.now() + LOCK_MINUTES * 60 * 1000) },
+        });
+      }
 
       await logAudit({
         req,
@@ -363,8 +370,14 @@ router.post("/change-password", requireAuth, async (req, res) => {
  * DEV ONLY: SYSTEM_ADMIN impersonate a user (issues token without password)
  * POST /api/auth/impersonate
  * Body: { userId }
+ *
+ * NOTE: runs tenantContext (DB truth) before requireRole so this checks the
+ * caller's CURRENT role/isActive status, not just what was in the JWT at
+ * issue time. requireAuth alone only proves the token is validly signed —
+ * without a DB re-check, a demoted or deactivated SYSTEM_ADMIN could keep
+ * impersonating any user for the full lifetime of their old token.
  */
-router.post("/impersonate", requireAuth, requireRole("SYSTEM_ADMIN"), async (req, res) => {
+router.post("/impersonate", requireAuth, tenantContext, requireRole("SYSTEM_ADMIN"), async (req, res) => {
   try {
     if (process.env.ALLOW_IMPERSONATION !== "true") {
       return res.status(403).json({ message: "Impersonation disabled" });
@@ -395,16 +408,11 @@ router.post("/impersonate", requireAuth, requireRole("SYSTEM_ADMIN"), async (req
       schoolId: target.schoolId ?? null,
     });
 
-    const actor = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: { email: true },
-    });
-
     await logAudit({
       req,
       actorId: req.user?.id,
       actorRole: "SYSTEM_ADMIN",
-      actorEmail: actor?.email || null,
+      actorEmail: req.userEmail || null,
       schoolId: target.schoolId ?? null,
       action: "AUTH_IMPERSONATE",
       targetType: "USER",
@@ -434,8 +442,11 @@ router.post("/impersonate", requireAuth, requireRole("SYSTEM_ADMIN"), async (req
  * NOTE:
  * You can keep this for convenience, but the cleaner approach is:
  * SYSTEM_ADMIN token stays platform-mode and the client sends x-school-id per request.
+ *
+ * NOTE: tenantContext runs before requireRole so the role/isActive check uses
+ * DB truth, not a possibly-stale JWT (see /impersonate above for why).
  */
-router.post("/select-school", requireAuth, requireRole("SYSTEM_ADMIN"), async (req, res) => {
+router.post("/select-school", requireAuth, tenantContext, requireRole("SYSTEM_ADMIN"), async (req, res) => {
   try {
     const schoolKey = normalizeId(req.body?.schoolId);
     if (!schoolKey) return res.status(400).json({ message: "schoolId required" });

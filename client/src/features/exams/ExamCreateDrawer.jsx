@@ -1,5 +1,5 @@
 // src/features/exams/ExamCreateDrawer.jsx
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createExamSession, listExamTypes, createExamType } from "@/api/exams.api";
@@ -87,14 +87,19 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
     examTypeId: "",
   });
 
-  useEffect(() => {
-    if (!open) return;
-    setForm((p) => ({
-      ...p,
-      year: p.year ?? (defaultYear ?? new Date().getFullYear()),
-      term: String(p.term || defaultTerm || "TERM1").toUpperCase(),
-    }));
-  }, [open, defaultYear, defaultTerm]);
+  // Re-normalize defaults each time the drawer opens (adjust state during
+  // render instead of in an effect — avoids an extra commit/paint cycle).
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setForm((p) => ({
+        ...p,
+        year: p.year ?? (defaultYear ?? new Date().getFullYear()),
+        term: String(p.term || defaultTerm || "TERM1").toUpperCase(),
+      }));
+    }
+  }
 
   const typesQ = useQuery({
     queryKey: ["examTypes"],

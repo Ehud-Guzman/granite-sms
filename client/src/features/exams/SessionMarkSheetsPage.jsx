@@ -1,5 +1,5 @@
 // src/features/exams/SessionMarkSheetsPage.jsx
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -59,10 +59,14 @@ export default function SessionMarkSheetsPage() {
   const { data: meData } = useMe();
   const role = meData?.user?.role;
 
-  useEffect(() => {
+  // Reset local UI state whenever the route's sessionId changes (adjust
+  // state during render instead of in an effect).
+  const [prevSessionId, setPrevSessionId] = useState(sessionId);
+  if (sessionId !== prevSessionId) {
+    setPrevSessionId(sessionId);
     setNotice(null);
     setSearch("");
-  }, [sessionId]);
+  }
 
   const q = useQuery({
     queryKey: ["sessionMarkSheets", sessionId],

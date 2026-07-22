@@ -176,13 +176,21 @@ export default function BrandingPrintTab() {
   const [logoNonce, setLogoNonce] = useState(1);
   const fileRef = useRef(null);
 
-  // Load branding -> form + apply (so refresh keeps theme)
+  // Sync local draft when fresh data arrives (adjust state during render
+  // instead of in an effect — avoids an extra commit/paint cycle).
+  const [prevBrandingData, setPrevBrandingData] = useState(brandingQ.data);
+  if (brandingQ.data !== prevBrandingData) {
+    setPrevBrandingData(brandingQ.data);
+    if (brandingQ.data) {
+      setForm(toUiForm(brandingQ.data));
+      setLogoNonce((n) => n + 1);
+    }
+  }
+
+  // Apply theme to the document whenever branding data changes (so refresh
+  // keeps theme) — a genuine external-system sync, so this stays an effect.
   useEffect(() => {
-    if (!brandingQ.data) return;
-    const next = toUiForm(brandingQ.data);
-    setForm(next);
-    setLogoNonce((n) => n + 1);
-    applyFromBranding(brandingQ.data);
+    if (brandingQ.data) applyFromBranding(brandingQ.data);
   }, [brandingQ.data]);
 
   const colorsValid = useMemo(() => {

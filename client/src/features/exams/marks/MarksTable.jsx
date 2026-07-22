@@ -1,5 +1,5 @@
 // src/features/exams/marks/MarksTable.jsx
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,114 @@ function isBlankScore(v) {
   return v === "" || v === null || v === undefined;
 }
 
+// Only re-render a row when the data it actually displays changes — not on
+// every keystroke in some other row (which recreates the whole `rows` array
+// in the parent). Callback identity is intentionally excluded: the handlers
+// below don't change what a row looks like, only what happens on interaction.
+function rowPropsAreEqual(prev, next) {
+  return (
+    prev.idx === next.idx &&
+    prev.studentId === next.studentId &&
+    prev.admissionNo === next.admissionNo &&
+    prev.name === next.name &&
+    prev.gender === next.gender &&
+    prev.score === next.score &&
+    prev.isMissing === next.isMissing &&
+    prev.comment === next.comment &&
+    prev.isLocked === next.isLocked &&
+    prev.scoreInvalid === next.scoreInvalid &&
+    prev.scoreMessage === next.scoreMessage
+  );
+}
+
+const MarkRow = memo(function MarkRow({
+  admissionNo,
+  name,
+  gender,
+  score,
+  isMissing,
+  comment,
+  isLocked,
+  scoreInvalid,
+  scoreMessage,
+  registerScoreRef,
+  registerCommentRef,
+  onScoreChange,
+  onCommentChange,
+  onToggleMissing,
+  onScoreKeyDown,
+  onCommentKeyDown,
+  onPaste,
+  onRowKeyDown,
+}) {
+  return (
+    <tr
+      className={`border-b last:border-b-0 hover:bg-muted/50 focus-within:bg-muted/30 transition-colors ${
+        isMissing ? "bg-destructive/5" : ""
+      }`}
+      onKeyDown={onRowKeyDown}
+      tabIndex={-1}
+    >
+      <td className="px-4 py-3 font-medium">{admissionNo || "—"}</td>
+
+      <td className="px-4 py-3">
+        <div className="font-medium">{name}</div>
+        <div className="text-xs text-muted-foreground">{gender || "—"}</div>
+      </td>
+
+      <td className="px-4 py-3">
+        <Input
+          ref={registerScoreRef}
+          value={score}
+          onChange={onScoreChange}
+          onKeyDown={onScoreKeyDown}
+          onPaste={onPaste}
+          disabled={isLocked}
+          placeholder={isMissing ? "Missing" : "0–100"}
+          className={`h-9 text-center ${isMissing ? "opacity-70 bg-muted/30" : ""} ${
+            scoreInvalid ? "border-destructive focus-visible:ring-destructive" : ""
+          }`}
+          inputMode="numeric"
+          aria-invalid={scoreInvalid}
+        />
+        {scoreInvalid && (
+          <div className="text-xs text-destructive mt-1 text-center">
+            {scoreMessage || "Invalid"}
+          </div>
+        )}
+      </td>
+
+      <td className="px-4 py-3 text-center">
+        <button
+          type="button"
+          disabled={isLocked}
+          onClick={onToggleMissing}
+          className={`w-20 h-9 rounded border text-sm font-medium transition-colors ${
+            isMissing
+              ? "bg-destructive/10 border-destructive/30 hover:bg-destructive/20 text-destructive"
+              : "bg-background hover:bg-muted border-border text-muted-foreground"
+          } ${isLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+          title="Toggle missing (shortcut: M)"
+        >
+          {isMissing ? "Yes" : "No"}
+        </button>
+      </td>
+
+      <td className="px-4 py-3">
+        <Input
+          ref={registerCommentRef}
+          value={comment}
+          onChange={onCommentChange}
+          onKeyDown={onCommentKeyDown}
+          disabled={isLocked}
+          placeholder="Optional comment…"
+          className="h-9"
+        />
+      </td>
+    </tr>
+  );
+}, rowPropsAreEqual);
+
 export default function MarksTable({
   loading,
   isLocked,
@@ -27,7 +135,6 @@ export default function MarksTable({
   normalizeScoreInput,
 }) {
   const [q, setQ] = useState("");
-  const [selectedCells, setSelectedCells] = useState([]); // [{rowIdx, col: 'score'|'comment'}]
 
   const scoreRefs = useRef([]);
   const commentRefs = useRef([]);
@@ -119,7 +226,6 @@ export default function MarksTable({
         const values = line.split(/\t|,/).map(v => v.trim());
         if (values.length >= 1) {
           const scoreVal = values[0];
-          const n = normalizeScoreInput(scoreVal);
           next[sid] = {
             ...cur,
             score: scoreVal,
@@ -138,7 +244,7 @@ export default function MarksTable({
 
     // Move focus down after paste
     focusNext(rowIdx);
-  }, [filtered, normalizeScoreInput, setDraft, focusNext]);
+  }, [filtered, setDraft, focusNext]);
 
   const onScoreChange = useCallback((row, value) => {
     if (isLocked) return;
@@ -304,12 +410,28 @@ export default function MarksTable({
                     const scoreInvalid = !missing && !isBlankScore(scoreVal) && !normalized.ok;
 
                     return (
-                      <tr
+                      <MarkRow
                         key={s.id}
-                        className={`border-b last:border-b-0 hover:bg-muted/50 focus-within:bg-muted/30 transition-colors ${
-                          missing ? "bg-destructive/5" : ""
-                        }`}
-                        onKeyDown={(e) => {
+                        idx={idx}
+                        studentId={s.id}
+                        admissionNo={s.admissionNo}
+                        name={fullName(s)}
+                        gender={s.gender}
+                        score={scoreVal}
+                        isMissing={missing}
+                        comment={d.comment ?? ""}
+                        isLocked={isLocked}
+                        scoreInvalid={scoreInvalid}
+                        scoreMessage={normalized.message}
+                        registerScoreRef={(el) => (scoreRefs.current[idx] = el)}
+                        registerCommentRef={(el) => (commentRefs.current[idx] = el)}
+                        onScoreChange={(e) => onScoreChange(r, e.target.value)}
+                        onCommentChange={(e) => onCommentChange(r, e.target.value)}
+                        onToggleMissing={() => toggleMissing(r)}
+                        onScoreKeyDown={(e) => onScoreKeyDown(e, idx)}
+                        onCommentKeyDown={(e) => onCommentKeyDown(e, idx)}
+                        onPaste={(e) => handlePaste(e, idx)}
+                        onRowKeyDown={(e) => {
                           if (e.key.toLowerCase() === "m") {
                             e.preventDefault();
                             toggleMissing(r);
@@ -319,65 +441,7 @@ export default function MarksTable({
                             focusScore(idx);
                           }
                         }}
-                        tabIndex={-1}
-                      >
-                        <td className="px-4 py-3 font-medium">{s.admissionNo || "—"}</td>
-
-                        <td className="px-4 py-3">
-                          <div className="font-medium">{fullName(s)}</div>
-                          <div className="text-xs text-muted-foreground">{s.gender || "—"}</div>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <Input
-                            ref={(el) => (scoreRefs.current[idx] = el)}
-                            value={scoreVal}
-                            onChange={(e) => onScoreChange(r, e.target.value)}
-                            onKeyDown={(e) => onScoreKeyDown(e, idx)}
-                            onPaste={(e) => handlePaste(e, idx)}
-                            disabled={isLocked}
-                            placeholder={missing ? "Missing" : "0–100"}
-                            className={`h-9 text-center ${missing ? "opacity-70 bg-muted/30" : ""} ${
-                              scoreInvalid ? "border-destructive focus-visible:ring-destructive" : ""
-                            }`}
-                            inputMode="numeric"
-                            aria-invalid={scoreInvalid}
-                          />
-                          {scoreInvalid && (
-                            <div className="text-xs text-destructive mt-1 text-center">
-                              {normalized.message || "Invalid"}
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            type="button"
-                            disabled={isLocked}
-                            onClick={() => toggleMissing(r)}
-                            className={`w-20 h-9 rounded border text-sm font-medium transition-colors ${
-                              missing
-                                ? "bg-destructive/10 border-destructive/30 hover:bg-destructive/20 text-destructive"
-                                : "bg-background hover:bg-muted border-border text-muted-foreground"
-                            } ${isLocked ? "opacity-50 cursor-not-allowed" : ""}`}
-                            title="Toggle missing (shortcut: M)"
-                          >
-                            {missing ? "Yes" : "No"}
-                          </button>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <Input
-                            ref={(el) => (commentRefs.current[idx] = el)}
-                            value={d.comment ?? ""}
-                            onChange={(e) => onCommentChange(r, e.target.value)}
-                            onKeyDown={(e) => onCommentKeyDown(e, idx)}
-                            disabled={isLocked}
-                            placeholder="Optional comment…"
-                            className="h-9"
-                          />
-                        </td>
-                      </tr>
+                      />
                     );
                   })}
                 </tbody>

@@ -1,6 +1,4 @@
 // src/features/classes/ClassFormDrawer.jsx
-import { useEffect } from "react";
-import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -19,54 +17,42 @@ import {
 import { toast } from "sonner";
 
 import { createClass } from "@/api/classes.api";
-
-const schema = z.object({
-  name: z.string().trim().min(1, "Class name is required"),
-  stream: z.string().trim().optional().or(z.literal("")),
-  year: z.coerce.number().int().min(2000).max(2100),
-});
+import { classSchema, toClassPayload } from "./classes.schema";
+import { getErrorMessage } from "@/lib/errors";
 
 export default function ClassFormDrawer({ children, defaultYear }) {
   const queryClient = useQueryClient();
-  
-  const createMut = useMutation({
-    mutationFn: createClass,
-    onSuccess: () => {
-      toast.success("Class created successfully");
-      queryClient.invalidateQueries({ queryKey: ["classes"] });
-    },
-    onError: (error) => {
-      toast.error(error?.response?.data?.message || "Failed to create class");
-    },
-  });
 
   const form = useForm({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(classSchema),
     defaultValues: {
       name: "",
       stream: "",
       year: defaultYear || new Date().getFullYear(),
     },
+    mode: "onChange",
   });
 
-  const isSubmitting = createMut.isPending;
-
-  useEffect(() => {
-    if (createMut.isSuccess) {
+  const createMut = useMutation({
+    mutationFn: createClass,
+    onSuccess: () => {
+      toast.success("Class created successfully");
+      queryClient.invalidateQueries({ queryKey: ["classes"] });
       form.reset({
         name: "",
         stream: "",
         year: defaultYear || new Date().getFullYear(),
       });
-    }
-  }, [createMut.isSuccess, form, defaultYear]);
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, "Failed to create class"));
+    },
+  });
 
-  const onSubmit = async (values) => {
-    await createMut.mutateAsync({
-      name: values.name,
-      stream: values.stream || null,
-      year: values.year,
-    });
+  const isSubmitting = createMut.isPending;
+
+  const onSubmit = (values) => {
+    createMut.mutate(toClassPayload(values));
   };
 
   return (
@@ -117,7 +103,7 @@ export default function ClassFormDrawer({ children, defaultYear }) {
 
           {createMut.isError && (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
-              {createMut.error?.response?.data?.message || "Failed to create class."}
+              {getErrorMessage(createMut.error, "Failed to create class.")}
             </div>
           )}
 
@@ -127,7 +113,7 @@ export default function ClassFormDrawer({ children, defaultYear }) {
                 Cancel
               </Button>
             </SheetClose>
-            <Button type="submit" className="flex-1" disabled={isSubmitting}>
+            <Button type="submit" className="flex-1" disabled={isSubmitting || !form.formState.isValid}>
               {isSubmitting ? "Creating..." : "Create class"}
             </Button>
           </div>

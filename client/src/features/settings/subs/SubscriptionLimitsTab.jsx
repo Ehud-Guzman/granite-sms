@@ -1,5 +1,5 @@
 // client/src/features/settings/subs/SubscriptionLimitsTab.jsx
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/api/axios";
 import { useMe } from "@/hooks/useMe";
@@ -295,43 +295,38 @@ export default function SubscriptionLimitsTab() {
     return map;
   }, []);
 
-  useEffect(() => {
-    if (!sub) return;
+  // Sync local drafts when fresh data arrives (adjust state during render
+  // instead of in an effect — avoids an extra commit/paint cycle).
+  const [prevSub, setPrevSub] = useState(sub);
+  if (sub !== prevSub) {
+    setPrevSub(sub);
 
-    setPlanDraft(String(sub.planCode || ""));
-    setStatusDraft(String(sub.status || "TRIAL").toUpperCase());
-    setExpiryDraft(toDateTimeLocalValue(sub.currentPeriodEnd));
+    if (sub) {
+      setPlanDraft(String(sub.planCode || ""));
+      setStatusDraft(String(sub.status || "TRIAL").toUpperCase());
+      setExpiryDraft(toDateTimeLocalValue(sub.currentPeriodEnd));
 
-    const currentLimitsObj = sub?.limits && typeof sub.limits === "object" ? sub.limits : null;
+      const currentLimitsObj = sub?.limits && typeof sub.limits === "object" ? sub.limits : null;
 
-    const studentsMax = currentLimitsObj?.STUDENTS_MAX ?? sub.maxStudents ?? "";
-    const teachersMax = currentLimitsObj?.TEACHERS_MAX ?? sub.maxTeachers ?? "";
-    const classesMax = currentLimitsObj?.CLASSES_MAX ?? sub.maxClasses ?? "";
-    const usersMax =
-      currentLimitsObj?.USERS_MAX ??
-      (Object.prototype.hasOwnProperty.call(sub || {}, "maxUsers") ? sub.maxUsers : "") ??
-      "";
+      const studentsMax = currentLimitsObj?.STUDENTS_MAX ?? sub.maxStudents ?? "";
+      const teachersMax = currentLimitsObj?.TEACHERS_MAX ?? sub.maxTeachers ?? "";
+      const classesMax = currentLimitsObj?.CLASSES_MAX ?? sub.maxClasses ?? "";
+      const usersMax =
+        currentLimitsObj?.USERS_MAX ??
+        (Object.prototype.hasOwnProperty.call(sub || {}, "maxUsers") ? sub.maxUsers : "") ??
+        "";
 
-    setLimitsDraft({
-      STUDENTS_MAX: studentsMax === null ? "null" : String(studentsMax ?? ""),
-      TEACHERS_MAX: teachersMax === null ? "null" : String(teachersMax ?? ""),
-      CLASSES_MAX: classesMax === null ? "null" : String(classesMax ?? ""),
-      USERS_MAX: usersMax === null ? "null" : String(usersMax ?? ""),
-    });
+      setLimitsDraft({
+        STUDENTS_MAX: studentsMax === null ? "null" : String(studentsMax ?? ""),
+        TEACHERS_MAX: teachersMax === null ? "null" : String(teachersMax ?? ""),
+        CLASSES_MAX: classesMax === null ? "null" : String(classesMax ?? ""),
+        USERS_MAX: usersMax === null ? "null" : String(usersMax ?? ""),
+      });
 
-    const ent = sub?.entitlements && typeof sub.entitlements === "object" ? sub.entitlements : {};
-    setEntDraft(ent);
-  }, [
-    sub?.planCode,
-    sub?.status,
-    sub?.currentPeriodEnd,
-    sub?.maxStudents,
-    sub?.maxTeachers,
-    sub?.maxClasses,
-    sub?.maxUsers,
-    sub?.limits,
-    sub?.entitlements,
-  ]);
+      const ent = sub?.entitlements && typeof sub.entitlements === "object" ? sub.entitlements : {};
+      setEntDraft(ent);
+    }
+  }
 
   const errMsg =
     q.isError ? q.error?.response?.data?.message || "Failed to load subscription overview." : null;

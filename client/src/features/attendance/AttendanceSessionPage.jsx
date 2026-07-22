@@ -1,5 +1,5 @@
 // src/features/attendance/AttendanceSessionPage.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -72,54 +72,49 @@ export default function AttendanceSessionPage() {
   const [search, setSearch] = useState("");
   const [local, setLocal] = useState([]); // [{ studentId, status, minutesLate, comment }]
 
-  // Avoid StrictMode/dev double-effect + avoid "sync setState in effect" warning
-  const initializedRef = useRef(false);
+  // Seed `local` from session + students exactly once per session, adjusting
+  // state during render instead of in an effect (no extra commit/paint
+  // cycle, no need for a "have I seeded yet" ref-guarded effect).
+  const [seededSessionId, setSeededSessionId] = useState(null);
+  const canSeed = !!sessionId && !!session && studentsQ.isSuccess;
 
-  // Reset local when session changes
-  useEffect(() => {
-    initializedRef.current = false;
-    setLocal([]);
-  }, [sessionId]);
+  if (seededSessionId !== sessionId) {
+    if (canSeed) {
+      setSeededSessionId(sessionId);
 
-  // Seed local ONCE when session + students ready
-  useEffect(() => {
-    if (!sessionId) return;
-    if (!session) return;
-    if (!studentsQ.isSuccess) return;
-    if (initializedRef.current) return;
+      const records = Array.isArray(session.records) ? session.records : [];
+      const recordByStudentId = new Map();
+      for (const r of records) recordByStudentId.set(r.studentId, r);
 
-    const records = Array.isArray(session.records) ? session.records : [];
-    const recordByStudentId = new Map();
-    for (const r of records) recordByStudentId.set(r.studentId, r);
-
-    const merged = students.map((stu) => {
-      const r = recordByStudentId.get(stu.id);
-      return {
-        studentId: stu.id,
-        status: String(r?.status || "PRESENT").toUpperCase(),
-        minutesLate: r?.minutesLate ?? null,
-        comment: r?.comment ?? "",
-      };
-    });
-
-    // keep orphan records (rare)
-    for (const r of records) {
-      if (!students.some((s) => String(s.id) === String(r.studentId))) {
-        merged.push({
-          studentId: r.studentId,
+      const merged = students.map((stu) => {
+        const r = recordByStudentId.get(stu.id);
+        return {
+          studentId: stu.id,
           status: String(r?.status || "PRESENT").toUpperCase(),
           minutesLate: r?.minutesLate ?? null,
           comment: r?.comment ?? "",
-        });
-      }
-    }
+        };
+      });
 
-    // Defer to microtask to avoid warning about sync setState in effect
-    Promise.resolve().then(() => {
+      // keep orphan records (rare)
+      for (const r of records) {
+        if (!students.some((s) => String(s.id) === String(r.studentId))) {
+          merged.push({
+            studentId: r.studentId,
+            status: String(r?.status || "PRESENT").toUpperCase(),
+            minutesLate: r?.minutesLate ?? null,
+            comment: r?.comment ?? "",
+          });
+        }
+      }
+
       setLocal(merged);
-      initializedRef.current = true;
-    });
-  }, [sessionId, session, studentsQ.isSuccess, students]);
+    } else if (local.length > 0) {
+      // Session changed but the new session's data isn't ready yet —
+      // clear stale rows from the previous session rather than show them.
+      setLocal([]);
+    }
+  }
 
   // Mutations
   const saveMut = useMutation({

@@ -1,5 +1,5 @@
 // src/features/results/ResultsPage.jsx
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 
 import { useMe } from "@/hooks/useMe";
@@ -115,13 +115,16 @@ export default function ResultsPage() {
     });
   }, [sessions, search, classLabelById]);
 
-  useEffect(() => {
-    if (!activeSessionId) return;
-    if (!sessions.some((s) => s.id === activeSessionId)) {
+  // Clear the active session if it drops out of the (filtered) sessions
+  // list — adjust state during render instead of in an effect.
+  const [prevSessions, setPrevSessions] = useState(sessions);
+  if (sessions !== prevSessions) {
+    setPrevSessions(sessions);
+    if (activeSessionId && !sessions.some((s) => s.id === activeSessionId)) {
       setActiveSessionId(null);
       setActiveStudentId(null);
     }
-  }, [sessions, activeSessionId]);
+  }
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId) || null,

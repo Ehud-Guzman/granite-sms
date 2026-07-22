@@ -76,9 +76,13 @@ export default function GeneralSettingsTab() {
 
   const [schoolForm, setSchoolForm] = useState(null);
 
-  useEffect(() => {
+  // Sync local draft when fresh data arrives (adjust state during render
+  // instead of in an effect — avoids an extra commit/paint cycle).
+  const [prevSchoolData, setPrevSchoolData] = useState(schoolQ.data);
+  if (schoolQ.data !== prevSchoolData) {
+    setPrevSchoolData(schoolQ.data);
     if (schoolQ.data) setSchoolForm(schoolQ.data);
-  }, [schoolQ.data]);
+  }
 
   const schoolDirty = useMemo(() => {
     if (!schoolQ.data || !schoolForm) return false;
@@ -127,9 +131,11 @@ export default function GeneralSettingsTab() {
 
   const [academicsForm, setAcademicsForm] = useState(null);
 
-  useEffect(() => {
+  const [prevAcademicsData, setPrevAcademicsData] = useState(academicsQ.data);
+  if (academicsQ.data !== prevAcademicsData) {
+    setPrevAcademicsData(academicsQ.data);
     if (academicsQ.data) setAcademicsForm(academicsQ.data);
-  }, [academicsQ.data]);
+  }
 
   const academicsDirty = useMemo(() => {
     if (!academicsQ.data || !academicsForm) return false;

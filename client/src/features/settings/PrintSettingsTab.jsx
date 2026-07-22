@@ -63,14 +63,19 @@ export default function PrintSettingsTab() {
     printFooterText: "",
   });
 
-  useEffect(() => {
-    if (!printQ.data) return;
-    setForm({
-      printShowLogo: !!printQ.data.printShowLogo,
-      printHeaderText: printQ.data.printHeaderText || "",
-      printFooterText: printQ.data.printFooterText || "",
-    });
-  }, [printQ.data]);
+  // Sync local draft when fresh data arrives (adjust state during render
+  // instead of in an effect — avoids an extra commit/paint cycle).
+  const [prevPrintData, setPrevPrintData] = useState(printQ.data);
+  if (printQ.data !== prevPrintData) {
+    setPrevPrintData(printQ.data);
+    if (printQ.data) {
+      setForm({
+        printShowLogo: !!printQ.data.printShowLogo,
+        printHeaderText: printQ.data.printHeaderText || "",
+        printFooterText: printQ.data.printFooterText || "",
+      });
+    }
+  }
 
   const dirty = useMemo(() => {
     if (!printQ.data) return false;

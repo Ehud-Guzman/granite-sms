@@ -1,8 +1,13 @@
 // client/src/features/teachers/TeacherFormDrawer.jsx
-import { useMemo, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { createUser } from "@/features/settings/users/users.api";
+import { teacherSchema, toTeacherPayload } from "./teachers.schema";
+import { getErrorMessage } from "@/lib/errors";
 
 import {
   Dialog,
@@ -13,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 
 async function copy(text) {
@@ -25,58 +31,28 @@ async function copy(text) {
 }
 
 export default function TeacherFormDrawer({ open, onClose, onCreated }) {
-  const [saving, setSaving] = useState(false);
-
-  // simple payload — expand as you like
-  const [email, setEmail] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-
   // show creds ONCE
   const [creds, setCreds] = useState(null); // { userId, email, tempPassword }
 
-  const canSubmit = useMemo(() => {
-    return email.trim() && firstName.trim() && lastName.trim() && !saving;
-  }, [email, firstName, lastName, saving]);
+  const form = useForm({
+    resolver: zodResolver(teacherSchema),
+    defaultValues: {
+      email: "",
+      firstName: "",
+      lastName: "",
+    },
+    mode: "onChange",
+  });
 
-  const resetForm = () => {
-    setEmail("");
-    setFirstName("");
-    setLastName("");
-  };
-
-  // ✅ When drawer opens fresh, clear old creds
-  useEffect(() => {
-    if (open) {
-      setCreds(null);
-      setSaving(false);
-    }
-  }, [open]);
-
-  async function handleCreate() {
-    const cleanEmail = email.trim().toLowerCase();
-
-    if (!cleanEmail) return toast.error("Email is required");
-    if (!firstName.trim()) return toast.error("First name is required");
-    if (!lastName.trim()) return toast.error("Last name is required");
-
-    setSaving(true);
-    try {
-      // IMPORTANT: This relies on your backend /api/users creating tempPassword
-      const res = await createUser({
-        email: cleanEmail,
-        role: "TEACHER",
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-      });
-
+  const createMut = useMutation({
+    mutationFn: (payload) => createUser(payload),
+    onSuccess: (res) => {
       const user = res?.user || null;
-      const createdEmail = user?.email || cleanEmail;
+      const createdEmail = user?.email || form.getValues("email").trim().toLowerCase();
       const tempPassword = res?.tempPassword || null;
 
       toast.success("Teacher account created");
 
-      // ✅ show creds modal (if available)
       if (tempPassword) {
         setCreds({
           userId: user?.id || null,
@@ -90,15 +66,28 @@ export default function TeacherFormDrawer({ open, onClose, onCreated }) {
       // ✅ CRITICAL: pass res back so parent can store creds + invalidate queries properly
       onCreated?.(res);
 
-      // ✅ reset inputs, and close the drawer UI
-      resetForm();
+      form.reset();
       onClose?.();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || err?.message || "Failed to create teacher");
-    } finally {
-      setSaving(false);
+    },
+    onError: (err) => {
+      toast.error(getErrorMessage(err, "Failed to create teacher"));
+    },
+  });
+
+  const saving = createMut.isPending;
+
+  // ✅ When drawer opens fresh, clear old creds
+  useEffect(() => {
+    if (open) {
+      setCreds(null);
+      form.reset();
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const onSubmit = (values) => {
+    createMut.mutate(toTeacherPayload(values));
+  };
 
   const copyAll = async () => {
     const txt = `Teacher login\nEmail: ${creds?.email || "-"}\nTemp Password: ${creds?.tempPassword || "-"}`;
@@ -112,6 +101,7 @@ export default function TeacherFormDrawer({ open, onClose, onCreated }) {
       <Dialog
         open={open}
         onOpenChange={(v) => {
+          if (!v && saving) return;
           if (!v) onClose?.();
         }}
       >
@@ -123,33 +113,45 @@ export default function TeacherFormDrawer({ open, onClose, onCreated }) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email</label>
+              <Label htmlFor="teacher-email">Email</Label>
               <Input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="teacher-email"
+                {...form.register("email")}
                 placeholder="teacher@school.ac.ke"
                 autoComplete="off"
+                disabled={saving}
               />
+              {form.formState.errors.email && (
+                <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium">First name</label>
+                <Label htmlFor="teacher-first-name">First name</Label>
                 <Input
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
+                  id="teacher-first-name"
+                  {...form.register("firstName")}
                   placeholder="John"
+                  disabled={saving}
                 />
+                {form.formState.errors.firstName && (
+                  <p className="text-sm text-destructive">{form.formState.errors.firstName.message}</p>
+                )}
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Last name</label>
+                <Label htmlFor="teacher-last-name">Last name</Label>
                 <Input
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
+                  id="teacher-last-name"
+                  {...form.register("lastName")}
                   placeholder="Doe"
+                  disabled={saving}
                 />
+                {form.formState.errors.lastName && (
+                  <p className="text-sm text-destructive">{form.formState.errors.lastName.message}</p>
+                )}
               </div>
             </div>
 
@@ -157,6 +159,7 @@ export default function TeacherFormDrawer({ open, onClose, onCreated }) {
 
             <div className="flex justify-end gap-2">
               <Button
+                type="button"
                 variant="outline"
                 onClick={() => {
                   if (!saving) onClose?.();
@@ -165,11 +168,11 @@ export default function TeacherFormDrawer({ open, onClose, onCreated }) {
               >
                 Cancel
               </Button>
-              <Button onClick={handleCreate} disabled={!canSubmit}>
+              <Button type="submit" disabled={saving || !form.formState.isValid}>
                 {saving ? "Creating..." : "Create teacher"}
               </Button>
             </div>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
 

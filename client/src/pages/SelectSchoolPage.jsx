@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/api/axios";
 import { selectSchool } from "@/api/auth.api";
+import { getErrorMessage } from "@/lib/errors";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +24,7 @@ export default function SelectSchoolPage() {
         const { data } = await api.get("/api/schools");
         setSchools(data?.schools || []);
       } catch (err) {
-        setError("Failed to load schools");
+        setError(getErrorMessage(err, "Failed to load schools"));
       } finally {
         setLoadingSchools(false);
       }
@@ -58,7 +59,7 @@ async function handleContinue() {
 
     navigate("/app/dashboard", { replace: true });
   } catch (err) {
-    setError("Could not switch school context");
+    setError(getErrorMessage(err, "Could not switch school context"));
   } finally {
     setLoading(false);
   }

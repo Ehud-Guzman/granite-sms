@@ -73,7 +73,7 @@ export function ErrorState({
 }
 
 export function EmptyState({
-  icon: Icon = AlertCircle,
+  icon,
   title = "Nothing here yet",
   description,
   action,
@@ -81,6 +81,7 @@ export function EmptyState({
   bare = false,
   className,
 }) {
+  const Icon = icon || AlertCircle;
   const iconWrap = size === "lg" ? "w-16 h-16" : "w-12 h-12";
   const iconSize = size === "lg" ? "h-8 w-8" : "h-6 w-6";
   const pad = size === "lg" ? "p-12" : "py-12";

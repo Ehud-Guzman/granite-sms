@@ -178,7 +178,7 @@ function UsageCard({ title, used, cap, remaining, percent, atLimit }) {
   );
 }
 
-function UpgradePressureCard({ isSystemAdmin, flags, percent, atLimit, sub }) {
+function UpgradePressureCard({ isSystemAdmin, flags, sub }) {
   if (isSystemAdmin) return null;
 
   const canWrite = !!flags?.canWrite;
@@ -286,7 +286,6 @@ export default function SubscriptionLimitsTab() {
   });
 
   const [entDraft, setEntDraft] = useState({});
-  const [newEntKey, setNewEntKey] = useState("");
   const [entSearch, setEntSearch] = useState("");
   const [showEnabledOnly, setShowEnabledOnly] = useState(false);
 
@@ -390,19 +389,6 @@ export default function SubscriptionLimitsTab() {
 
   function toggleEntitlement(key) {
     setEntDraft((prev) => ({ ...(prev || {}), [key]: !prev?.[key] }));
-  }
-
-  function addEntitlement() {
-    const k = String(newEntKey || "").trim().toUpperCase();
-    if (!k) return;
-
-    if (!/^[A-Z0-9_]{3,64}$/.test(k)) {
-      alert("Invalid key. Use A–Z, 0–9, underscore. Length 3–64.");
-      return;
-    }
-
-    setEntDraft((prev) => ({ ...(prev || {}), [k]: true }));
-    setNewEntKey("");
   }
 
   function saveEntitlements() {
@@ -804,6 +790,13 @@ export default function SubscriptionLimitsTab() {
                       onClick={enableAllReads}
                     >
                       Enable All Read
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={clearAllCatalogKeys}
+                    >
+                      Clear All
                     </Button>
                     <Button
                       size="sm"

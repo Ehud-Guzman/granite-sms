@@ -40,13 +40,6 @@ export async function updateStudent(id, payload) {
   return data;
 }
 
-export async function assignStudentClass(id, classId) {
-  const { data } = await api.patch(`/api/students/${id}/assign-class`, {
-    classId,
-  });
-  return data;
-}
-
 export async function deactivateStudent(id) {
   const { data } = await api.patch(`/api/students/${id}/deactivate`);
   return data;

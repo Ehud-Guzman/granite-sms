@@ -3,7 +3,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
-import { loadSubscription, requireLimit } from "../middleware/subscription.js";
+import { loadSubscription, requireLimit, effectiveCap, capHit } from "../middleware/subscription.js";
 import { logAudit, actorCtx } from "../utils/audit.js";
 
 const router = Router();
@@ -320,6 +320,25 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
     });
     if (!before)
       return res.status(404).json({ message: "Student not found" });
+
+    // Reactivation (isActive false -> true) bypasses requireLimit(), which
+    // only ever runs on POST — enforce the same student cap here so an
+    // admin can't work around it by deactivating/reactivating records.
+    if (data.isActive === true && before.isActive === false) {
+      const cap = effectiveCap(req.subscription, "students");
+      const current = await prisma.student.count({
+        where: { schoolId, isActive: true },
+      });
+      if (capHit(current, cap)) {
+        return res.status(409).json({
+          message: `Student limit reached (${current}/${cap}). Upgrade to reactivate more students.`,
+          code: "LIMIT_REACHED",
+          resource: "students",
+          used: current,
+          limit: cap,
+        });
+      }
+    }
 
     await prisma.student.updateMany({
       where: { id: String(req.params.id), schoolId },

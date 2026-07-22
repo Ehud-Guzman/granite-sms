@@ -596,7 +596,12 @@ const activateMut = useMutation({
                                     variant="ghost"
                                     size="sm"
                                     className="h-8 text-green-600 hover:text-green-700"
-                                    disabled={activateMut.isPending}
+                                    disabled={activateMut.isPending || studentsAtLimit}
+                                    title={
+                                      studentsAtLimit
+                                        ? `Student limit reached (${usage.studentsCount ?? "—"}/${sub?.maxStudents ?? "—"}). Upgrade to reactivate more.`
+                                        : undefined
+                                    }
                                     onClick={() => {
                                       if (confirm(`Reactivate ${fullName(s)}? They will now appear in active lists and be eligible for marks entry.`)) {
                                         activateMut.mutate(s.id);

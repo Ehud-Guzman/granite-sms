@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useMe } from "@/hooks/useMe";
-import { deactivateStudent, getStudent } from "./students.api";
+import { deactivateStudent, getStudent, updateStudent } from "./students.api";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +49,16 @@ export default function StudentProfilePage() {
       qc.invalidateQueries({ queryKey: ["student", id] });
     },
     onError: (err) => toast.error(err?.response?.data?.message || "Failed to deactivate"),
+  });
+
+  const activateMut = useMutation({
+    mutationFn: (studentId) => updateStudent(studentId, { isActive: true }),
+    onSuccess: () => {
+      toast.success("Student reactivated");
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["student", id] });
+    },
+    onError: (err) => toast.error(err?.response?.data?.message || "Failed to reactivate"),
   });
 
   if (meLoading) return (
@@ -124,11 +134,27 @@ export default function StudentProfilePage() {
               {deactivateMut.isPending ? "Processing..." : "Deactivate"}
             </Button>
           )}
+
+          {role === "ADMIN" && !s?.isActive && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-green-600 hover:text-green-700"
+              disabled={activateMut.isPending}
+              onClick={() => {
+                if (window.confirm(`Reactivate ${fullName(s)}?`)) {
+                  activateMut.mutate(s.id);
+                }
+              }}
+            >
+              {activateMut.isPending ? "Processing..." : "Reactivate"}
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Information Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm font-medium mb-1">Personal Details</div>
@@ -152,26 +178,6 @@ export default function StudentProfilePage() {
               <div>
                 <div className="text-xs text-muted-foreground">Class</div>
                 <div className="font-medium">{s.class?.name || "-"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Section</div>
-                <div className="font-medium">{s.section || "-"}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm font-medium mb-1">Contact Information</div>
-            <div className="space-y-2">
-              <div>
-                <div className="text-xs text-muted-foreground">Email</div>
-                <div className="font-medium truncate">{s.email || "-"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Phone</div>
-                <div className="font-medium">{s.phone || "-"}</div>
               </div>
             </div>
           </CardContent>

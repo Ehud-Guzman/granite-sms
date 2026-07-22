@@ -17,7 +17,7 @@ function canWrite(sub) {
   return isWriteEnabledStatus(sub?.status) && !isExpired(sub);
 }
 
-function capHit(current, cap) {
+export function capHit(current, cap) {
   if (cap == null) return false; // unlimited
   return Number(current) >= Number(cap);
 }
@@ -33,7 +33,7 @@ function getLimitFromJson(sub, key) {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function effectiveCap(sub, resource) {
+export function effectiveCap(sub, resource) {
   if (resource === "students") {
     const json = getLimitFromJson(sub, "STUDENTS_MAX");
     return json !== undefined ? json : sub.maxStudents;

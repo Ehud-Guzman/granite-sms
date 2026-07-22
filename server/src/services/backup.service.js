@@ -512,6 +512,13 @@ for (const s of students) {
   const row = { ...s };
   row.schoolId = destSchoolId;
 
+  // REPLACE wipes the school's students first, so the original id is free again.
+  // Preserve it there (same as users/teachers below) so any data outside the
+  // backup's scope — e.g. FeeInvoice/FeePayment.studentId, which are plain
+  // strings with no FK and are NOT part of this Phase 1 snapshot — doesn't
+  // silently point at a student id that no longer exists after restore.
+  // MERGE never wipes, so it must keep matching/creating by admissionNo only.
+  const preserveId = normalizedMode === "REPLACE" && row.id ? String(row.id) : null;
   delete row.id;
   delete row.createdAt;
   delete row.updatedAt;
@@ -543,6 +550,7 @@ for (const s of students) {
       userId: null, // keep safe
     },
     create: {
+      ...(preserveId ? { id: preserveId } : {}),
       schoolId: destSchoolId,
       admissionNo,
       firstName: row.firstName,

@@ -153,8 +153,12 @@ router.get("/subscription", async (req, res) => {
   });
 });
 
-// Keep as ADMIN for demo setup. Later move to SYSTEM_ADMIN control plane.
-router.post("/subscription", requireRole("ADMIN"), async (req, res) => {
+// SYSTEM_ADMIN only: this endpoint can set arbitrary entitlements/status/period
+// on a school's subscription. It was previously ADMIN-gated ("demo setup"), which
+// let any tenant ADMIN self-grant arbitrary entitlements (e.g. {"FEES_WRITE":true,
+// "ANYTHING_ELSE":true}) and an ACTIVE status with any currentPeriodEnd, bypassing
+// the SYSTEM_ADMIN-only /api/settings/subscription control plane entirely.
+router.post("/subscription", requireRole("SYSTEM_ADMIN"), async (req, res) => {
   try {
     const {
       schoolName,
@@ -385,6 +389,18 @@ router.post(
       return res.status(400).json({ message: `Invalid feeItemId(s): ${bad.join(", ")}` });
     }
 
+    // FeePlanItem.amount is a required, non-nullable integer column that feeds
+    // directly into invoice totals — reject negative/fractional amounts up front
+    // instead of letting a bad plan silently produce a negative or wrong invoice total.
+    for (const it of items) {
+      const amt = Number(it.amount);
+      if (!Number.isFinite(amt) || !Number.isInteger(amt) || amt < 0) {
+        return res.status(400).json({
+          message: "Each item.amount must be a non-negative whole number.",
+        });
+      }
+    }
+
     try {
       const plan = await prisma.feePlan.create({
         data: {
@@ -452,6 +468,17 @@ router.patch(
       const bad = feeItemIds.filter((fid) => !validSet.has(fid));
       if (bad.length) {
         return res.status(400).json({ message: `Invalid feeItemId(s): ${bad.join(", ")}` });
+      }
+
+      // Same guard as plan creation: reject negative/fractional amounts before
+      // they end up baked into a replacement set of invoice line items.
+      for (const it of items) {
+        const amt = Number(it.amount);
+        if (!Number.isFinite(amt) || !Number.isInteger(amt) || amt < 0) {
+          return res.status(400).json({
+            message: "Each item.amount must be a non-negative whole number.",
+          });
+        }
       }
     }
 

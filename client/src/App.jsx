@@ -1,57 +1,67 @@
 // src/App.jsx
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 
-import Login from "./pages/Login.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
 import AppShell from "./layouts/AppShell.jsx";
 import AuthGuard from "./guards/AuthGuard.jsx";
 import RoleGuard from "./guards/RoleGuard.jsx";
 
-import Placeholder from "./pages/Placeholder.jsx";
-
 import SubscriptionBlockerProvider from "@/components/subscription/SubscriptionBlockerProvider";
 
+const Login = lazy(() => import("./pages/Login.jsx"));
+const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const Placeholder = lazy(() => import("./pages/Placeholder.jsx"));
+
 // Students
-import StudentsListPage from "./features/students/StudentsListPage.jsx";
-import StudentProfilePage from "./features/students/StudentProfilePage.jsx";
+const StudentsListPage = lazy(() => import("./features/students/StudentsListPage.jsx"));
+const StudentProfilePage = lazy(() => import("./features/students/StudentProfilePage.jsx"));
 
 // Classes
-import ClassesListPage from "./features/classes/ClassesListPage.jsx";
-import ClassDetailsPage from "./features/classes/ClassDetailsPage.jsx";
+const ClassesListPage = lazy(() => import("./features/classes/ClassesListPage.jsx"));
+const ClassDetailsPage = lazy(() => import("./features/classes/ClassDetailsPage.jsx"));
 
 // Teachers
-import TeachersListPage from "@/features/teachers/TeachersListPage.jsx";
+const TeachersListPage = lazy(() => import("@/features/teachers/TeachersListPage.jsx"));
 
 // Attendance
-import AttendancePage from "@/features/attendance/AttendancePage.jsx";
-import AttendanceSessionPage from "@/features/attendance/AttendanceSessionPage.jsx";
+const AttendancePage = lazy(() => import("@/features/attendance/AttendancePage.jsx"));
+const AttendanceSessionPage = lazy(() => import("@/features/attendance/AttendanceSessionPage.jsx"));
 
 // Fees
-import FeesPage from "@/features/fees/FeesPage.jsx";
+const FeesPage = lazy(() => import("@/features/fees/FeesPage.jsx"));
 
 // Exams / Results
-import MarksEntryPage from "@/features/exams/marks/MarksEntryPage.jsx";
-import ExamsListPage from "@/features/exams/ExamsListPage.jsx";
-import SessionMarkSheetsPage from "@/features/exams/SessionMarkSheetsPage.jsx";
-import ResultsPage from "@/features/results/ResultsPage.jsx";
+const MarksEntryPage = lazy(() => import("@/features/exams/marks/MarksEntryPage.jsx"));
+const ExamsListPage = lazy(() => import("@/features/exams/ExamsListPage.jsx"));
+const SessionMarkSheetsPage = lazy(() => import("@/features/exams/SessionMarkSheetsPage.jsx"));
+const ResultsPage = lazy(() => import("@/features/results/ResultsPage.jsx"));
 
 // Reports
-import ReportsPage from "@/features/reports/ReportsPage.jsx";
-import ClassPerformanceReport from "@/features/reports/academic/ClassPerformanceReport.jsx";
-import FeesSummaryReport from "@/features/reports/fees/FeesSummaryReport.jsx";
-import FeesDefaultersReport from "@/features/reports/fees/FeesDefaultersReport.jsx";
-import FeesCollectionsReport from "@/features/reports/fees/FeesCollectionsReport.jsx";
-import AttendanceSummaryReport from "@/features/reports/attendance/AttendanceSummaryReport.jsx";
-import AttendanceDefaultersReport from "@/features/reports/attendance/AttendanceDefaultersReport.jsx";
+const ReportsPage = lazy(() => import("@/features/reports/ReportsPage.jsx"));
+const ClassPerformanceReport = lazy(() => import("@/features/reports/academic/ClassPerformanceReport.jsx"));
+const FeesSummaryReport = lazy(() => import("@/features/reports/fees/FeesSummaryReport.jsx"));
+const FeesDefaultersReport = lazy(() => import("@/features/reports/fees/FeesDefaultersReport.jsx"));
+const FeesCollectionsReport = lazy(() => import("@/features/reports/fees/FeesCollectionsReport.jsx"));
+const AttendanceSummaryReport = lazy(() => import("@/features/reports/attendance/AttendanceSummaryReport.jsx"));
+const AttendanceDefaultersReport = lazy(() => import("@/features/reports/attendance/AttendanceDefaultersReport.jsx"));
 
 // Select School
-import SelectSchoolPage from "./pages/SelectSchoolPage.jsx";
+const SelectSchoolPage = lazy(() => import("./pages/SelectSchoolPage.jsx"));
 
 // Settings
-import SettingsPage from "@/pages/SettingsPage.jsx";
+const SettingsPage = lazy(() => import("@/pages/SettingsPage.jsx"));
 
 // Auth extras
-import ChangePasswordPage from "./pages/ChangePasswordPage.jsx";
+const ChangePasswordPage = lazy(() => import("./pages/ChangePasswordPage.jsx"));
+
+function RouteLoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    </div>
+  );
+}
 
 /**
  * Roles
@@ -79,6 +89,7 @@ const ATTENDANCE_REPORTS_ACCESS = [R.ADMIN, R.TEACHER];
 export default function App() {
   return (
     <SubscriptionBlockerProvider>
+      <Suspense fallback={<RouteLoadingFallback />}>
       <Routes>
         {/* --------------------
             Public
@@ -316,6 +327,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<Navigate to="/app" replace />} />
       </Routes>
+      </Suspense>
     </SubscriptionBlockerProvider>
   );
 }

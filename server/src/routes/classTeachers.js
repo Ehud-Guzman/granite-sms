@@ -151,4 +151,31 @@ router.get(
   }
 );
 
+// ADMIN: unassign class teacher (tenant scoped)
+router.patch(
+  "/:classId/unassign",
+  requireRole("ADMIN"),
+  requireFeature("enableClassTeachers"),
+  async (req, res) => {
+    try {
+      const schoolId = req.schoolId;
+      const classId = String(req.params.classId);
+
+      const result = await prisma.classTeacher.updateMany({
+        where: { schoolId, classId },
+        data: { isActive: false },
+      });
+
+      if (result.count === 0) {
+        return res.status(404).json({ message: "No class teacher assignment found for this class" });
+      }
+
+      return res.json({ message: "Class teacher unassigned" });
+    } catch (err) {
+      console.error("UNASSIGN CLASS TEACHER ERROR:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  }
+);
+
 export default router;

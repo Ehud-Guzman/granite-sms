@@ -73,7 +73,7 @@ router.patch("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
       },
     });
 
-    clearSettingsCache();
+    clearSettingsCache(req.schoolId);
 
     await logAudit({
       req,

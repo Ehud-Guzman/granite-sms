@@ -424,29 +424,48 @@ router.post("/:id/status", async (req, res) => {
       if (target.schoolId !== req.schoolId) return res.status(403).json({ message: "Forbidden" });
     }
 
-    // Reactivating a TEACHER bypasses requireLimit() (create-only) — enforce the
-    // same teacher cap here, mirroring the fix already applied to Students.
+    // Reactivating any user bypasses requireLimit() (create-only) — enforce the
+    // same caps here, mirroring the fix already applied to Students/Classes.
     // Look up the subscription for the TARGET's school directly (not via the
     // loadSubscription middleware) since a SYSTEM_ADMIN may act cross-tenant
     // without having selected that school as their session tenant.
-    if (String(target.role).toUpperCase() === "TEACHER" && isActive && !target.isActive) {
+    if (isActive && !target.isActive) {
       const sub = await prisma.subscription.findFirst({
         where: { schoolId: target.schoolId },
         orderBy: { createdAt: "desc" },
       });
+
       if (sub) {
-        const teacherCap = effectiveCap(sub, "teachers");
-        const teacherCount = await prisma.teacher.count({
-          where: { schoolId: target.schoolId, user: { isActive: true } },
+        // General USERS_MAX cap — applies regardless of role, same count
+        // requireLimit("users") uses on create.
+        const userCap = effectiveCap(sub, "users");
+        const userCount = await prisma.user.count({
+          where: { schoolId: target.schoolId, isActive: true },
         });
-        if (capHit(teacherCount, teacherCap)) {
+        if (capHit(userCount, userCap)) {
           return res.status(409).json({
-            message: `Teacher limit reached (${teacherCount}/${teacherCap}). Upgrade to reactivate more teachers.`,
+            message: `User limit reached (${userCount}/${userCap}). Upgrade to reactivate more users.`,
             code: "LIMIT_REACHED",
-            resource: "teachers",
-            used: teacherCount,
-            limit: teacherCap,
+            resource: "users",
+            used: userCount,
+            limit: userCap,
           });
+        }
+
+        if (String(target.role).toUpperCase() === "TEACHER") {
+          const teacherCap = effectiveCap(sub, "teachers");
+          const teacherCount = await prisma.teacher.count({
+            where: { schoolId: target.schoolId, user: { isActive: true } },
+          });
+          if (capHit(teacherCount, teacherCap)) {
+            return res.status(409).json({
+              message: `Teacher limit reached (${teacherCount}/${teacherCap}). Upgrade to reactivate more teachers.`,
+              code: "LIMIT_REACHED",
+              resource: "teachers",
+              used: teacherCount,
+              limit: teacherCap,
+            });
+          }
         }
       }
     }

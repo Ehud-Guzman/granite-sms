@@ -4,7 +4,6 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { signToken } from "../utils/jwt.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { tenantContext } from "../middleware/tenant.js";
 import { logAudit } from "../utils/audit.js";
 import { upper } from "../utils/validate.js";
 
@@ -396,11 +395,16 @@ router.post("/impersonate", requireAuth, requireRole("SYSTEM_ADMIN"), async (req
       schoolId: target.schoolId ?? null,
     });
 
+    const actor = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { email: true },
+    });
+
     await logAudit({
       req,
       actorId: req.user?.id,
       actorRole: "SYSTEM_ADMIN",
-      actorEmail: req.auth?.actorEmail || null,
+      actorEmail: actor?.email || null,
       schoolId: target.schoolId ?? null,
       action: "AUTH_IMPERSONATE",
       targetType: "USER",
@@ -420,31 +424,6 @@ router.post("/impersonate", requireAuth, requireRole("SYSTEM_ADMIN"), async (req
     });
   } catch (err) {
     console.error("IMPERSONATE ERROR:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-});
-
-/**
- * Current user (DB-truth)
- * GET /api/auth/me
- */
-router.get("/me", requireAuth, tenantContext, async (req, res) => {
-  try {
-    // tenantContext already DB-validated user, role, active
-    const user = req.user;
-    return res.json({
-      user: {
-        id: user?.id ?? null,
-        email: req.userEmail ?? null,
-        role: req.role ?? user?.role ?? null,
-        schoolId: req.schoolId ?? null,
-        teacherId: req.teacherId ?? null,
-        studentId: req.studentId ?? null,
-      },
-      school: req.school ? { id: req.school.id, code: req.school.code, name: req.school.name } : null,
-    });
-  } catch (err) {
-    console.error("ME ERROR:", err);
     return res.status(500).json({ message: "Server error" });
   }
 });

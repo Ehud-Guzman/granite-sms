@@ -5,6 +5,8 @@ import { toast } from "sonner";
 
 import { api } from "@/api/axios";
 import { useMe } from "@/hooks/useMe";
+import { unassignClassTeacher } from "@/api/classTeachers.api";
+import { confirmAction } from "@/lib/confirm-store";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -184,8 +186,27 @@ export default function AssignClassTeacherDrawer({ classId, classLabel, children
     },
   });
 
+  const unassignMut = useMutation({
+    mutationFn: unassignClassTeacher,
+    onSuccess: () => {
+      toast.success("Class teacher removed");
+
+      qc.invalidateQueries({ queryKey: ["classes"] });
+      qc.invalidateQueries({ queryKey: ["class-teachers", tenantId] });
+      qc.invalidateQueries({ queryKey: ["teacher-users", tenantId] });
+
+      setOpen(false);
+      setSearch("");
+      setSelectedTeacherId("");
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || "Failed to remove class teacher");
+    },
+  });
+
   const busy =
     assignMut.isPending ||
+    unassignMut.isPending ||
     teachersQ.isFetching ||
     classTeachersQ.isFetching;
 
@@ -204,6 +225,21 @@ export default function AssignClassTeacherDrawer({ classId, classLabel, children
     }
 
     assignMut.mutate({ classId: cId, teacherId: tId });
+  };
+
+  const onRemove = async () => {
+    if (!canUse) return toast.error("Forbidden");
+
+    const cId = asStr(classId);
+    if (!cId) return toast.error("Missing classId");
+
+    const ok = await confirmAction({
+      title: "Remove class teacher?",
+      description: `Remove ${currentTeacherName || "the assigned teacher"} from ${classLabel || "this class"}?`,
+      confirmLabel: "Remove",
+      variant: "destructive",
+    });
+    if (ok) unassignMut.mutate(cId);
   };
 
   const onClose = () => {
@@ -380,21 +416,31 @@ export default function AssignClassTeacherDrawer({ classId, classLabel, children
 
         {/* Actions */}
         <div className="border-t pt-4 mt-4">
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" onClick={onClose} disabled={busy}>
-              Close
-            </Button>
+          <div className="flex items-center justify-between gap-2">
+            {currentTeacherUserId ? (
+              <Button variant="outline" className="text-destructive hover:text-destructive" onClick={onRemove} disabled={busy}>
+                {unassignMut.isPending ? "Removing…" : "Remove"}
+              </Button>
+            ) : (
+              <span />
+            )}
 
-            <Button
-              onClick={onAssign}
-              disabled={busy || !effectiveTeacherId || effectiveTeacherId === currentTeacherUserId}
-            >
-              {assignMut.isPending
-                ? "Saving…"
-                : currentTeacherUserId
-                ? "Update teacher"
-                : "Assign teacher"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={onClose} disabled={busy}>
+                Close
+              </Button>
+
+              <Button
+                onClick={onAssign}
+                disabled={busy || !effectiveTeacherId || effectiveTeacherId === currentTeacherUserId}
+              >
+                {assignMut.isPending
+                  ? "Saving…"
+                  : currentTeacherUserId
+                  ? "Update teacher"
+                  : "Assign teacher"}
+              </Button>
+            </div>
           </div>
         </div>
       </SheetContent>

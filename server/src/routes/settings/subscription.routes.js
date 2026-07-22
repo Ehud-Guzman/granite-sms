@@ -5,6 +5,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { tenantContext, requireTenant } from "../../middleware/tenant.js";
 import { logAudit } from "../../utils/audit.js";
 import { invalidateEntitlementsCache } from "../../middleware/entitlements.js";
+import { effectiveCap } from "../../middleware/subscription.js";
 import { upper } from "../../utils/validate.js";
 
 const router = Router();
@@ -59,37 +60,6 @@ function parseCapValue(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || n < 0) return undefined;
   return Math.floor(n);
-}
-
-function getLimitFromJson(sub, key) {
-  const limits = sub?.limits && typeof sub.limits === "object" ? sub.limits : null;
-  if (!limits) return undefined;
-  const v = limits[key];
-  if (v === null) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-// Effective cap (matches your middleware logic)
-function effectiveCap(sub, resource) {
-  if (resource === "students") {
-    const json = getLimitFromJson(sub, "STUDENTS_MAX");
-    return json !== undefined ? json : sub.maxStudents;
-  }
-  if (resource === "teachers") {
-    const json = getLimitFromJson(sub, "TEACHERS_MAX");
-    return json !== undefined ? json : sub.maxTeachers;
-  }
-  if (resource === "classes") {
-    const json = getLimitFromJson(sub, "CLASSES_MAX");
-    return json !== undefined ? json : sub.maxClasses;
-  }
-  if (resource === "users") {
-    // NO typed maxUsers in Prisma model => JSON-only
-    const json = getLimitFromJson(sub, "USERS_MAX");
-    return json !== undefined ? json : null; // null => unlimited
-  }
-  return null;
 }
 
 function percentUsed(used, cap) {

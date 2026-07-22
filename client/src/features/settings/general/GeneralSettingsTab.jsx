@@ -7,6 +7,8 @@ import {
   patchSchoolProfile,
   getAcademics,
   patchAcademics,
+  getFeatureFlags,
+  updateFeatureFlags,
 } from "@/api/settingsGeneral.api";
 
 import { useMe } from "@/hooks/useMe";
@@ -162,6 +164,32 @@ export default function GeneralSettingsTab() {
 
   const onResetAcademics = () => {
     if (academicsQ.data) setAcademicsForm(academicsQ.data);
+  };
+
+  /* =========================
+     Feature Flags
+     (features.routes.js is tenant-ADMIN only, not SYSTEM_ADMIN)
+  ========================= */
+
+  const flagsQ = useQuery({
+    queryKey: ["settings", "features"],
+    queryFn: getFeatureFlags,
+    enabled: !sys,
+  });
+
+  const saveFlags = useMutation({
+    mutationFn: updateFeatureFlags,
+    onSuccess: (data) => {
+      qc.setQueryData(["settings", "features"], data);
+      toast.success("Features updated");
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || "Failed to update features");
+    },
+  });
+
+  const toggleFlag = (key, value) => {
+    saveFlags.mutate({ [key]: value });
   };
 
   /* =========================
@@ -445,6 +473,64 @@ export default function GeneralSettingsTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Features */}
+      {!sys && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Features</CardTitle>
+            <CardDescription>
+              Enable or disable optional modules for this school
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {flagsQ.isLoading ? (
+              <div className="text-sm text-muted-foreground">Loading features...</div>
+            ) : flagsQ.isError ? (
+              <div className="text-sm text-destructive">
+                {flagsQ.error?.response?.data?.message || "Failed to load features"}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="font-medium text-sm">Class Teachers</div>
+                    <p className="text-xs text-muted-foreground">
+                      Allow assigning a homeroom teacher to each class
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={!!flagsQ.data?.enableClassTeachers}
+                    disabled={saveFlags.isPending}
+                    onChange={(e) => toggleFlag("enableClassTeachers", e.target.checked)}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="font-medium text-sm">Subject Assignments</div>
+                    <p className="text-xs text-muted-foreground">
+                      Allow assigning teachers to subjects per class (curriculum management)
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={!!flagsQ.data?.enableSubjectAssignments}
+                    disabled={saveFlags.isPending}
+                    onChange={(e) => toggleFlag("enableSubjectAssignments", e.target.checked)}
+                  />
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

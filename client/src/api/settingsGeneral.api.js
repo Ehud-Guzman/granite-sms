@@ -19,3 +19,13 @@ export async function patchAcademics(payload, params = {}) {
   const { data } = await api.patch("/api/settings/academics", payload, { params });
   return data.academics;
 }
+
+export async function getFeatureFlags() {
+  const { data } = await api.get("/api/settings");
+  return data;
+}
+
+export async function updateFeatureFlags(payload) {
+  const { data } = await api.patch("/api/settings", payload);
+  return data;
+}

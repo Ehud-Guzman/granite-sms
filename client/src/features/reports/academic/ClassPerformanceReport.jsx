@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { listExamSessions } from "@/api/exams.api";
 import { listClasses } from "@/api/classes.api";
+import { exportClassPerformanceReport } from "@/api/reports.api";
 import { useClassPerformanceReport } from "../hooks/useClassPerformanceReport";
 import { printSection } from "@/lib/print";
 import { normalizeArray, fmtClass, fmtNumber } from "../utils/format";
@@ -103,6 +104,20 @@ export default function ClassPerformanceReport() {
   const showHint =
     !classId || !sessionId || (!report && !isLoading && !error);
 
+  const [exporting, setExporting] = useState(false);
+  const doExport = async (format) => {
+    if (!sessionId || !report) return;
+    setExporting(true);
+    try {
+      await exportClassPerformanceReport(sessionId, format);
+    } catch (err) {
+      console.error("EXPORT CLASS PERFORMANCE ERROR:", err);
+      alert("Export failed. Check your network and try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -116,6 +131,12 @@ export default function ClassPerformanceReport() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => doExport("csv")} disabled={!report || exporting}>
+            Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => doExport("xlsx")} disabled={!report || exporting}>
+            Export Excel
+          </Button>
           <Button
             variant="outline"
             onClick={() => printSection("print-class-performance")}

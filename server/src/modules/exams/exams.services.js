@@ -24,6 +24,21 @@ async function getTeacherIdFromReq(req) {
   return req.user?.teacherId || req.user?.teacher?.id || null;
 }
 
+// Shared by getClassResults and getStudentResults so total/average/grade
+// math is computed in exactly one place.
+function summarizeSubjectScores(subjectScores) {
+  const validScores = subjectScores.filter((s) => s.score != null).map((s) => Number(s.score));
+  const total = validScores.reduce((a, b) => a + b, 0);
+  const average = validScores.length ? total / validScores.length : 0;
+
+  return {
+    total,
+    average: Number(average.toFixed(2)),
+    overallGrade: validScores.length ? gradeFromScore(Math.round(average)) : null,
+    missingCount: subjectScores.filter((s) => s.score == null).length,
+  };
+}
+
 async function assertMarkSheetAccess(req, markSheet, { allowClaim = false } = {}) {
   if (req.user.role === "ADMIN") return;
 
@@ -221,30 +236,23 @@ export async function createExamSession(req) {
       select: { teacherId: true, subjectId: true },
     });
 
-    let subjectsData = [];
-    if (assignments.length) {
-      const map = new Map(assignments.map(a => [a.subjectId, a.teacherId]));
-      subjectsData = Array.from(map, ([subjectId, teacherId]) => ({
-        schoolId,
-        examSessionId: session.id,
-        subjectId,
-        teacherId,
-        status: MarkSheetStatus.DRAFT,
-      }));
-    } else {
-      const subjects = await tx.subject.findMany({
-        where: { schoolId, isActive: true },
-        select: { id: true },
-        orderBy: { name: "asc" },
-      });
-      subjectsData = subjects.map(s => ({
-        schoolId,
-        examSessionId: session.id,
-        subjectId: s.id,
-        teacherId: null,
-        status: MarkSheetStatus.DRAFT,
-      }));
+    if (!assignments.length) {
+      throw Object.assign(
+        new Error(
+          "No teaching assignments found for this class. Set up subjects and teacher assignments in Settings > Curriculum before creating an exam session."
+        ),
+        { statusCode: 400 }
+      );
     }
+
+    const map = new Map(assignments.map(a => [a.subjectId, a.teacherId]));
+    const subjectsData = Array.from(map, ([subjectId, teacherId]) => ({
+      schoolId,
+      examSessionId: session.id,
+      subjectId,
+      teacherId,
+      status: MarkSheetStatus.DRAFT,
+    }));
 
     if (subjectsData.length) {
       await tx.markSheet.createMany({ data: subjectsData, skipDuplicates: true });
@@ -525,13 +533,17 @@ export async function submitMarkSheet(req) {
     );
   }
 
-  const updated = await prisma.markSheet.update({
-    where: { id: markSheetId },
+  await prisma.markSheet.updateMany({
+    where: { id: markSheetId, schoolId },
     data: {
       status: MarkSheetStatus.SUBMITTED,
       submittedAt: new Date(),
       submittedById: actorUserId,
     },
+  });
+
+  const updated = await prisma.markSheet.findFirst({
+    where: { id: markSheetId, schoolId },
     select: markSheetSelect,
   });
 
@@ -570,14 +582,18 @@ export async function unlockMarkSheet(req) {
     throw Object.assign(new Error("Only submitted marksheets can be unlocked."), { statusCode: 400 });
   }
 
-  const updated = await prisma.markSheet.update({
-    where: { id: markSheetId },
+  await prisma.markSheet.updateMany({
+    where: { id: markSheetId, schoolId },
     data: {
       status: MarkSheetStatus.UNLOCKED,
       unlockedAt: new Date(),
       unlockedById: actorUserId,
       unlockReason: reason,
     },
+  });
+
+  const updated = await prisma.markSheet.findFirst({
+    where: { id: markSheetId, schoolId },
     select: markSheetSelect,
   });
 
@@ -722,21 +738,11 @@ export async function getClassResults(req) {
     });
   }
 
-  const results = Array.from(byStudent.values()).map(({ student, subjectScores }) => {
-    const validScores = subjectScores.filter((s) => s.score != null).map((s) => Number(s.score));
-    const total = validScores.reduce((a, b) => a + b, 0);
-    const average = validScores.length ? total / validScores.length : 0;
-    const missingCount = subjectScores.filter((s) => s.score == null).length;
-
-    return {
-      student,
-      subjectScores,
-      total,
-      average: Number(average.toFixed(2)),
-      overallGrade: validScores.length ? gradeFromScore(Math.round(average)) : null,
-      missingCount,
-    };
-  });
+  const results = Array.from(byStudent.values()).map(({ student, subjectScores }) => ({
+    student,
+    subjectScores,
+    ...summarizeSubjectScores(subjectScores),
+  }));
 
   // Ranking: dense-ish (ties share a position)
   results.sort((a, b) => b.total - a.total || b.average - a.average);
@@ -813,18 +819,11 @@ export async function getStudentResults(req) {
     score: m.score,
   }));
 
-  const validScores = subjectScores.filter((s) => s.score != null).map((s) => Number(s.score));
-  const total = validScores.reduce((a, b) => a + b, 0);
-  const average = validScores.length ? total / validScores.length : 0;
-
   return {
     session,
     student,
     subjectScores,
-    total,
-    average: Number(average.toFixed(2)),
-    overallGrade: validScores.length ? gradeFromScore(Math.round(average)) : null,
-    missingCount: subjectScores.filter((s) => s.score == null).length,
+    ...summarizeSubjectScores(subjectScores),
   };
 }
 
@@ -843,14 +842,31 @@ export async function publishResults(req) {
     throw Object.assign(new Error("Results already published."), { statusCode: 400 });
   }
 
-  const updated = await prisma.examSession.update({
-    where: { id: sessionId },
+  const notSubmitted = await prisma.markSheet.count({
+    where: {
+      schoolId,
+      examSessionId: sessionId,
+      status: { not: MarkSheetStatus.SUBMITTED },
+    },
+  });
+
+  if (notSubmitted > 0) {
+    throw Object.assign(
+      new Error(`Cannot publish: ${notSubmitted} marksheet(s) are not yet submitted.`),
+      { statusCode: 409 }
+    );
+  }
+
+  await prisma.examSession.updateMany({
+    where: { id: sessionId, schoolId },
     data: {
       status: ExamSessionStatus.PUBLISHED,
       publishedAt: new Date(),
       publishedById: actorUserId,
     },
   });
+
+  const updated = await prisma.examSession.findFirst({ where: { id: sessionId, schoolId } });
 
   await audit(schoolId, buildAuditPayload({
     action: ExamAuditAction.PUBLISH,

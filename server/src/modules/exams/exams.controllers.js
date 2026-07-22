@@ -6,7 +6,7 @@ export async function wrap(req, res, fn) {
     const data = await fn(req);
     res.json({ success: true, data });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message || "Request failed" });
+    res.status(e.statusCode || 400).json({ success: false, message: e.message || "Request failed" });
   }
 }
 

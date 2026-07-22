@@ -3,7 +3,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
-import { loadSubscription, requireLimit } from "../middleware/subscription.js";
+import { loadSubscription, requireLimit, effectiveCap, capHit } from "../middleware/subscription.js";
 import { logAudit, actorCtx } from "../utils/audit.js";
 import { cleanStr, toInt } from "../utils/validate.js";
 
@@ -141,6 +141,7 @@ router.get("/", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
     const classes = await prisma.class.findMany({
       where,
       orderBy: [{ year: "desc" }, { name: "asc" }, { stream: "asc" }],
+      include: { _count: { select: { students: true } } },
     });
 
     return res.json(classes);
@@ -196,6 +197,25 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
     // validations
     if ("name" in data && !data.name) {
       return res.status(400).json({ message: "name cannot be empty" });
+    }
+
+    // Reactivation (isActive false -> true) bypasses requireLimit(), which only
+    // ever runs on POST — enforce the same class cap here, mirroring the fix
+    // already applied to Students.
+    if (data.isActive === true && !beforeRow.isActive) {
+      const cap = effectiveCap(req.subscription, "classes");
+      const current = await prisma.class.count({
+        where: { schoolId, isActive: true },
+      });
+      if (capHit(current, cap)) {
+        return res.status(409).json({
+          message: `Class limit reached (${current}/${cap}). Upgrade to reactivate more classes.`,
+          code: "LIMIT_REACHED",
+          resource: "classes",
+          used: current,
+          limit: cap,
+        });
+      }
     }
 
     // no-op protection

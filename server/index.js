@@ -14,7 +14,6 @@ import authRoutes from "./src/routes/auth.js";
 // Core modules
 import studentRoutes from "./src/routes/students.js";
 import classRoutes from "./src/routes/classes.js";
-import teacherRoutes from "./src/routes/teachers.js";
 import settingsRoutes from "./src/routes/settings.js";
 import subjectRoutes from "./src/routes/subjects.js";
 import assignmentRoutes from "./src/routes/assignments.js";
@@ -161,7 +160,6 @@ app.use("/api", requireAuth, tenantContext);
 // Core
 app.use("/api/students", studentRoutes);
 app.use("/api/classes", classRoutes);
-app.use("/api/teachers", teacherRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/subjects", subjectRoutes);
 app.use("/api/assignments", assignmentRoutes);

@@ -406,13 +406,6 @@ export default function ClassesListPage() {
                       
                       <div className="space-y-3">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Class Code</span>
-                          <span className="font-mono font-medium bg-muted px-2 py-1 rounded text-xs">
-                            {c.code || "N/A"}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center justify-between text-sm">
                           <span className="text-muted-foreground">Status</span>
                           <Badge variant={c.isActive ? "success" : "secondary"}>
                             {c.isActive ? "Active" : "Inactive"}

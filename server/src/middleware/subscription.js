@@ -163,7 +163,9 @@ export function requireLimit(resource) {
       if (resource === "students") {
         current = await prisma.student.count({ where: { schoolId: req.schoolId, isActive: true } });
       } else if (resource === "teachers") {
-        current = await prisma.teacher.count({ where: { schoolId: req.schoolId } });
+        current = await prisma.teacher.count({
+          where: { schoolId: req.schoolId, user: { isActive: true } },
+        });
       } else if (resource === "classes") {
         current = await prisma.class.count({ where: { schoolId: req.schoolId, isActive: true } });
       } else if (resource === "users") {

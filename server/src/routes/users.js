@@ -4,9 +4,9 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { prisma } from "../lib/prisma.js";
 import { logAudit, actorCtx } from "../utils/audit.js";
-import { isValidId as isValidSchoolId } from "../utils/validate.js";
+import { isValidId as isValidSchoolId, cleanStr } from "../utils/validate.js";
 
-import { loadSubscription, requireLimit } from "../middleware/subscription.js";
+import { loadSubscription, requireLimit, effectiveCap, capHit } from "../middleware/subscription.js";
 
 // ✅ Ensure auth + tenant context for every /api/users request
 import { requireAuth } from "../middleware/auth.js";
@@ -163,6 +163,9 @@ router.post(
 
       const email = cleanEmail(req.body?.email);
       const role = assertUiRole(req.body?.role);
+      const firstName = req.body?.firstName ? cleanStr(req.body.firstName) : null;
+      const lastName = req.body?.lastName ? cleanStr(req.body.lastName) : null;
+      const phone = req.body?.phone ? cleanStr(req.body.phone) : null;
 
       const bodySchoolId = req.body?.schoolId ? String(req.body.schoolId).trim() : null;
 
@@ -210,20 +213,56 @@ router.post(
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) return res.status(409).json({ message: "Email already exists" });
 
+      // TEACHER-role users need their own capacity check (requireLimit above only
+      // enforces maxUsers) and a matching Teacher profile row — without one, every
+      // teacher-scoped feature (attendance, student lists) treats them as having
+      // no assigned class at all, since req.user.teacherId comes from Teacher.id.
+      if (role === "TEACHER") {
+        const teacherCap = effectiveCap(req.subscription, "teachers");
+        const teacherCount = await prisma.teacher.count({
+          where: { schoolId, user: { isActive: true } },
+        });
+        if (capHit(teacherCount, teacherCap)) {
+          return res.status(409).json({
+            message: `Teacher limit reached (${teacherCount}/${teacherCap}). Upgrade to add more teachers.`,
+            code: "LIMIT_REACHED",
+            resource: "teachers",
+            used: teacherCount,
+            limit: teacherCap,
+          });
+        }
+      }
+
       const hashed = await bcrypt.hash(password, 10);
 
-      const user = await prisma.user.create({
-        data: {
-          email,
-          password: hashed,
-          role,
-          isActive: true,
-          schoolId,
-          mustChangePassword: true,
-          failedLoginAttempts: 0,
-          lockUntil: null,
-        },
-        select: safeUserSelect(),
+      const user = await prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email,
+            password: hashed,
+            role,
+            isActive: true,
+            schoolId,
+            mustChangePassword: true,
+            failedLoginAttempts: 0,
+            lockUntil: null,
+          },
+          select: safeUserSelect(),
+        });
+
+        if (role === "TEACHER") {
+          await tx.teacher.create({
+            data: {
+              schoolId,
+              userId: created.id,
+              firstName: firstName || "",
+              lastName: lastName || "",
+              phone,
+            },
+          });
+        }
+
+        return created;
       });
 
    await logAudit({
@@ -372,6 +411,33 @@ router.post("/:id/status", async (req, res) => {
     if (actorRole === "ADMIN") {
       if (!req.schoolId) return res.status(403).json({ message: "Tenant context required" });
       if (target.schoolId !== req.schoolId) return res.status(403).json({ message: "Forbidden" });
+    }
+
+    // Reactivating a TEACHER bypasses requireLimit() (create-only) — enforce the
+    // same teacher cap here, mirroring the fix already applied to Students.
+    // Look up the subscription for the TARGET's school directly (not via the
+    // loadSubscription middleware) since a SYSTEM_ADMIN may act cross-tenant
+    // without having selected that school as their session tenant.
+    if (String(target.role).toUpperCase() === "TEACHER" && isActive && !target.isActive) {
+      const sub = await prisma.subscription.findFirst({
+        where: { schoolId: target.schoolId },
+        orderBy: { createdAt: "desc" },
+      });
+      if (sub) {
+        const teacherCap = effectiveCap(sub, "teachers");
+        const teacherCount = await prisma.teacher.count({
+          where: { schoolId: target.schoolId, user: { isActive: true } },
+        });
+        if (capHit(teacherCount, teacherCap)) {
+          return res.status(409).json({
+            message: `Teacher limit reached (${teacherCount}/${teacherCap}). Upgrade to reactivate more teachers.`,
+            code: "LIMIT_REACHED",
+            resource: "teachers",
+            used: teacherCount,
+            limit: teacherCap,
+          });
+        }
+      }
     }
 
     const updated = await prisma.user.update({

@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { confirmAction } from "@/lib/confirm-store";
 
 import QueryBlock from "../components/QueryBlock";
 import SimpleModal from "../components/SimpleModal";
@@ -284,10 +285,14 @@ export default function FeePlansTab() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {
-                            if (window.confirm("Deactivate this fee plan?")) {
-                              deactivatePlanMut.mutate(p.id);
-                            }
+                          onClick={async () => {
+                            const ok = await confirmAction({
+                              title: "Deactivate fee plan?",
+                              description: `Deactivate "${p.title || "this fee plan"}"?`,
+                              confirmLabel: "Deactivate",
+                              variant: "destructive",
+                            });
+                            if (ok) deactivatePlanMut.mutate(p.id);
                           }}
                           disabled={deactivatePlanMut.isPending}
                         >

@@ -16,6 +16,8 @@ import { useMe } from "@/hooks/useMe";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ErrorState } from "@/components/ui/state-blocks";
+import { confirmAction } from "@/lib/confirm-store";
 
 import MarksTable from "./MarksTable";
 import UnlockReasonDialog from "./UnlockReasonDialog";
@@ -313,9 +315,14 @@ export default function MarksEntryPage() {
   }, [dirty]);
 
   // ✅ Optional: safer back navigation button
-  const smartBack = useCallback(() => {
+  const smartBack = useCallback(async () => {
     if (!dirty) return navigate(-1);
-    const ok = window.confirm("You have unsaved changes. Leave this page?");
+    const ok = await confirmAction({
+      title: "Leave this page?",
+      description: "You have unsaved changes. Leave this page?",
+      confirmLabel: "Leave",
+      variant: "destructive",
+    });
     if (ok) navigate(-1);
   }, [dirty, navigate]);
 
@@ -327,29 +334,21 @@ export default function MarksEntryPage() {
 
     return (
       <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Marks Entry</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-sm text-red-600">
-              {notFound ? "MarkSheet not found." : forbidden ? "Access denied." : "Failed to load marksheet."}
-            </div>
-            <div className="text-sm opacity-70">{msg}</div>
-
-            <div className="flex gap-2 pt-2">
+        <ErrorState
+          title={notFound ? "MarkSheet not found" : forbidden ? "Access denied" : "Failed to load marksheet"}
+          message={msg}
+          onRetry={() => msQ.refetch()}
+          actions={
+            <>
               <Button asChild variant="outline">
                 <Link to="/app/exams">Back to sessions</Link>
-              </Button>
-              <Button variant="outline" onClick={() => msQ.refetch()}>
-                Retry
               </Button>
               <Button variant="outline" onClick={() => navigate(-1)}>
                 Back
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </>
+          }
+        />
       </div>
     );
   }
@@ -439,7 +438,7 @@ export default function MarksEntryPage() {
           )}
 
           {(saveMut.isError || submitMut.isError || unlockMut.isError) && (
-            <div className="text-sm text-red-600">
+            <div className="text-sm text-destructive">
               {saveMut.isError && `Save failed: ${errMsg(saveMut.error)}`}
               {submitMut.isError && ` Submit failed: ${errMsg(submitMut.error)}`}
               {unlockMut.isError && ` Unlock failed: ${errMsg(unlockMut.error)}`}
@@ -447,7 +446,7 @@ export default function MarksEntryPage() {
           )}
 
           {invalidCount > 0 && (
-            <div className="text-sm text-red-600">
+            <div className="text-sm text-destructive">
               Some scores are invalid (must be 0–100). Blank scores are treated as Missing.
             </div>
           )}

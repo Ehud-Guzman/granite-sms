@@ -53,15 +53,10 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState, ErrorState, EmptyState, PageSkeleton } from "@/components/ui/state-blocks";
+import { confirmAction } from "@/lib/confirm-store";
 
 const fullName = (s) => `${s?.firstName || ""} ${s?.lastName || ""}`.trim();
-
-function capLabel(v) {
-  if (v === null) return "Unlimited";
-  if (v === undefined) return "—";
-  return String(v);
-}
 
 export default function StudentsListPage() {
   const qc = useQueryClient();
@@ -177,6 +172,7 @@ export default function StudentsListPage() {
     isLoading,
     isError,
     error,
+    refetch,
   } = useQuery({
     queryKey: ["students", { active, classId: effectiveClassId || null }],
     queryFn: () => listStudents({ active, classId: effectiveClassId }),
@@ -237,13 +233,7 @@ const activateMut = useMutation({
   };
 
   if (meLoading) {
-    return (
-      <div className="p-6 space-y-4">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
   
   if (role !== "ADMIN" && role !== "TEACHER") {
@@ -464,47 +454,41 @@ const activateMut = useMutation({
         <CardContent>
           {/* Loading State */}
           {isLoading && (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
+            <LoadingState
+              title="Loading Students"
+              description="Fetching student records…"
+              skeletonCount={5}
+              skeletonClassName="h-12 w-full"
+              gridClassName="space-y-3"
+            />
           )}
 
           {/* Error State */}
           {isError && (
-            <div className="text-center py-8">
-              <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-              <div className="font-medium">Failed to load students</div>
-              <div className="text-muted-foreground mt-2 max-w-md mx-auto">
-                {error?.response?.data?.message || error?.message || "Unknown error occurred"}
-              </div>
-              <Button 
-                variant="outline" 
-                className="mt-4"
-                onClick={() => window.location.reload()}
-              >
-                Retry
-              </Button>
-            </div>
+            <ErrorState
+              bare
+              title="Failed to load students"
+              message={error?.response?.data?.message || error?.message || "Unknown error occurred"}
+              onRetry={() => refetch()}
+              retryLabel="Retry"
+            />
           )}
 
           {/* Empty State */}
           {!isLoading && !isError && filteredStudents.length === 0 && (
-            <div className="text-center py-12">
-              <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <AlertCircle className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <h3 className="font-semibold">No students found</h3>
-              <p className="text-muted-foreground mt-1 mb-4">
-                {search ? "Try adjusting your search criteria" : "No students match your current filters"}
-              </p>
-              {search && (
-                <Button variant="outline" onClick={() => setSearch("")}>
-                  Clear Search
-                </Button>
-              )}
-            </div>
+            <EmptyState
+              bare
+              size="sm"
+              title="No students found"
+              description={search ? "Try adjusting your search criteria" : "No students match your current filters"}
+              action={
+                search && (
+                  <Button variant="outline" onClick={() => setSearch("")}>
+                    Clear Search
+                  </Button>
+                )
+              }
+            />
           )}
 
           {/* Table */}
@@ -578,10 +562,14 @@ const activateMut = useMutation({
                                     size="sm"
                                     className="h-8 text-destructive hover:text-destructive"
                                     disabled={deactivateMut.isPending}
-                                    onClick={() => {
-                                      if (confirm(`Deactivate ${fullName(s)}? They will no longer appear in active lists or marksheets.`)) {
-                                        deactivateMut.mutate(s.id);
-                                      }
+                                    onClick={async () => {
+                                      const ok = await confirmAction({
+                                        title: "Deactivate student?",
+                                        description: `Deactivate ${fullName(s)}? They will no longer appear in active lists or marksheets.`,
+                                        confirmLabel: "Deactivate",
+                                        variant: "destructive",
+                                      });
+                                      if (ok) deactivateMut.mutate(s.id);
                                     }}
                                   >
                                     {deactivateMut.isPending ? (
@@ -595,17 +583,20 @@ const activateMut = useMutation({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 text-green-600 hover:text-green-700"
+                                    className="h-8 text-success hover:text-success/80"
                                     disabled={activateMut.isPending || studentsAtLimit}
                                     title={
                                       studentsAtLimit
                                         ? `Student limit reached (${usage.studentsCount ?? "—"}/${sub?.maxStudents ?? "—"}). Upgrade to reactivate more.`
                                         : undefined
                                     }
-                                    onClick={() => {
-                                      if (confirm(`Reactivate ${fullName(s)}? They will now appear in active lists and be eligible for marks entry.`)) {
-                                        activateMut.mutate(s.id);
-                                      }
+                                    onClick={async () => {
+                                      const ok = await confirmAction({
+                                        title: "Reactivate student?",
+                                        description: `Reactivate ${fullName(s)}? They will now appear in active lists and be eligible for marks entry.`,
+                                        confirmLabel: "Reactivate",
+                                      });
+                                      if (ok) activateMut.mutate(s.id);
                                     }}
                                   >
                                     {activateMut.isPending ? (

@@ -147,6 +147,7 @@ export default function SubscriptionCollapsiblePanel() {
                   size="icon"
                   className="h-6 w-6"
                   onClick={() => setIsExpanded(true)}
+                  aria-label="Expand plan panel"
                 >
                   <ChevronRight className="h-3 w-3" />
                 </Button>
@@ -155,6 +156,7 @@ export default function SubscriptionCollapsiblePanel() {
                   size="icon"
                   className="h-6 w-6"
                   onClick={() => setIsVisible(false)}
+                  aria-label="Hide plan panel"
                 >
                   <EyeOff className="h-3 w-3" />
                 </Button>
@@ -162,7 +164,7 @@ export default function SubscriptionCollapsiblePanel() {
             </div>
 
             {isNearLimit && !isAtLimit && (
-              <div className="mt-2 flex items-center gap-1 text-amber-600 text-[10px]">
+              <div className="mt-2 flex items-center gap-1 text-warning text-[10px]">
                 <AlertTriangle className="h-3 w-3" />
                 Some resources near limit
               </div>
@@ -209,6 +211,7 @@ export default function SubscriptionCollapsiblePanel() {
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => q.refetch()}
+                aria-label="Refresh plan"
               >
                 <RefreshCw className="h-3 w-3" />
               </Button>
@@ -217,6 +220,7 @@ export default function SubscriptionCollapsiblePanel() {
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => setIsExpanded(false)}
+                aria-label="Collapse plan panel"
               >
                 <ChevronDown className="h-3 w-3" />
               </Button>
@@ -225,6 +229,7 @@ export default function SubscriptionCollapsiblePanel() {
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => setIsVisible(false)}
+                aria-label="Hide plan panel"
               >
                 <EyeOff className="h-3 w-3" />
               </Button>

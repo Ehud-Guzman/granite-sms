@@ -190,8 +190,9 @@ export default function GeneralSettingsTab() {
 
               <div className="max-w-md space-y-3">
                 <div className="space-y-1.5">
-                  <Label>School ID</Label>
+                  <Label htmlFor="school-id">School ID</Label>
                   <Input
+                    id="school-id"
                     value={schoolId}
                     placeholder="school_demo_001"
                     onChange={(e) => setSchoolId(e.target.value.trim())}
@@ -299,40 +300,45 @@ export default function GeneralSettingsTab() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>School Name</Label>
+              <Label htmlFor="school-name">School Name</Label>
               <Input
+                id="school-name"
                 value={schoolForm?.name || ""}
                 onChange={(e) => setSchoolForm({ ...schoolForm, name: e.target.value })}
                 placeholder="Enter school name"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Short Name</Label>
+              <Label htmlFor="school-short-name">Short Name</Label>
               <Input
+                id="school-short-name"
                 value={schoolForm?.shortName || ""}
                 onChange={(e) => setSchoolForm({ ...schoolForm, shortName: e.target.value })}
                 placeholder="e.g. St. Mary"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>School Code</Label>
+              <Label htmlFor="school-code">School Code</Label>
               <Input
+                id="school-code"
                 value={schoolForm?.code || ""}
                 onChange={(e) => setSchoolForm({ ...schoolForm, code: e.target.value })}
                 placeholder="e.g. SMHS"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Contact Email</Label>
+              <Label htmlFor="school-contact-email">Contact Email</Label>
               <Input
+                id="school-contact-email"
                 value={schoolForm?.contactEmail || ""}
                 onChange={(e) => setSchoolForm({ ...schoolForm, contactEmail: e.target.value })}
                 placeholder="school@example.com"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Contact Phone</Label>
+              <Label htmlFor="school-contact-phone">Contact Phone</Label>
               <Input
+                id="school-contact-phone"
                 value={schoolForm?.contactPhone || ""}
                 onChange={(e) => setSchoolForm({ ...schoolForm, contactPhone: e.target.value })}
                 placeholder="07xx xxx xxx"
@@ -386,8 +392,9 @@ export default function GeneralSettingsTab() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Current Academic Year</Label>
+              <Label htmlFor="academic-year">Current Academic Year</Label>
               <Input
+                id="academic-year"
                 value={academicsForm?.currentAcademicYear || ""}
                 onChange={(e) =>
                   setAcademicsForm({ ...academicsForm, currentAcademicYear: e.target.value })
@@ -397,8 +404,9 @@ export default function GeneralSettingsTab() {
               <p className="text-xs text-muted-foreground">Format: 2026 or 2025/2026</p>
             </div>
             <div className="space-y-1.5">
-              <Label>Term 1 Label</Label>
+              <Label htmlFor="term1-label">Term 1 Label</Label>
               <Input
+                id="term1-label"
                 value={academicsForm?.term1Label || ""}
                 onChange={(e) =>
                   setAcademicsForm({ ...academicsForm, term1Label: e.target.value })
@@ -406,8 +414,9 @@ export default function GeneralSettingsTab() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Term 2 Label</Label>
+              <Label htmlFor="term2-label">Term 2 Label</Label>
               <Input
+                id="term2-label"
                 value={academicsForm?.term2Label || ""}
                 onChange={(e) =>
                   setAcademicsForm({ ...academicsForm, term2Label: e.target.value })
@@ -415,8 +424,9 @@ export default function GeneralSettingsTab() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Term 3 Label</Label>
+              <Label htmlFor="term3-label">Term 3 Label</Label>
               <Input
+                id="term3-label"
                 value={academicsForm?.term3Label || ""}
                 onChange={(e) =>
                   setAcademicsForm({ ...academicsForm, term3Label: e.target.value })

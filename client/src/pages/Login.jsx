@@ -99,7 +99,7 @@ export default function Login() {
     }
   };
 
-  const useDemo = (acc) => {
+  const fillDemoAccount = (acc) => {
     setEmail(acc.email);
     setPassword(acc.password);
   };
@@ -200,7 +200,7 @@ export default function Login() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => useDemo(acc)}
+                    onClick={() => fillDemoAccount(acc)}
                     disabled={loading}
                   >
                     Use

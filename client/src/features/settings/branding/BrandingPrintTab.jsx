@@ -291,8 +291,9 @@ const logoSrc = form?.brandLogoUrl
           <CardContent className="p-6 space-y-3">
             <div className="text-sm font-medium">School scope</div>
             <div className="max-w-sm space-y-2">
-              <Label className="text-xs">schoolId</Label>
+              <Label htmlFor="branding-school-id" className="text-xs">schoolId</Label>
               <Input
+                id="branding-school-id"
                 value={schoolId}
                 placeholder="school_demo_001"
                 onChange={(e) => setSchoolId(e.target.value)}
@@ -537,20 +538,30 @@ const logoSrc = form?.brandLogoUrl
    Fields
 ========================= */
 
+function slugify(label) {
+  return String(label || "field")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
 function ColorField({ label, value, onChange }) {
   const normalized = normalizeHex(value) || "";
+  const id = `color-field-${slugify(label)}`;
 
   return (
     <div className="space-y-1">
-      <Label className="text-xs">{label}</Label>
+      <Label htmlFor={id} className="text-xs">{label}</Label>
       <div className="flex items-center gap-2">
         <Input
           type="color"
           value={normalizeHex(normalized) || "#111827"}
           onChange={(e) => onChange(e.target.value)}
           className="w-14 p-1"
+          aria-label={`${label} color picker`}
         />
         <Input
+          id={id}
           value={value || ""}
           placeholder="#111827"
           onChange={(e) => onChange(e.target.value)}
@@ -565,10 +576,13 @@ function ColorField({ label, value, onChange }) {
 }
 
 function SelectField({ label, value, onChange, options, hint }) {
+  const id = `select-field-${slugify(label)}`;
+
   return (
     <div className="space-y-1">
-      <Label className="text-xs">{label}</Label>
+      <Label htmlFor={id} className="text-xs">{label}</Label>
       <select
+        id={id}
         className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
         value={value || ""}
         onChange={(e) => onChange(e.target.value)}

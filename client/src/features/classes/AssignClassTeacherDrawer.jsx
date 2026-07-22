@@ -286,8 +286,9 @@ export default function AssignClassTeacherDrawer({ classId, classLabel, children
 
           {/* Search */}
           <div className="space-y-2">
-            <Label>Search teachers</Label>
+            <Label htmlFor="assign-teacher-search">Search teachers</Label>
             <Input
+              id="assign-teacher-search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, email, phone…"

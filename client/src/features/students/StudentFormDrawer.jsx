@@ -2,12 +2,12 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { studentSchema, toStudentPayload } from "./students.schema";
 import { createStudent, updateStudent } from "./students.api";
-import { listClasses } from "../classes/classes.api";
+import { useClasses } from "../classes/classes.queries";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,12 +40,8 @@ export default function StudentFormDrawer({
 }) {
   const qc = useQueryClient();
 
-  const { data: classes = [], isLoading: classesLoading } = useQuery({
-    queryKey: ["classes"],
-    queryFn: listClasses,
+  const { data: classes = [], isLoading: classesLoading } = useClasses(undefined, {
     enabled: open,
-    retry: false,
-    staleTime: 60 * 1000,
   });
 
   const form = useForm({

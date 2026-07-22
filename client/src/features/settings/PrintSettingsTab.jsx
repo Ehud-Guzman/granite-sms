@@ -147,8 +147,8 @@ export default function PrintSettingsTab() {
             SYSTEM_ADMIN must select a school to edit print settings.
           </div>
           <div className="max-w-sm space-y-2">
-            <Label className="text-xs">schoolId</Label>
-            <Input value={schoolId} onChange={(e) => setSchoolId(e.target.value)} placeholder="school_demo_001" />
+            <Label htmlFor="print-school-id" className="text-xs">schoolId</Label>
+            <Input id="print-school-id" value={schoolId} onChange={(e) => setSchoolId(e.target.value)} placeholder="school_demo_001" />
             <Button size="sm" disabled={!schoolId.trim()} onClick={() => setSchoolId((x) => x.trim())}>
               Load
             </Button>
@@ -237,8 +237,9 @@ export default function PrintSettingsTab() {
 
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-xs">Header text (multi-line)</Label>
+              <Label htmlFor="print-header-text" className="text-xs">Header text (multi-line)</Label>
               <Textarea
+                id="print-header-text"
                 value={form.printHeaderText}
                 onChange={(e) => setForm((p) => ({ ...p, printHeaderText: e.target.value }))}
                 placeholder={`P.O Box 123, Town\nTel: 07xx xxx xxx\nEmail: info@school.ac.ke`}
@@ -250,8 +251,9 @@ export default function PrintSettingsTab() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs">Footer text (multi-line)</Label>
+              <Label htmlFor="print-footer-text" className="text-xs">Footer text (multi-line)</Label>
               <Textarea
+                id="print-footer-text"
                 value={form.printFooterText}
                 onChange={(e) => setForm((p) => ({ ...p, printFooterText: e.target.value }))}
                 placeholder={`Generated on ${new Date().toLocaleDateString()}\nPowered by SMS`}

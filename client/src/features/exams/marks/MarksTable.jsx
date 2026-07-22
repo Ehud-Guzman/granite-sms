@@ -3,8 +3,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { LoadingState, EmptyState } from "@/components/ui/state-blocks";
 
 function fullName(s) {
   const a = String(s?.firstName || "").trim();
@@ -277,29 +276,22 @@ export default function MarksTable({
         </div>
 
         {loading ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-            Loading marks...
-          </div>
+          <LoadingState title="Loading marks…" />
         ) : rows.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            No active students in this class/marksheet.
-          </div>
+          <EmptyState bare size="sm" title="No active students in this class/marksheet." />
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            No matches for “{q}”.
-          </div>
+          <EmptyState bare size="sm" title={`No matches for "${q}".`} />
         ) : (
           <div className="border rounded-lg overflow-hidden">
             <div className="overflow-x-auto max-h-[65vh]">
               <table className="w-full text-sm table-fixed">
                 <thead className="sticky top-0 bg-background border-b z-10">
                   <tr className="text-left">
-                    <th className="w-24 px-4 py-3 font-medium">Adm No</th>
-                    <th className="w-64 px-4 py-3 font-medium">Student</th>
-                    <th className="w-32 px-4 py-3 font-medium">Score (/100)</th>
-                    <th className="w-28 px-4 py-3 font-medium text-center">Missing</th>
-                    <th className="px-4 py-3 font-medium">Comment</th>
+                    <th scope="col" className="w-24 px-4 py-3 font-medium">Adm No</th>
+                    <th scope="col" className="w-64 px-4 py-3 font-medium">Student</th>
+                    <th scope="col" className="w-32 px-4 py-3 font-medium">Score (/100)</th>
+                    <th scope="col" className="w-28 px-4 py-3 font-medium text-center">Missing</th>
+                    <th scope="col" className="px-4 py-3 font-medium">Comment</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -315,7 +307,7 @@ export default function MarksTable({
                       <tr
                         key={s.id}
                         className={`border-b last:border-b-0 hover:bg-muted/50 focus-within:bg-muted/30 transition-colors ${
-                          missing ? "bg-red-50/30" : ""
+                          missing ? "bg-destructive/5" : ""
                         }`}
                         onKeyDown={(e) => {
                           if (e.key.toLowerCase() === "m") {
@@ -346,13 +338,13 @@ export default function MarksTable({
                             disabled={isLocked}
                             placeholder={missing ? "Missing" : "0–100"}
                             className={`h-9 text-center ${missing ? "opacity-70 bg-muted/30" : ""} ${
-                              scoreInvalid ? "border-red-500 focus-visible:ring-red-500" : ""
+                              scoreInvalid ? "border-destructive focus-visible:ring-destructive" : ""
                             }`}
                             inputMode="numeric"
                             aria-invalid={scoreInvalid}
                           />
                           {scoreInvalid && (
-                            <div className="text-xs text-red-600 mt-1 text-center">
+                            <div className="text-xs text-destructive mt-1 text-center">
                               {normalized.message || "Invalid"}
                             </div>
                           )}
@@ -365,7 +357,7 @@ export default function MarksTable({
                             onClick={() => toggleMissing(r)}
                             className={`w-20 h-9 rounded border text-sm font-medium transition-colors ${
                               missing
-                                ? "bg-red-100 border-red-300 hover:bg-red-200 text-red-800"
+                                ? "bg-destructive/10 border-destructive/30 hover:bg-destructive/20 text-destructive"
                                 : "bg-background hover:bg-muted border-border text-muted-foreground"
                             } ${isLocked ? "opacity-50 cursor-not-allowed" : ""}`}
                             title="Toggle missing (shortcut: M)"
@@ -395,7 +387,7 @@ export default function MarksTable({
         )}
 
         {isLocked && (
-          <div className="text-sm text-amber-700 bg-amber-50/70 p-3 rounded border border-amber-200 mt-4">
+          <div className="text-sm text-warning bg-warning/10 p-3 rounded border border-warning/30 mt-4">
             This marksheet is <strong>SUBMITTED</strong>. Editing is locked.
           </div>
         )}

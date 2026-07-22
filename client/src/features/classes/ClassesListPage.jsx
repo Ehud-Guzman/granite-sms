@@ -30,21 +30,9 @@ import {
   BookOpen,
   ArrowRight,
   AlertCircle,
-  Loader2,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
-
-function classLabel(c) {
-  const s = c.stream ? ` ${c.stream}` : "";
-  return `${c.name}${s}`.trim();
-}
-
-function capLabel(v) {
-  if (v === null) return "Unlimited";
-  if (v === undefined) return "—";
-  return String(v);
-}
+import { LoadingState, ErrorState, EmptyState, PageSkeleton } from "@/components/ui/state-blocks";
 
 export default function ClassesListPage() {
   const { data: meData, isLoading: meLoading } = useMe();
@@ -125,20 +113,7 @@ export default function ClassesListPage() {
   }, [data, q]);
 
   if (meLoading) {
-    return (
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-4 w-96" />
-        </div>
-        <Skeleton className="h-12 w-full" />
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-48 w-full" />
-          ))}
-        </div>
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   return (
@@ -308,75 +283,47 @@ export default function ClassesListPage() {
 
       {/* Loading State */}
       {isLoading && (
-        <div className="space-y-4">
-          <div className="text-center py-8">
-            <div className="inline-flex items-center justify-center p-3 rounded-full bg-muted mb-4">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-            <h3 className="font-semibold">Loading Classes</h3>
-            <p className="text-muted-foreground">Fetching class data...</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(6)].map((_, i) => (
-              <Skeleton key={i} className="h-56 w-full rounded-xl" />
-            ))}
-          </div>
-        </div>
+        <LoadingState title="Loading Classes" description="Fetching class data..." skeletonCount={6} />
       )}
 
       {/* Error State */}
       {isError && (
-        <Card className="border-destructive/20">
-          <CardContent className="p-8 text-center">
-            <div className="mx-auto w-14 h-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-              <AlertCircle className="h-7 w-7 text-destructive" />
-            </div>
-            <h3 className="font-semibold text-lg">Failed to Load Classes</h3>
-            <p className="text-muted-foreground mt-2 max-w-md mx-auto">
-              {error?.response?.data?.message || error?.message || "An unknown error occurred"}
-            </p>
-            <div className="flex gap-2 justify-center mt-6">
-              <Button variant="outline" onClick={() => refetch()} className="gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Try Again
-              </Button>
-              <Button 
-                variant="ghost" 
-                onClick={() => window.location.reload()}
-              >
-                Reload Page
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <ErrorState
+          title="Failed to Load Classes"
+          message={error?.response?.data?.message || error?.message || "An unknown error occurred"}
+          onRetry={() => refetch()}
+          actions={
+            <Button variant="ghost" onClick={() => window.location.reload()}>
+              Reload Page
+            </Button>
+          }
+        />
       )}
 
       {/* Classes Grid */}
       {!isLoading && !isError && (
         <>
           {rows.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                  <BookOpen className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="font-semibold text-lg">No Classes Found</h3>
-                <p className="text-muted-foreground mt-2 max-w-md mx-auto">
-                  {q 
-                    ? "No classes match your search criteria. Try a different search term."
-                    : `No classes found for the year ${year}. Try a different year or create a new class.`
-                  }
-                </p>
-                {role === "ADMIN" && canCreateClass && (
+            <EmptyState
+              icon={BookOpen}
+              title="No Classes Found"
+              description={
+                q
+                  ? "No classes match your search criteria. Try a different search term."
+                  : `No classes found for the year ${year}. Try a different year or create a new class.`
+              }
+              action={
+                role === "ADMIN" &&
+                canCreateClass && (
                   <ClassFormDrawer defaultYear={Number(year) || new Date().getFullYear()}>
-                    <Button className="mt-4 gap-2">
+                    <Button className="gap-2">
                       <Plus className="h-4 w-4" />
                       Create First Class
                     </Button>
                   </ClassFormDrawer>
-                )}
-              </CardContent>
-            </Card>
+                )
+              }
+            />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {rows.map((c) => (

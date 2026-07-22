@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { confirmAction } from "@/lib/confirm-store";
 
 const fullName = (s) => `${s?.firstName || ""} ${s?.lastName || ""}`.trim();
 
@@ -125,10 +126,14 @@ export default function StudentProfilePage() {
               variant="destructive"
               size="sm"
               disabled={deactivateMut.isPending}
-              onClick={() => {
-                if (window.confirm(`Deactivate ${fullName(s)}?`)) {
-                  deactivateMut.mutate(s.id);
-                }
+              onClick={async () => {
+                const ok = await confirmAction({
+                  title: "Deactivate student?",
+                  description: `Deactivate ${fullName(s)}?`,
+                  confirmLabel: "Deactivate",
+                  variant: "destructive",
+                });
+                if (ok) deactivateMut.mutate(s.id);
               }}
             >
               {deactivateMut.isPending ? "Processing..." : "Deactivate"}
@@ -139,12 +144,15 @@ export default function StudentProfilePage() {
             <Button
               variant="outline"
               size="sm"
-              className="text-green-600 hover:text-green-700"
+              className="text-success hover:text-success/80"
               disabled={activateMut.isPending}
-              onClick={() => {
-                if (window.confirm(`Reactivate ${fullName(s)}?`)) {
-                  activateMut.mutate(s.id);
-                }
+              onClick={async () => {
+                const ok = await confirmAction({
+                  title: "Reactivate student?",
+                  description: `Reactivate ${fullName(s)}?`,
+                  confirmLabel: "Reactivate",
+                });
+                if (ok) activateMut.mutate(s.id);
               }}
             >
               {activateMut.isPending ? "Processing..." : "Reactivate"}

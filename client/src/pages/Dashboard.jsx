@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { LoadingState, ErrorState, EmptyState, PageSkeleton } from "@/components/ui/state-blocks";
 
 function fmtName(user) {
   const full = `${user?.firstName || ""} ${user?.lastName || ""}`.trim();
@@ -29,15 +30,6 @@ function capLabel(cap) {
   if (cap === null) return "Unlimited";
   if (cap === undefined) return "—";
   return String(cap);
-}
-
-function fmtDate(d) {
-  if (!d) return "—";
-  try {
-    return new Date(d).toLocaleString();
-  } catch {
-    return String(d);
-  }
 }
 
 function clampPct(v) {
@@ -252,8 +244,17 @@ export default function Dashboard() {
     return base;
   }, [roleUpper]);
 
-  if (meQ.isLoading) return <div className="p-6">Loading dashboard…</div>;
-  if (meQ.isError) return <div className="p-6">Failed to load dashboard.</div>;
+  if (meQ.isLoading) return <PageSkeleton />;
+  if (meQ.isError)
+    return (
+      <div className="p-6">
+        <ErrorState
+          title="Failed to load dashboard"
+          message={meQ.error?.response?.data?.message || meQ.error?.message}
+          onRetry={() => meQ.refetch()}
+        />
+      </div>
+    );
 
   const summary = summaryQ.data;
   const activity = activityQ.data?.items || [];
@@ -578,20 +579,16 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent className="p-4">
-              {activityQ.isLoading && (
-                <div className="text-sm text-muted-foreground py-4 text-center">
-                  Loading activity…
-                </div>
-              )}
+              {activityQ.isLoading && <LoadingState title="Loading activity…" />}
               {activityQ.isError && (
-                <div className="text-sm text-muted-foreground py-4 text-center">
-                  Failed to load activity.
-                </div>
+                <ErrorState
+                  bare
+                  title="Failed to load activity"
+                  onRetry={() => activityQ.refetch()}
+                />
               )}
               {!activityQ.isLoading && !activityQ.isError && activity.length === 0 && (
-                <div className="text-sm text-muted-foreground py-4 text-center">
-                  No activity yet.
-                </div>
+                <EmptyState bare size="sm" title="No activity yet" />
               )}
               <div className="space-y-3">
                 {activity.slice(0, 6).map((it) => (

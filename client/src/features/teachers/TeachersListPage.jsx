@@ -34,7 +34,8 @@ import {
   KeyRound,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState, ErrorState, EmptyState, PageSkeleton } from "@/components/ui/state-blocks";
+import { confirmAction } from "@/lib/confirm-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -130,20 +131,7 @@ export default function TeachersListPage() {
   }, [teachersQ.data, q, status]);
 
   if (meLoading) {
-    return (
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-4 w-96" />
-        </div>
-        <Skeleton className="h-12 w-full" />
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-48 w-full" />
-          ))}
-        </div>
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   if (role !== "ADMIN") {
@@ -334,66 +322,41 @@ export default function TeachersListPage() {
 
       {/* Loading */}
       {teachersQ.isLoading && (
-        <div className="space-y-4">
-          <div className="text-center py-8">
-            <div className="inline-flex items-center justify-center p-3 rounded-full bg-muted mb-4">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-            <h3 className="font-semibold">Loading Teachers</h3>
-            <p className="text-muted-foreground">Fetching teacher users…</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(6)].map((_, i) => (
-              <Skeleton key={i} className="h-56 w-full rounded-xl" />
-            ))}
-          </div>
-        </div>
+        <LoadingState title="Loading Teachers" description="Fetching teacher users…" skeletonCount={6} />
       )}
 
       {/* Error */}
       {teachersQ.isError && (
-        <Card className="border-destructive/20">
-          <CardContent className="p-8 text-center">
-            <div className="mx-auto w-14 h-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-              <AlertCircle className="h-7 w-7 text-destructive" />
-            </div>
-            <h3 className="font-semibold text-lg">Failed to Load Teachers</h3>
-            <p className="text-muted-foreground mt-2 max-w-md mx-auto">
-              {teachersQ.error?.response?.data?.message ||
-                teachersQ.error?.message ||
-                "Unknown error"}
-            </p>
-            <div className="flex gap-2 justify-center mt-6">
-              <Button variant="outline" onClick={() => teachersQ.refetch()} className="gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Try Again
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <ErrorState
+          title="Failed to Load Teachers"
+          message={
+            teachersQ.error?.response?.data?.message ||
+            teachersQ.error?.message ||
+            "Unknown error"
+          }
+          onRetry={() => teachersQ.refetch()}
+        />
       )}
 
       {/* Grid */}
       {!teachersQ.isLoading && !teachersQ.isError && (
         <>
           {rows.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                  <Users className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="font-semibold text-lg">No Teachers Found</h3>
-                <p className="text-muted-foreground mt-2 max-w-md mx-auto">
-                  {q || status !== "all"
-                    ? "No teachers match your filters."
-                    : "No teachers created yet. Add your first teacher."}
-                </p>
-                <Button onClick={() => setDrawerOpen(true)} className="mt-4 gap-2">
+            <EmptyState
+              icon={Users}
+              title="No Teachers Found"
+              description={
+                q || status !== "all"
+                  ? "No teachers match your filters."
+                  : "No teachers created yet. Add your first teacher."
+              }
+              action={
+                <Button onClick={() => setDrawerOpen(true)} className="gap-2">
                   <Plus className="h-4 w-4" />
                   Add Teacher
                 </Button>
-              </CardContent>
-            </Card>
+              }
+            />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {rows.map((u) => {
@@ -402,6 +365,25 @@ export default function TeachersListPage() {
                 const active = isActiveTeacher(u);
                 const rowBusy = deactMut.isPending || actMut.isPending;
 
+                const handleDeactivate = async () => {
+                  const ok = await confirmAction({
+                    title: "Deactivate teacher?",
+                    description: `Deactivate ${name}?`,
+                    confirmLabel: "Deactivate",
+                    variant: "destructive",
+                  });
+                  if (ok) deactMut.mutate(u.id);
+                };
+
+                const handleActivate = async () => {
+                  const ok = await confirmAction({
+                    title: "Activate teacher?",
+                    description: `Activate ${name}?`,
+                    confirmLabel: "Activate",
+                  });
+                  if (ok) actMut.mutate(u.id);
+                };
+
                 return (
                   <Card key={u.id} className="group hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-3">
@@ -409,14 +391,12 @@ export default function TeachersListPage() {
                         <div className="flex items-center gap-3">
                           <div
                             className={`p-2 rounded-full ${
-                              active ? "bg-green-100 dark:bg-green-900/30" : "bg-muted"
+                              active ? "bg-success/10" : "bg-muted"
                             }`}
                           >
                             <User
                               className={`h-5 w-5 ${
-                                active
-                                  ? "text-green-600 dark:text-green-400"
-                                  : "text-muted-foreground"
+                                active ? "text-success" : "text-muted-foreground"
                               }`}
                             />
                           </div>
@@ -426,7 +406,7 @@ export default function TeachersListPage() {
                             </CardTitle>
                             <div className="flex items-center gap-2 mt-1">
                               <Badge
-                                variant={active ? "secondary" : "outline"}
+                                variant={active ? "success" : "outline"}
                                 className="gap-1 text-xs"
                               >
                                 {active ? (
@@ -450,7 +430,7 @@ export default function TeachersListPage() {
 
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={`More actions for ${name}`}>
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -473,9 +453,7 @@ export default function TeachersListPage() {
 
                             {active ? (
                               <DropdownMenuItem
-                                onClick={() => {
-                                  if (confirm(`Deactivate ${name}?`)) deactMut.mutate(u.id);
-                                }}
+                                onClick={handleDeactivate}
                                 disabled={rowBusy}
                                 className="text-destructive"
                               >
@@ -484,9 +462,7 @@ export default function TeachersListPage() {
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem
-                                onClick={() => {
-                                  if (confirm(`Activate ${name}?`)) actMut.mutate(u.id);
-                                }}
+                                onClick={handleActivate}
                                 disabled={rowBusy}
                               >
                                 <UserCheck className="h-4 w-4 mr-2" />
@@ -518,6 +494,7 @@ export default function TeachersListPage() {
                                 ok ? toast.success("Email copied") : toast.error("Copy failed");
                               }}
                               title="Copy email"
+                              aria-label="Copy email"
                             >
                               <Copy className="h-4 w-4" />
                             </Button>
@@ -557,9 +534,7 @@ export default function TeachersListPage() {
                             size="sm"
                             className="flex-1 gap-2"
                             disabled={rowBusy}
-                            onClick={() => {
-                              if (confirm(`Deactivate ${name}?`)) deactMut.mutate(u.id);
-                            }}
+                            onClick={handleDeactivate}
                           >
                             {deactMut.isPending ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
@@ -573,9 +548,7 @@ export default function TeachersListPage() {
                             size="sm"
                             className="flex-1 gap-2"
                             disabled={rowBusy}
-                            onClick={() => {
-                              if (confirm(`Activate ${name}?`)) actMut.mutate(u.id);
-                            }}
+                            onClick={handleActivate}
                           >
                             {actMut.isPending ? (
                               <Loader2 className="h-3 w-3 animate-spin" />

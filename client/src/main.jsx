@@ -6,6 +6,7 @@ import { Toaster } from "sonner";
 
 import App from "./App.jsx";
 import AuthEventBridge from "./components/AuthEventBridge.jsx";
+import { ConfirmDialogProvider } from "./components/ui/confirm-dialog.jsx";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -24,6 +25,7 @@ createRoot(document.getElementById("root")).render(
         <AuthEventBridge />
         <App />
         <Toaster richColors position="top-right" />
+        <ConfirmDialogProvider />
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>

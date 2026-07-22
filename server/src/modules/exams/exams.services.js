@@ -24,6 +24,67 @@ async function getTeacherIdFromReq(req) {
   return req.user?.teacherId || req.user?.teacher?.id || null;
 }
 
+// Class-level access gate for TEACHER role, mirroring
+// attendance.service.js's assertTeacherAccessOrThrow: a teacher may act on a
+// class only if they're its ClassTeacher or hold an active TeachingAssignment
+// for it. Used for endpoints (class results, student results, session
+// listing) that aren't already scoped by a per-subject MarkSheet.teacherId.
+async function assertTeacherClassAccess({ schoolId, teacherId, classId }) {
+  if (!teacherId) {
+    throw Object.assign(new Error("Teacher profile not linked to user."), { statusCode: 403 });
+  }
+  const [isClassTeacher, isAssigned] = await Promise.all([
+    prisma.classTeacher.findFirst({
+      where: { schoolId, classId, teacherId, isActive: true },
+      select: { id: true },
+    }),
+    prisma.teachingAssignment.findFirst({
+      where: { schoolId, classId, teacherId, isActive: true },
+      select: { id: true },
+    }),
+  ]);
+  if (!isClassTeacher && !isAssigned) {
+    throw Object.assign(new Error("Teacher not authorized for this class."), { statusCode: 403 });
+  }
+}
+
+// All classIds a teacher currently has some claim to (class-teacher OR
+// active teaching assignment), tenant-scoped. Used to scope list-style
+// endpoints for TEACHER callers that don't pass an explicit classId.
+async function getTeacherAssignedClassIds({ schoolId, teacherId }) {
+  if (!teacherId) return [];
+  const [classTeacherRows, assignmentRows] = await Promise.all([
+    prisma.classTeacher.findMany({
+      where: { schoolId, teacherId, isActive: true },
+      select: { classId: true },
+    }),
+    prisma.teachingAssignment.findMany({
+      where: { schoolId, teacherId, isActive: true },
+      select: { classId: true },
+    }),
+  ]);
+  return [
+    ...new Set([
+      ...classTeacherRows.map((r) => r.classId),
+      ...assignmentRows.map((r) => r.classId),
+    ]),
+  ];
+}
+
+// Backfill Mark rows for every markSheet in a session so a student who
+// joined the class after the marksheets/session were created (and whose
+// marksheet hasn't been individually opened/edited/submitted since) still
+// shows up in class/student results instead of being silently omitted.
+async function ensureMarkRowsForSession({ schoolId, sessionId, classId }) {
+  const sheets = await prisma.markSheet.findMany({
+    where: { schoolId, examSessionId: sessionId },
+    select: { id: true },
+  });
+  await Promise.all(
+    sheets.map((ms) => ensureMarkRowsForCurrentStudents({ schoolId, markSheetId: ms.id, classId }))
+  );
+}
+
 // Shared by getClassResults and getStudentResults so total/average/grade
 // math is computed in exactly one place.
 function summarizeSubjectScores(subjectScores) {
@@ -137,7 +198,32 @@ export async function listExamSessions(req) {
   }
 
   if (classId) where.classId = String(classId);
-  if (status) where.status = status;
+
+  if (status) {
+    const statusStr = String(status).trim().toUpperCase();
+    if (!Object.values(ExamSessionStatus).includes(statusStr)) {
+      throw Object.assign(
+        new Error(`Invalid status. Allowed: ${Object.values(ExamSessionStatus).join(", ")}`),
+        { statusCode: 400 }
+      );
+    }
+    where.status = statusStr;
+  }
+
+  // Teachers may only list sessions for classes they're actually assigned to
+  // (ClassTeacher or active TeachingAssignment) — same gap class as the
+  // attendance module's listSessions, fixed the same way: with an explicit
+  // classId, verify access; without one, scope to their assigned classes
+  // instead of returning every class in the school.
+  if (req.user.role === "TEACHER") {
+    const teacherId = await getTeacherIdFromReq(req);
+    if (where.classId) {
+      await assertTeacherClassAccess({ schoolId, teacherId, classId: where.classId });
+    } else {
+      const assignedClassIds = await getTeacherAssignedClassIds({ schoolId, teacherId });
+      where.classId = { in: assignedClassIds };
+    }
+  }
 
   return prisma.examSession.findMany({
     where,
@@ -168,10 +254,18 @@ export async function createExamType(req) {
     throw Object.assign(new Error("Weight must be between 0 and 1."), { statusCode: 400 });
   }
 
-  const created = await prisma.examType.create({
-    data: { schoolId, name, code: code || null, weight, isActive: true },
-    select: examTypeSelect,
-  });
+  let created;
+  try {
+    created = await prisma.examType.create({
+      data: { schoolId, name, code: code || null, weight, isActive: true },
+      select: examTypeSelect,
+    });
+  } catch (e) {
+    if (e?.code === "P2002") {
+      throw Object.assign(new Error("An exam type with this name already exists."), { statusCode: 409 });
+    }
+    throw e;
+  }
 
   await audit(schoolId, buildAuditPayload({
     action: ExamAuditAction.CREATE,
@@ -206,6 +300,21 @@ export async function createExamSession(req) {
 
   if (!classRow) throw Object.assign(new Error("Invalid class."), { statusCode: 400 });
   if (!typeRow) throw Object.assign(new Error("Invalid or inactive exam type."), { statusCode: 400 });
+
+  // No DB-level unique constraint exists for (schoolId, classId, year, term,
+  // examTypeId), so guard against accidental duplicate sessions here — a
+  // second identical session would fork marksheets/results for the same
+  // class/term/exam type and confuse everything downstream.
+  const dup = await prisma.examSession.findFirst({
+    where: { schoolId, classId, year, term, examTypeId },
+    select: { id: true },
+  });
+  if (dup) {
+    throw Object.assign(
+      new Error("An exam session for this class/term/year/exam type already exists."),
+      { statusCode: 409 }
+    );
+  }
 
   return prisma.$transaction(async (tx) => {
     const session = await tx.examSession.create({
@@ -508,6 +617,12 @@ export async function submitMarkSheet(req) {
     throw Object.assign(new Error("Cannot submit after results are published."), { statusCode: 403 });
   }
 
+  // A marksheet that's already SUBMITTED must go through unlock before it
+  // can be (re-)submitted — otherwise re-POSTing this endpoint silently
+  // resets submittedAt/submittedById with no real state transition, and
+  // bypasses the DRAFT/UNLOCKED precondition every other write path enforces.
+  assertMarkSheetEditable(ms.status);
+
   await ensureMarkRowsForCurrentStudents({
     schoolId,
     markSheetId,
@@ -694,6 +809,19 @@ export async function getClassResults(req) {
 
   if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
 
+  // TEACHER callers may only view results for classes they actually teach
+  // (class-teacher or active teaching assignment) — previously any teacher
+  // could pull the full class report card for any class in the school.
+  if (req.user.role === "TEACHER") {
+    const teacherId = await getTeacherIdFromReq(req);
+    await assertTeacherClassAccess({ schoolId, teacherId, classId: session.classId });
+  }
+
+  // Backfill mark rows for currently-active students so a student added to
+  // the class after the marksheets were created (and never re-opened since)
+  // isn't silently dropped from the results/ranking entirely.
+  await ensureMarkRowsForSession({ schoolId, sessionId, classId: session.classId });
+
   const marks = await prisma.mark.findMany({
     where: {
       schoolId,
@@ -795,9 +923,21 @@ export async function getStudentResults(req) {
 
   const student = await prisma.student.findFirst({
     where: { id: studentId, schoolId },
-    select: { id: true, admissionNo: true, firstName: true, lastName: true },
+    select: { id: true, admissionNo: true, firstName: true, lastName: true, classId: true },
   });
   if (!student) throw Object.assign(new Error("Student not found."), { statusCode: 404 });
+
+  // TEACHER callers may only view results for students in classes they
+  // actually teach — previously any teacher could pull any student's full
+  // result slip regardless of assignment.
+  if (req.user.role === "TEACHER") {
+    const teacherId = await getTeacherIdFromReq(req);
+    await assertTeacherClassAccess({ schoolId, teacherId, classId: student.classId });
+  }
+
+  // Same backfill as getClassResults: make sure this student has a Mark row
+  // in every subject's marksheet for the session before summarizing.
+  await ensureMarkRowsForSession({ schoolId, sessionId, classId: session.classId });
 
   const marks = await prisma.mark.findMany({
     where: {
@@ -819,9 +959,11 @@ export async function getStudentResults(req) {
     score: m.score,
   }));
 
+  const { classId: _studentClassId, ...studentOut } = student;
+
   return {
     session,
-    student,
+    student: studentOut,
     subjectScores,
     ...summarizeSubjectScores(subjectScores),
   };

@@ -5,7 +5,7 @@ import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useMe } from "@/hooks/useMe";
 import { listExamSessions, publishResults } from "@/api/exams.api";
 import { listClasses } from "@/api/classes.api";
-import { listStudents } from "@/api/students.api";
+import { listStudents } from "@/features/students/students.api";
 import { getClassResults, getStudentResults } from "@/api/results.api";
 import { getBranding } from "@/api/settingsBranding.api";
 
@@ -20,13 +20,10 @@ import StudentSlipPanel from "./components/StudentSlipPanel";
 
 import { fmtClass } from "./utils/format";
 import { printSection } from "@/lib/print";
+import { getErrorMessage as errMsg } from "@/lib/errors";
 
 function currentYear() {
   return new Date().getFullYear();
-}
-
-function errMsg(err) {
-  return err?.response?.data?.message || err?.message || "Request failed";
 }
 
 export default function ResultsPage() {

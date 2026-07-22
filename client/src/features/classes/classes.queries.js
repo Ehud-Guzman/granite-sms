@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { listClasses } from "./classes.api";
+import { listClasses } from "@/api/classes.api";
 
 export function useClasses(year, { enabled = true } = {}) {
   return useQuery({

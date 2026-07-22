@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ErrorState } from "@/components/ui/state-blocks";
 import { confirmAction } from "@/lib/confirm-store";
+import { getErrorMessage as errMsg } from "@/lib/errors";
 
 import MarksTable from "./MarksTable";
 import UnlockReasonDialog from "./UnlockReasonDialog";
@@ -59,10 +60,6 @@ function unwrap(data) {
   if (!data) return null;
   if (typeof data === "object" && "data" in data) return data.data;
   return data;
-}
-
-function errMsg(err) {
-  return err?.response?.data?.message || err?.message || "Request failed";
 }
 
 function is403(err) {

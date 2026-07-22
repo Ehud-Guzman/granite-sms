@@ -1,18 +1,13 @@
 // client//src/features/settings/schools/schools.api.js
 import { api } from "@/api/axios";
+import { getErrorMessage } from "@/lib/errors";
 
 /**
  * Optional: A tiny helper so error messages are consistent across the app.
  * Keep backend messages when available (best for debugging).
  */
 function unwrapError(err, fallback = "Request failed") {
-  const msg =
-    err?.response?.data?.message ||
-    err?.response?.data?.error ||
-    err?.message ||
-    fallback;
-
-  const e = new Error(msg);
+  const e = new Error(getErrorMessage(err, fallback));
   e.status = err?.response?.status;
   e.data = err?.response?.data;
   throw e;

@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { getErrorMessage as errMsg } from "@/lib/errors";
 
 import ExamCreateDrawer from "./ExamCreateDrawer";
 
@@ -40,14 +41,6 @@ function safeYearNumber(yearStr) {
   if (!Number.isFinite(n)) return undefined;
   if (!Number.isInteger(n)) return undefined;
   return n;
-}
-
-function errMsg(err) {
-  return (
-    err?.response?.data?.message ||
-    err?.message ||
-    "Request failed"
-  );
 }
 
 export default function ExamsListPage() {

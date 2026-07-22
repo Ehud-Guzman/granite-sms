@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { getErrorMessage as errMsg } from "@/lib/errors";
 
 function badgeVariant(status) {
   if (status === "PUBLISHED") return "default";
@@ -32,10 +33,6 @@ function getStatusColor(status) {
 function fmtClass(c) {
   if (!c) return "-";
   return `${c.name}${c.stream ? ` ${c.stream}` : ""}${c.year ? ` (${c.year})` : ""}`;
-}
-
-function errMsg(err) {
-  return err?.response?.data?.message || err?.message || "Request failed";
 }
 
 function unwrapMarksheetsResponse(resp) {

@@ -1,8 +1,5 @@
 import { api } from "./axios";
-
-function errMsg(err) {
-  return err?.response?.data?.message || err?.message || "Request failed";
-}
+import { getErrorMessage } from "@/lib/errors";
 
 export async function getClassPerformanceReport(sessionId) {
   if (!sessionId || typeof sessionId !== "string") {
@@ -15,6 +12,6 @@ export async function getClassPerformanceReport(sessionId) {
     });
     return data; // { data: report }
   } catch (err) {
-    throw new Error(errMsg(err));
+    throw new Error(getErrorMessage(err));
   }
 }

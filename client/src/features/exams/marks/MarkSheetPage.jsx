@@ -8,7 +8,7 @@ import {
   unlockMarkSheet,
   upsertBulkMarks,
 } from "@/api/exams.api";
-import { listStudents } from "@/api/students.api";
+import { listStudents } from "@/features/students/students.api";
 import { useMe } from "@/hooks/useMe";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

@@ -18,18 +18,13 @@ import {
 } from "@/components/ui/sheet";
 import { toast } from "sonner";
 
-import { api } from "@/api/axios";
+import { createClass } from "@/api/classes.api";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Class name is required"),
   stream: z.string().trim().optional().or(z.literal("")),
   year: z.coerce.number().int().min(2000).max(2100),
 });
-
-async function createClass(data) {
-  const response = await api.post("/api/classes", data);
-  return response.data;
-}
 
 export default function ClassFormDrawer({ children, defaultYear }) {
   const queryClient = useQueryClient();

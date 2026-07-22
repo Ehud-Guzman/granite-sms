@@ -13,7 +13,7 @@ import {
   listStudents,
 } from "./students.api";
 import StudentFormDrawer from "./StudentFormDrawer.jsx";
-import { listClasses } from "../classes/classes.api";
+import { listClasses } from "@/api/classes.api";
 
 import { Button } from "@/components/ui/button";
 import {

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useMe } from "@/hooks/useMe";
-import { listClasses } from "@/features/classes/classes.api";
+import { listClasses } from "@/api/classes.api";
 import { listStudents } from "@/features/students/students.api";
 import AssignClassTeacherDrawer from "@/features/classes/AssignClassTeacherDrawer";
 

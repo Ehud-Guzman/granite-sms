@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireFeature } from "../middleware/features.js";
 import { requireTenant } from "../middleware/tenant.js";
+import { logAudit, actorCtx } from "../utils/audit.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -118,6 +119,16 @@ router.post(
         },
       });
 
+      await logAudit({
+        req,
+        ...actorCtx(req),
+        schoolId,
+        action: "CLASS_TEACHER_ASSIGNED",
+        targetType: "CLASS_TEACHER",
+        targetId: created.id,
+        metadata: { classId: c.id, teacherId: t.id },
+      });
+
       return res.status(201).json(created);
     } catch (err) {
       console.error("ASSIGN CLASS TEACHER ERROR:", err);
@@ -169,6 +180,16 @@ router.patch(
       if (result.count === 0) {
         return res.status(404).json({ message: "No class teacher assignment found for this class" });
       }
+
+      await logAudit({
+        req,
+        ...actorCtx(req),
+        schoolId,
+        action: "CLASS_TEACHER_UNASSIGNED",
+        targetType: "CLASS_TEACHER",
+        targetId: classId,
+        metadata: { classId, isActive: false },
+      });
 
       return res.json({ message: "Class teacher unassigned" });
     } catch (err) {

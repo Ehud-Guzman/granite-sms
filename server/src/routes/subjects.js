@@ -4,6 +4,7 @@ import { requireRole } from "../middleware/auth.js";
 import { requireFeature } from "../middleware/features.js";
 import { requireTenant } from "../middleware/tenant.js";
 import { cleanStr } from "../utils/validate.js";
+import { logAudit, actorCtx } from "../utils/audit.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -40,6 +41,16 @@ router.post(
         },
       });
 
+      await logAudit({
+        req,
+        ...actorCtx(req),
+        schoolId,
+        action: "SUBJECT_CREATED",
+        targetType: "SUBJECT",
+        targetId: created.id,
+        metadata: { name: created.name, code: created.code },
+      });
+
       return res.status(201).json(created);
     } catch (err) {
       if (err?.code === "P2002") {
@@ -52,14 +63,21 @@ router.post(
 );
 
 // ADMIN + TEACHER: list subjects (tenant scoped)
+// Optional query param: active=true/false (default true) — mirrors classes.js
+// /students.js. Without this, a deactivated subject could never be found again
+// to reactivate via PATCH (create would just 409 on the still-unique name/code).
 router.get(
   "/",
   requireRole("ADMIN", "TEACHER"),
   requireFeature("enableSubjectAssignments"),
   async (req, res) => {
     try {
+      const activeParam = req.query.active;
+      const active =
+        activeParam === undefined ? true : String(activeParam).toLowerCase() === "true";
+
       const subjects = await prisma.subject.findMany({
-        where: { schoolId: req.schoolId, isActive: true },
+        where: { schoolId: req.schoolId, isActive: active },
         orderBy: { name: "asc" },
       });
       return res.json(subjects);
@@ -85,6 +103,12 @@ router.patch(
         req.body?.code !== undefined ? (req.body?.code ? cleanStr(req.body?.code) : null) : undefined;
       const isActive = req.body?.isActive !== undefined ? Boolean(req.body?.isActive) : undefined;
 
+      // Same min-length requirement as create — PATCH previously let name be
+      // set to "" or a single char, bypassing the check enforced on POST.
+      if (name !== undefined && name.length < 2) {
+        return res.status(400).json({ message: "name is required (min 2 chars)" });
+      }
+
       // ensure exists in tenant
       const existing = await prisma.subject.findFirst({
         where: { id, schoolId },
@@ -99,6 +123,16 @@ router.patch(
           code,
           isActive,
         },
+      });
+
+      await logAudit({
+        req,
+        ...actorCtx(req),
+        schoolId,
+        action: "SUBJECT_UPDATED",
+        targetType: "SUBJECT",
+        targetId: updated.id,
+        metadata: { name: updated.name, code: updated.code, isActive: updated.isActive },
       });
 
       return res.json(updated);
@@ -128,6 +162,16 @@ router.patch(
       });
 
       if (result.count === 0) return res.status(404).json({ message: "Subject not found" });
+
+      await logAudit({
+        req,
+        ...actorCtx(req),
+        schoolId,
+        action: "SUBJECT_DEACTIVATED",
+        targetType: "SUBJECT",
+        targetId: id,
+        metadata: { isActive: false },
+      });
 
       return res.json({ message: "Subject deactivated" });
     } catch (err) {

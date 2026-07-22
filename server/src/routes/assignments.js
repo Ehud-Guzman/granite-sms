@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { requireFeature } from "../middleware/features.js";
 import { requireTenant } from "../middleware/tenant.js";
+import { logAudit, actorCtx } from "../utils/audit.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -41,8 +42,22 @@ router.post(
       if (!c) return res.status(404).json({ message: "Class not found in this school" });
       if (!s) return res.status(404).json({ message: "Subject not found in this school" });
 
-      const created = await prisma.teachingAssignment.create({
-        data: {
+      // Upsert (not create): the compound unique constraint is on
+      // (schoolId, teacherId, classId, subjectId) regardless of isActive, so a
+      // plain create() would throw P2002 forever once an assignment had been
+      // deactivated — there'd be no way to re-assign the same combo. Mirrors
+      // the same fix already applied to classTeachers.js.
+      const created = await prisma.teachingAssignment.upsert({
+        where: {
+          schoolId_teacherId_classId_subjectId: {
+            schoolId,
+            teacherId: String(teacherId),
+            classId: String(classId),
+            subjectId: String(subjectId),
+          },
+        },
+        update: { isActive: true },
+        create: {
           schoolId,
           teacherId: String(teacherId),
           classId: String(classId),
@@ -50,6 +65,20 @@ router.post(
           isActive: true,
         },
         include: { teacher: true, class: true, subject: true },
+      });
+
+      await logAudit({
+        req,
+        ...actorCtx(req),
+        schoolId,
+        action: "ASSIGNMENT_CREATED",
+        targetType: "TEACHING_ASSIGNMENT",
+        targetId: created.id,
+        metadata: {
+          teacherId: created.teacherId,
+          classId: created.classId,
+          subjectId: created.subjectId,
+        },
       });
 
       return res.status(201).json(created);
@@ -113,6 +142,16 @@ router.patch(
       });
 
       if (result.count === 0) return res.status(404).json({ message: "Assignment not found" });
+
+      await logAudit({
+        req,
+        ...actorCtx(req),
+        schoolId,
+        action: "ASSIGNMENT_DEACTIVATED",
+        targetType: "TEACHING_ASSIGNMENT",
+        targetId: id,
+        metadata: { isActive: false },
+      });
 
       return res.json({ message: "Assignment deactivated" });
     } catch (err) {

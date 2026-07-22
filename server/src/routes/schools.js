@@ -76,9 +76,39 @@ async function ensureSubscription(tx, { schoolId, planCode = "FREE" }) {
  *
  * IMPORTANT:
  * Do NOT use tenantContext here.
- * This router must work even when no school is selected OR the selected school is suspended.
+ * This router must work even when no school is selected OR the selected school is suspended
+ * (e.g. a SYSTEM_ADMIN reactivating a school they currently have selected via X-School-Id).
+ * tenantContext would 403 on a suspended selected school before the route ever runs.
+ *
+ * That said, requireRole() alone only checks the role embedded in the JWT at issue
+ * time — a demoted or deactivated SYSTEM_ADMIN could keep hitting this platform
+ * control-plane for the token's full lifetime. requireFreshSystemAdmin re-checks
+ * role/isActive against the DB (without doing school resolution/suspension gating,
+ * which is what we need to avoid here).
  */
-router.use(requireAuth, requireRole("SYSTEM_ADMIN"));
+async function requireFreshSystemAdmin(req, res, next) {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthenticated" });
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, isActive: true },
+    });
+
+    if (!dbUser || !dbUser.isActive) {
+      return res.status(401).json({ message: "User not found or inactive" });
+    }
+
+    req.role = dbUser.role;
+    return next();
+  } catch (err) {
+    console.error("SCHOOLS FRESH ROLE CHECK ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+router.use(requireAuth, requireFreshSystemAdmin, requireRole("SYSTEM_ADMIN"));
 
 /**
  * GET /api/schools

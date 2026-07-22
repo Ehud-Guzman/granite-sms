@@ -300,6 +300,19 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
     const schoolId = req.schoolId;
     const data = pickStudentUpdate(req.body);
 
+    // pickStudentUpdate trims but doesn't enforce non-empty — POST requires
+    // these fields, so an update that blanks them out shouldn't be allowed
+    // to silently bypass that requirement.
+    if ("admissionNo" in data && !data.admissionNo) {
+      return res.status(400).json({ message: "admissionNo cannot be empty" });
+    }
+    if ("firstName" in data && !data.firstName) {
+      return res.status(400).json({ message: "firstName cannot be empty" });
+    }
+    if ("lastName" in data && !data.lastName) {
+      return res.status(400).json({ message: "lastName cannot be empty" });
+    }
+
     if ("classId" in data) {
       if (data.classId) {
         const classRow = await prisma.class.findFirst({

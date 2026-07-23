@@ -60,6 +60,15 @@ export async function login(payload) {
     setToken(data.token);
     // Clear any previously selected school on fresh login
     clearSelectedSchool();
+
+    // ✅ react-query's ["me"] cache (and every other cached query) is keyed
+    // independently of the token/user. If someone logs in as a *different*
+    // account without an explicit logout in between (e.g. navigating
+    // straight to /auth/login while another session's data is still
+    // cached), stale identity/role data from the previous user could be
+    // served for up to useMe()'s staleTime before a refetch — driving
+    // RoleGuard/AppShell off the wrong role. Clear it on every fresh login.
+    authEvents?.dispatchEvent(new Event("session-changed"));
   }
 
   return data;
@@ -87,6 +96,14 @@ export async function selectSchool(schoolId) {
     // fallback: still set header context
     localStorage.setItem(SCHOOL_ID_KEY, String(schoolId));
   }
+
+  // ✅ Tenant context changed: most query keys in this app are NOT
+  // schoolId-scoped (dashboard, students, branding, print settings, etc.),
+  // so without this a SYSTEM_ADMIN switching from School A to School B
+  // would keep seeing School A's cached data until each query's staleTime
+  // happened to expire — a cross-tenant data leak in the UI. AuthEventBridge
+  // clears the whole react-query cache in response to this event.
+  authEvents?.dispatchEvent(new Event("session-changed"));
 
   return data;
 }

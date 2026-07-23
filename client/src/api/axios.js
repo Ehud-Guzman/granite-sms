@@ -81,8 +81,21 @@ api.interceptors.response.use(
     const url = err?.config?.url || "";
     const data = err?.response?.data || {};
 
-    // ✅ Only logout when /api/me fails (identity source of truth)
-    if (status === 401 && url.includes("/api/me")) {
+    // ✅ Logout on any 401 (expired/invalid token), except a handful of
+    // auth endpoints that legitimately return 401 for reasons OTHER than
+    // "your session is invalid" while the caller is still validly logged
+    // in — login/register (bad credentials) and change-password (wrong
+    // current password, see server/src/routes/auth.js's /change-password
+    // route) must not clear storage or force a logout redirect.
+    // Previously this only fired for /api/me, so a token that expired
+    // mid-session would keep failing silently on every other endpoint
+    // (mutations, other GETs) with no redirect back to login.
+    const isAuthAttempt =
+      url.includes("/api/auth/login") ||
+      url.includes("/api/auth/register") ||
+      url.includes("/api/auth/change-password");
+
+    if (status === 401 && !isAuthAttempt) {
       localStorage.removeItem("token");
       localStorage.removeItem("schoolId");
       localStorage.removeItem("selectedSchool");

@@ -43,6 +43,10 @@ model User {
 
   @@index([role])
   @@index([schoolId])
+  // Queried together in routes/users.js (list by school+role) and in
+  // middleware/limits.js, subscription.routes.js (count active users per school).
+  @@index([schoolId, role])
+  @@index([schoolId, isActive])
 }
 
 model Teacher {
@@ -60,6 +64,7 @@ model Teacher {
 
   classTeacherOf ClassTeacher[]
   assignments    TeachingAssignment[]
+  markSheets     MarkSheet[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -79,9 +84,12 @@ model Class {
 
   students Student[]
 
-  classTeacherOf ClassTeacher[]
-  assignments    TeachingAssignment[]
-  examSessions   ExamSession[]
+  classTeacherOf     ClassTeacher[]
+  assignments        TeachingAssignment[]
+  examSessions       ExamSession[]
+  feePlans           FeePlan[]
+  feeInvoices        FeeInvoice[]
+  attendanceSessions AttendanceSession[]
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
@@ -116,6 +124,9 @@ model Student {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   marks     Mark[]
+
+  feeInvoices       FeeInvoice[]
+  attendanceRecords AttendanceRecord[]
 
   @@unique([schoolId, admissionNo])
   @@index([schoolId, classId])
@@ -392,7 +403,6 @@ model FeePlan {
   id       String @id @default(cuid())
   schoolId String
 
-  // references your Class.id (string) — we don't add a relation to avoid refactors
   classId String
   year    Int
   term    Term
@@ -404,6 +414,7 @@ model FeePlan {
   updatedAt DateTime @updatedAt
 
   school School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class  Class         @relation(fields: [classId], references: [id], onDelete: Restrict)
   items  FeePlanItem[]
 
   @@unique([schoolId, classId, year, term])
@@ -454,6 +465,8 @@ model FeeInvoice {
   updatedAt DateTime @updatedAt
 
   school   School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student  Student          @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  class    Class            @relation(fields: [classId], references: [id], onDelete: Restrict)
   lines    FeeInvoiceLine[]
   payments FeePayment[]
 
@@ -549,6 +562,7 @@ model AttendanceSession {
   updatedAt DateTime @updatedAt
 
   school  School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class   Class               @relation(fields: [classId], references: [id], onDelete: Restrict)
   records AttendanceRecord[]
   logs    AttendanceEditLog[]
 
@@ -573,6 +587,7 @@ model AttendanceRecord {
 
   school  School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   session AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student           @relation(fields: [studentId], references: [id], onDelete: Restrict)
 
   @@unique([sessionId, studentId])
   @@index([schoolId, studentId])
@@ -712,7 +727,8 @@ model MarkSheet {
   examSession ExamSession @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
 
   // ✅ ADD THIS
-  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  subject Subject  @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  teacher Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
 
   marks Mark[]
 

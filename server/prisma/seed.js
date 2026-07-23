@@ -25,11 +25,11 @@ function splitName(full) {
   return { firstName, lastName };
 }
 
-async function upsertSchool({ code, name, shortName }) {
+async function upsertSchool({ code, name, shortName, contactEmail = null, contactPhone = null }) {
   return prisma.school.upsert({
     where: { code },
-    update: { name, shortName, isActive: true },
-    create: { code, name, shortName, isActive: true },
+    update: { name, shortName, isActive: true, contactEmail, contactPhone },
+    create: { code, name, shortName, isActive: true, contactEmail, contactPhone },
   });
 }
 
@@ -339,22 +339,23 @@ async function main() {
     code: "KPS",
     name: "Kutus Primary School",
     shortName: "KPS",
+    contactEmail: "kutusprimary@gmail.com",
   });
 
   const kmt = await upsertSchool({
     code: "KMT",
     name: "Kiamutugu Boys High School",
     shortName: "KMT",
+    contactEmail: "kmt@example.com",
   });
 
   // Settings + subscription
-  await ensureSettings(kps.id, {
-    contactEmail: "kutusprimary@gmail.com",
-  }).catch(() => null);
+  // NOTE: contactEmail/contactPhone live on the School model (see upsertSchool
+  // above), not SchoolSettings — passing them here would throw (unknown
+  // Prisma field) and silently no-op the whole upsert under the .catch below.
+  await ensureSettings(kps.id).catch(() => null);
 
-  await ensureSettings(kmt.id, {
-    contactEmail: "kmt@example.com",
-  }).catch(() => null);
+  await ensureSettings(kmt.id).catch(() => null);
 
   // Subscriptions: remove old ones for clean reset behavior
   await prisma.subscription.deleteMany({ where: { schoolId: { in: [kps.id, kmt.id] } } });

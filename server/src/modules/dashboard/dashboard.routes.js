@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { tenantContext, requireTenant } from "../../middleware/tenant.js";
 import { loadSubscription } from "../../middleware/subscription.js"; // only if you use it globally
 
 import { getSummary, getActivity } from "./dashboard.controller.js";
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuth, tenantContext, requireTenant);
 // router.use(loadSubscription); // optional, only if your app expects subscription context
 
 router.get("/summary", requireRole("ADMIN", "TEACHER", "SYSTEM_ADMIN"), getSummary);

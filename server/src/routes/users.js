@@ -328,6 +328,14 @@ router.patch("/:id", async (req, res) => {
       return res.status(403).json({ message: "Cannot modify SYSTEM_ADMIN accounts" });
     }
 
+    // Prevent an actor from changing their own role — self-demotion (e.g. an
+    // ADMIN dropping themselves to TEACHER) can lock the account out of admin
+    // capabilities with no one left to reverse it. Mirrors the "can't suspend
+    // your own currently-selected school" guard in schools.js.
+    if (nextRole && req.user?.id && String(target.id) === String(req.user.id)) {
+      return res.status(400).json({ message: "Cannot change your own role" });
+    }
+
     if (actorRole === "ADMIN") {
       if (!req.schoolId) return res.status(403).json({ message: "Tenant context required" });
       if (target.schoolId !== req.schoolId) return res.status(403).json({ message: "Forbidden" });
@@ -417,6 +425,14 @@ router.post("/:id/status", async (req, res) => {
 
     if (String(target.role).toUpperCase() === "SYSTEM_ADMIN") {
       return res.status(403).json({ message: "Cannot modify SYSTEM_ADMIN accounts" });
+    }
+
+    // Prevent an actor from suspending their own account — with no one else
+    // to reactivate it, this is a self-lockout, not a real moderation action.
+    // Mirrors the "can't suspend your own currently-selected school" guard
+    // in schools.js, which schools.js has but this route previously lacked.
+    if (!isActive && req.user?.id && String(target.id) === String(req.user.id)) {
+      return res.status(400).json({ message: "Cannot suspend your own account" });
     }
 
     if (actorRole === "ADMIN") {

@@ -314,7 +314,7 @@ export default function GeneralSettingsTab() {
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={saveSchool.isLoading}
+                  disabled={saveSchool.isPending}
                   onClick={onResetSchool}
                 >
                   Reset
@@ -322,10 +322,10 @@ export default function GeneralSettingsTab() {
               )}
               <Button
                 size="sm"
-                disabled={!schoolDirty || saveSchool.isLoading}
+                disabled={!schoolDirty || saveSchool.isPending}
                 onClick={onSaveSchool}
               >
-                {saveSchool.isLoading ? "Saving..." : "Save"}
+                {saveSchool.isPending ? "Saving..." : "Save"}
               </Button>
             </div>
           </div>
@@ -406,7 +406,7 @@ export default function GeneralSettingsTab() {
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={saveAcademics.isLoading}
+                  disabled={saveAcademics.isPending}
                   onClick={onResetAcademics}
                 >
                   Reset
@@ -414,10 +414,10 @@ export default function GeneralSettingsTab() {
               )}
               <Button
                 size="sm"
-                disabled={!academicsDirty || saveAcademics.isLoading}
+                disabled={!academicsDirty || saveAcademics.isPending}
                 onClick={onSaveAcademics}
               >
-                {saveAcademics.isLoading ? "Saving..." : "Save"}
+                {saveAcademics.isPending ? "Saving..." : "Save"}
               </Button>
             </div>
           </div>

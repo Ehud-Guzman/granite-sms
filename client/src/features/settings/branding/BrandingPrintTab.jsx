@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useMe } from "@/hooks/useMe";
+import { getSelectedSchool } from "@/api/auth.api";
 import { getBranding, patchBranding, uploadBrandLogo } from "@/api/settingsBranding.api";
 
 import { normalizeHex, isValidHex } from "@/lib/branding";
@@ -138,9 +139,15 @@ export default function BrandingPrintTab() {
   const meQ = useMe();
   const sys = isSysAdmin(meQ?.data);
 
-  // SYS admin edits by chosen schoolId in this tab
+  // SYS admin edits by chosen schoolId in this tab. Falling back to a
+  // hardcoded demo school id here meant a SYSTEM_ADMIN opening this tab for
+  // the first time (nothing cached yet in localStorage) would silently try
+  // to load/save branding for a school that doesn't exist in this
+  // deployment, instead of getting the "select a school" prompt below —
+  // fall back to the currently selected school (SelectSchoolPage) and
+  // otherwise leave it blank so that prompt actually shows.
   const [schoolId, setSchoolId] = useState(
-    () => localStorage.getItem("settings.branding.schoolId") || "school_demo_001"
+    () => localStorage.getItem("settings.branding.schoolId") || getSelectedSchool()?.id || ""
   );
 
   useEffect(() => {

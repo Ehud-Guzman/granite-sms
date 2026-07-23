@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/axios";
+import { getSelectedSchool } from "@/api/auth.api";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,19 +53,43 @@ async function createBackup({ schoolId }) {
   return data;
 }
 
-async function previewBackup({ id }) {
-  const { data } = await api.get(`/api/settings/backup/${id}/preview`);
+async function previewBackup({ id, schoolId }) {
+  const { data } = await api.get(`/api/settings/backup/${id}/preview`, {
+    params: schoolId ? { schoolId } : undefined,
+  });
   return data?.backup ?? data;
 }
 
-async function restoreBackup({ id, payload }) {
-  const { data } = await api.post(`/api/settings/backup/${id}/restore`, payload);
+async function restoreBackup({ id, payload, schoolId }) {
+  const { data } = await api.post(`/api/settings/backup/${id}/restore`, payload, {
+    params: schoolId ? { schoolId } : undefined,
+  });
   return data;
 }
 
-function downloadUrl(id) {
-  // axios baseURL is already set, but for direct download we can hit relative path
-  return `/api/settings/backup/${id}/download`;
+// Backup downloads require the Bearer auth header, which a plain
+// window.open()/<a href> navigation never sends — the backend would just
+// 401. Fetch it through axios (so the interceptor attaches the token) as a
+// blob and save it client-side instead.
+async function downloadBackup({ id, schoolId }) {
+  const res = await api.get(`/api/settings/backup/${id}/download`, {
+    params: schoolId ? { schoolId } : undefined,
+    responseType: "blob",
+  });
+
+  const disposition = res.headers?.["content-disposition"] || "";
+  const match = /filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i.exec(disposition);
+  const filename = match?.[1] ? decodeURIComponent(match[1]) : `backup_${id}.json`;
+
+  const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "application/json" });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 /**
@@ -75,8 +100,13 @@ function downloadUrl(id) {
 export default function BackupsRestoreTab() {
   const qc = useQueryClient();
 
-  // SYSTEM_ADMIN scope selector (works with your resolveSchoolScope)
-  const [schoolId, setSchoolId] = useState("school_demo_001");
+  // SYSTEM_ADMIN scope selector (works with your resolveSchoolScope).
+  // Default to whatever school the SYSTEM_ADMIN currently has selected
+  // (SelectSchoolPage) instead of a hardcoded demo id that doesn't exist
+  // outside the seeded dev database — falling back to that silently would
+  // 403 ("Backup is outside your current school scope") in any real
+  // deployment.
+  const [schoolId, setSchoolId] = useState(() => getSelectedSchool()?.id || "");
 
   // lightweight dialogs state
   const [previewId, setPreviewId] = useState(null);
@@ -84,6 +114,7 @@ export default function BackupsRestoreTab() {
   const [restoreId, setRestoreId] = useState(null);
   const [restoreMode, setRestoreMode] = useState("MERGE"); // MERGE | REPLACE
   const [confirmText, setConfirmText] = useState("");
+  const [downloadingId, setDownloadingId] = useState(null);
 
   const listQ = useQuery({
     queryKey: ["backups", schoolId],
@@ -99,16 +130,33 @@ export default function BackupsRestoreTab() {
   });
 
   const previewM = useMutation({
-    mutationFn: ({ id }) => previewBackup({ id }),
+    // Preview/restore must scope to the same schoolId shown in this tab's
+    // input, not whatever school happens to be in the ambient x-school-id
+    // header — otherwise picking a different schoolId here silently has no
+    // effect on these two calls and they 403 ("outside your current school
+    // scope") against the session's real selected school instead.
+    mutationFn: ({ id }) => previewBackup({ id, schoolId }),
     onSuccess: (data) => setPreview(data),
   });
 
   const restoreM = useMutation({
-    mutationFn: ({ id, payload }) => restoreBackup({ id, payload }),
+    mutationFn: ({ id, payload }) => restoreBackup({ id, payload, schoolId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["backups", schoolId] });
     },
   });
+
+  async function onDownload(id) {
+    if (downloadingId) return;
+    setDownloadingId(id);
+    try {
+      await downloadBackup({ id, schoolId });
+    } catch {
+      // swallow — no toast wiring in this tab; button returns to normal state
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   const backups = useMemo(() => listQ.data?.backups ?? listQ.data ?? [], [listQ.data]);
 
@@ -242,12 +290,10 @@ export default function BackupsRestoreTab() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    // open download in new tab
-                    window.open(downloadUrl(b.id), "_blank");
-                  }}
+                  onClick={() => onDownload(b.id)}
+                  disabled={downloadingId === b.id}
                 >
-                  Download
+                  {downloadingId === b.id ? "Downloading…" : "Download"}
                 </Button>
 
                 <Button
@@ -256,6 +302,12 @@ export default function BackupsRestoreTab() {
                     setRestoreId(b.id);
                     setRestoreMode("MERGE");
                     setConfirmText("");
+                    // restoreM.data (incl. any temp passwords from a
+                    // previous restore) otherwise survives across opens and
+                    // would render at the bottom of this panel for a
+                    // completely different backup — reset it so the result
+                    // section only ever reflects this run.
+                    restoreM.reset();
                   }}
                 >
                   Restore
@@ -304,7 +356,7 @@ export default function BackupsRestoreTab() {
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <div className="font-medium">Restore Backup</div>
-              <Button size="sm" variant="outline" onClick={() => setRestoreId(null)}>
+              <Button size="sm" variant="outline" onClick={() => { setRestoreId(null); restoreM.reset(); }}>
                 Close
               </Button>
             </div>
@@ -366,7 +418,7 @@ export default function BackupsRestoreTab() {
 
               <Button
                 variant="outline"
-                onClick={() => setRestoreId(null)}
+                onClick={() => { setRestoreId(null); restoreM.reset(); }}
               >
                 Cancel
               </Button>

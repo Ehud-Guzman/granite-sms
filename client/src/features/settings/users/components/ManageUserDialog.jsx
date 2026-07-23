@@ -232,7 +232,12 @@ export default function ManageUserDialog({ actor, user, onChanged }) {
 
       <CredentialsDialog
         open={credsOpen}
-        onOpenChange={setCredsOpen}
+        onOpenChange={(v) => {
+          setCredsOpen(v);
+          // Clear the temp password out of component state once the dialog
+          // closes instead of leaving it sitting in memory indefinitely.
+          if (!v) setCreds({ email: "", tempPassword: "" });
+        }}
         title="Password reset"
         email={creds.email}
         tempPassword={creds.tempPassword}

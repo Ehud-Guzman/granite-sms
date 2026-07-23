@@ -361,7 +361,7 @@ export default function ResultsPage() {
                     showGrades={showGrades}
                   />
                 </>
-              ) : (
+              ) : !classResultsQ.isLoading && !classResultsQ.isError ? (
                 <div className="text-center py-8 text-muted-foreground border rounded-lg bg-muted/30">
                   No class results data available yet.
                   <br />
@@ -369,7 +369,7 @@ export default function ResultsPage() {
                     (Marks may not have been entered/submitted for all subjects)
                   </span>
                 </div>
-              )}
+              ) : null}
             </ClassResultsCard>
           )}
 

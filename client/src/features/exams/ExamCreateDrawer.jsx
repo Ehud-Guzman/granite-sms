@@ -29,6 +29,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, PlusCircle, Calendar, BookOpen, Users, X, Check } from "lucide-react";
+import { getErrorMessage } from "@/lib/errors";
 
 const TERMS = [
   { value: "TERM1", label: "Term 1" },
@@ -40,15 +41,6 @@ function fmtClass(c) {
   return c?.name
     ? `${c.name}${c.stream ? ` ${c.stream}` : ""}${c.year ? ` (${c.year})` : ""}`
     : String(c?.id || "");
-}
-
-function apiErrMsg(err) {
-  return (
-    err?.response?.data?.message ||
-    err?.response?.data?.error ||
-    err?.message ||
-    "Request failed"
-  );
 }
 
 function isValidYear(y) {
@@ -303,7 +295,7 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
                   {classesQ.isError && (
                     <Alert variant="destructive" className="py-2">
                       <AlertDescription className="text-xs">
-                        Failed to load classes: {apiErrMsg(classesQ.error)}
+                        Failed to load classes: {getErrorMessage(classesQ.error)}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -352,7 +344,7 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
                   {typesQ.isError && (
                     <Alert variant="destructive" className="py-2">
                       <AlertDescription className="text-xs">
-                        Failed to load exam types: {apiErrMsg(typesQ.error)}
+                        Failed to load exam types: {getErrorMessage(typesQ.error)}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -366,7 +358,7 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
                 {createSessionMut.isError && (
                   <Alert variant="destructive">
                     <AlertDescription>
-                      Failed to create session: {apiErrMsg(createSessionMut.error)}
+                      Failed to create session: {getErrorMessage(createSessionMut.error)}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -428,7 +420,7 @@ export default function ExamCreateDrawer({ defaultYear, defaultTerm, onCreated }
                 {createTypeMut.isError && (
                   <Alert variant="destructive">
                     <AlertDescription>
-                      {apiErrMsg(createTypeMut.error)}
+                      {getErrorMessage(createTypeMut.error)}
                     </AlertDescription>
                   </Alert>
                 )}

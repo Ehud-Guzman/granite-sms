@@ -6,6 +6,7 @@ import { listClasses } from "@/api/classes.api";
 import { getFeesDefaulters, exportFeesDefaulters } from "@/api/feesReports.api";
 import { printSection } from "@/lib/print";
 import { normalizeArray, fmtClass, fmtMoney, fmtStudentName } from "../utils/format";
+import { getErrorMessage as errMsg } from "@/lib/errors";
 
 import PrintDocument from "@/components/print/PrintDocument";
 import ReportPrintTitle from "../components/ReportPrintTitle";
@@ -194,7 +195,7 @@ export default function FeesDefaultersReport() {
       {isLoading && <div className="opacity-70 no-print">Loading report…</div>}
       {error && (
         <div className="text-red-600 no-print">
-          {String(error?.message || "Failed to load report")}
+          {errMsg(error, "Failed to load report")}
         </div>
       )}
 

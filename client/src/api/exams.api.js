@@ -43,11 +43,11 @@ function asObject(payload) {
   return x && typeof x === "object" && !Array.isArray(x) ? x : null;
 }
 
-// Detect Prisma unique constraint message (since your backend currently sends raw prisma text)
-// Example: "Unique constraint failed on the fields: (`schoolId`,`year`,`term`,`classId`,`examTypeId`)"
+// Backend guards against duplicate sessions itself (schoolId/classId/year/term/
+// examTypeId) and returns a clean 409 with a human-readable message — detect by
+// status so this doesn't silently stop matching if the message wording changes.
 function isDuplicateSessionError(err) {
-  const msg = String(err?.response?.data?.message || err?.message || "");
-  return msg.includes("Unique constraint failed") && msg.includes("examSession.create");
+  return Number(err?.response?.status) === 409;
 }
 
 /**

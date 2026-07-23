@@ -228,7 +228,14 @@ export default function MarksEntryPage() {
         marks: rows.map((r) => {
           const d = r.draft;
 
-          if (d.isMissing) {
+          const scoreEmpty = d.score === "" || d.score === null || d.score === undefined;
+
+          if (d.isMissing || scoreEmpty) {
+            // A blank score must never be saved as an actual 0 — Number("") is
+            // 0, not NaN, so without this guard a row left blank (e.g. via the
+            // "All Present" bulk action or toggling Missing off before typing
+            // a score) would silently record a real zero score instead of
+            // staying null/missing.
             return {
               studentId: r.student.id,
               score: null,

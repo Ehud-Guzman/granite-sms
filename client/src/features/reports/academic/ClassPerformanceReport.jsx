@@ -9,6 +9,7 @@ import { exportClassPerformanceReport } from "@/api/reports.api";
 import { useClassPerformanceReport } from "../hooks/useClassPerformanceReport";
 import { printSection } from "@/lib/print";
 import { normalizeArray, fmtClass, fmtNumber } from "../utils/format";
+import { getErrorMessage as errMsg } from "@/lib/errors";
 
 import PrintDocument from "@/components/print/PrintDocument";
 import ReportPrintTitle from "../components/ReportPrintTitle";
@@ -258,7 +259,7 @@ export default function ClassPerformanceReport() {
 
       {error && (
         <div className="text-red-600 no-print">
-          {String(error?.message || "Failed to load report")}
+          {errMsg(error, "Failed to load report")}
         </div>
       )}
 

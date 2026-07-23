@@ -6,6 +6,7 @@ import { listClasses } from "@/api/classes.api";
 import { attendanceDefaulters, exportAttendanceDefaulters } from "@/api/attendance.api";
 import { printSection } from "@/lib/print";
 import { normalizeArray, fmtClass } from "../utils/format";
+import { getErrorMessage as errMsg } from "@/lib/errors";
 
 import PrintDocument from "@/components/print/PrintDocument";
 import ReportPrintTitle from "../components/ReportPrintTitle";
@@ -150,7 +151,7 @@ export default function AttendanceDefaultersReport() {
       {isLoading && <div className="opacity-70 no-print">Loading report…</div>}
       {error && (
         <div className="text-red-600 no-print">
-          {String(error?.message || "Failed to load report")}
+          {errMsg(error, "Failed to load report")}
         </div>
       )}
 

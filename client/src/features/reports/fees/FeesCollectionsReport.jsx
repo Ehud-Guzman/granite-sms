@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getFeesCollections, exportFeesCollections } from "@/api/feesReports.api";
 import { printSection } from "@/lib/print";
 import { fmtMoney, fmtDateTime } from "../utils/format";
+import { getErrorMessage as errMsg } from "@/lib/errors";
 
 import PrintDocument from "@/components/print/PrintDocument";
 import ReportPrintTitle from "../components/ReportPrintTitle";
@@ -159,7 +160,7 @@ export default function FeesCollectionsReport() {
 
       {error && (
         <div className="text-red-600 no-print">
-          {String(error?.message || "Failed to load report")}
+          {errMsg(error, "Failed to load report")}
         </div>
       )}
 

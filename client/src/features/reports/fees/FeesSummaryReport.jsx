@@ -6,6 +6,7 @@ import { listClasses } from "@/api/classes.api";
 import { getFeesClassSummary, exportFeesClassSummary } from "@/api/feesReports.api";
 import { printSection } from "@/lib/print";
 import { normalizeArray, fmtClass, fmtMoney } from "../utils/format";
+import { getErrorMessage as errMsg } from "@/lib/errors";
 
 import PrintDocument from "@/components/print/PrintDocument";
 import ReportPrintTitle from "../components/ReportPrintTitle";
@@ -195,7 +196,7 @@ export default function FeesSummaryReport() {
       {isLoading && <div className="opacity-70 no-print">Loading report…</div>}
       {error && (
         <div className="text-red-600 no-print">
-          {String(error?.message || "Failed to load report")}
+          {errMsg(error, "Failed to load report")}
         </div>
       )}
 
@@ -204,9 +205,11 @@ export default function FeesSummaryReport() {
         <ReportPrintTitle title="Fees Summary Report" subtitle={printSubtitle} />
 
         {!report ? (
-          <div className="p-6 text-sm opacity-70">
-            Load a report to view summary details.
-          </div>
+          !isLoading && !error ? (
+            <div className="p-6 text-sm opacity-70">
+              Load a report to view summary details.
+            </div>
+          ) : null
         ) : (
           <>
             {/* Summary */}

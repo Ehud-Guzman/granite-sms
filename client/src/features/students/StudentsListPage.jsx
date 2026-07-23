@@ -572,7 +572,7 @@ const activateMut = useMutation({
                                       if (ok) deactivateMut.mutate(s.id);
                                     }}
                                   >
-                                    {deactivateMut.isPending ? (
+                                    {deactivateMut.isPending && deactivateMut.variables === s.id ? (
                                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                     ) : (
                                       <UserX className="h-3.5 w-3.5" />
@@ -599,7 +599,7 @@ const activateMut = useMutation({
                                       if (ok) activateMut.mutate(s.id);
                                     }}
                                   >
-                                    {activateMut.isPending ? (
+                                    {activateMut.isPending && activateMut.variables === s.id ? (
                                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                     ) : (
                                       <UserCheck className="h-3.5 w-3.5" />

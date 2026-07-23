@@ -375,13 +375,12 @@ export default function ClassDetailsPage() {
                 <AssignClassTeacherDrawer
                   classId={klass?.id}
                   classLabel={klass ? classLabel(klass) : ""}
-                  trigger={
-                    <Button variant="outline" className="w-full justify-start gap-2">
-                      <UserCircle className="h-4 w-4" />
-                      Assign Teacher
-                    </Button>
-                  }
-                />
+                >
+                  <Button variant="outline" className="w-full justify-start gap-2">
+                    <UserCircle className="h-4 w-4" />
+                    Assign Teacher
+                  </Button>
+                </AssignClassTeacherDrawer>
               )}
               <Button
                 variant="outline"

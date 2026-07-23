@@ -1,4 +1,5 @@
 // src/features/classes/ClassFormDrawer.jsx
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +23,7 @@ import { getErrorMessage } from "@/lib/errors";
 
 export default function ClassFormDrawer({ children, defaultYear }) {
   const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
 
   const form = useForm({
     resolver: zodResolver(classSchema),
@@ -33,6 +35,20 @@ export default function ClassFormDrawer({ children, defaultYear }) {
     mode: "onChange",
   });
 
+  // Reset to a fresh form (matching the current defaultYear prop) every time
+  // the drawer is opened — previously defaultValues were only evaluated once
+  // at mount, so re-opening after the year filter changed kept stale values.
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        name: "",
+        stream: "",
+        year: defaultYear || new Date().getFullYear(),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   const createMut = useMutation({
     mutationFn: createClass,
     onSuccess: () => {
@@ -43,6 +59,7 @@ export default function ClassFormDrawer({ children, defaultYear }) {
         stream: "",
         year: defaultYear || new Date().getFullYear(),
       });
+      setOpen(false);
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, "Failed to create class"));
@@ -56,7 +73,13 @@ export default function ClassFormDrawer({ children, defaultYear }) {
   };
 
   return (
-    <Sheet>
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        if (!v && isSubmitting) return;
+        setOpen(v);
+      }}
+    >
       <SheetTrigger asChild>{children}</SheetTrigger>
 
       <SheetContent side="right" className="w-[420px] sm:w-[480px]">

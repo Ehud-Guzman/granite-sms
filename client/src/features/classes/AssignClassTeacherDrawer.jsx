@@ -43,11 +43,12 @@ function niceFromEmail(email) {
 /**
  * We are listing TEACHERS from /api/users?role=TEACHER (User records).
  * Shape (from your response):
- * { id, email, role, isActive, schoolId, ... }
+ * { id, email, role, isActive, schoolId, teacher: { firstName, lastName, phone }, ... }
+ * Name/phone live under the nested `teacher` profile, not flat on the user.
  */
 function userTeacherLabel(u) {
-  const first = u?.firstName || "";
-  const last = u?.lastName || "";
+  const first = u?.teacher?.firstName || u?.firstName || "";
+  const last = u?.teacher?.lastName || u?.lastName || "";
   const full = `${first} ${last}`.trim();
   const email = u?.email || "";
   return full || niceFromEmail(email) || email || "Teacher";
@@ -55,7 +56,7 @@ function userTeacherLabel(u) {
 
 function userTeacherMeta(u) {
   const email = u?.email || "";
-  const phone = u?.phone || "";
+  const phone = u?.teacher?.phone || u?.phone || "";
   const inactive = u?.isActive === false ? "Inactive" : "";
   return [email, phone, inactive].filter(Boolean).join(" • ") || "—";
 }
@@ -163,7 +164,7 @@ export default function AssignClassTeacherDrawer({ classId, classLabel, children
     if (!needle) return list;
 
     return list.filter((u) => {
-      const blob = normalize(`${userTeacherLabel(u)} ${u?.email || ""} ${u?.phone || ""}`);
+      const blob = normalize(`${userTeacherLabel(u)} ${u?.email || ""} ${u?.teacher?.phone || u?.phone || ""}`);
       return blob.includes(needle);
     });
   }, [teachersQ.data, search]);

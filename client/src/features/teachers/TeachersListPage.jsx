@@ -43,10 +43,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// ✅ OPTION B SHAPE: each row is a USER (role=TEACHER)
+// ✅ OPTION B SHAPE: each row is a USER (role=TEACHER) with a nested
+// `teacher` profile (GET /api/users selects teacher: { firstName, lastName, phone }).
+// Name/phone are NOT flat on the user object.
 function teacherName(u) {
-  const first = u?.firstName || "";
-  const last = u?.lastName || "";
+  const first = u?.teacher?.firstName || u?.firstName || "";
+  const last = u?.teacher?.lastName || u?.lastName || "";
   const byName = `${first} ${last}`.trim();
   return byName || u?.name || u?.email || "Teacher";
 }
@@ -125,7 +127,7 @@ export default function TeachersListPage() {
       })
       .filter((u) => {
         if (!needle) return true;
-        const txt = `${teacherName(u)} ${teacherEmail(u)} ${u?.phone || ""}`.toLowerCase();
+        const txt = `${teacherName(u)} ${teacherEmail(u)} ${u?.teacher?.phone || u?.phone || ""}`.toLowerCase();
         return txt.includes(needle);
       });
   }, [teachersQ.data, q, status]);
@@ -501,12 +503,12 @@ export default function TeachersListPage() {
                           ) : null}
                         </div>
 
-                        {!!u?.phone && (
+                        {!!(u?.teacher?.phone || u?.phone) && (
                           <div className="flex items-start gap-2">
                             <Phone className="h-4 w-4 text-muted-foreground mt-0.5" />
                             <div className="flex-1">
                               <p className="text-sm text-muted-foreground">Phone</p>
-                              <p className="text-sm font-medium">{u.phone}</p>
+                              <p className="text-sm font-medium">{u.teacher?.phone || u.phone}</p>
                             </div>
                           </div>
                         )}
@@ -536,7 +538,7 @@ export default function TeachersListPage() {
                             disabled={rowBusy}
                             onClick={handleDeactivate}
                           >
-                            {deactMut.isPending ? (
+                            {deactMut.isPending && deactMut.variables === u.id ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             ) : (
                               <UserX className="h-3 w-3" />
@@ -550,7 +552,7 @@ export default function TeachersListPage() {
                             disabled={rowBusy}
                             onClick={handleActivate}
                           >
-                            {actMut.isPending ? (
+                            {actMut.isPending && actMut.variables === u.id ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             ) : (
                               <UserCheck className="h-3 w-3" />

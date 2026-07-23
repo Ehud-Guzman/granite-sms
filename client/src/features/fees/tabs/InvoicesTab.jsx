@@ -374,6 +374,7 @@ export default function InvoicesTab() {
               disabled={
                 !discountReason.trim() ||
                 !(Number(discountAmount) >= 0) ||
+                !Number.isInteger(Number(discountAmount)) ||
                 Number(discountAmount) > maxDiscount ||
                 discountMut.isPending
               }
@@ -397,10 +398,15 @@ export default function InvoicesTab() {
           </div>
           <Input
             type="number"
+            step="1"
+            min="0"
             placeholder="Discount amount"
             value={discountAmount}
             onChange={(e) => setDiscountAmount(e.target.value)}
           />
+          {discountAmount !== "" && !Number.isInteger(Number(discountAmount)) && (
+            <div className="text-sm text-destructive">Discount must be a whole number (no cents/decimals).</div>
+          )}
           <Input
             placeholder="Reason (required)"
             value={discountReason}

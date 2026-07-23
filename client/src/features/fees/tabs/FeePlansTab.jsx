@@ -78,7 +78,9 @@ export default function FeePlansTab() {
     [editLines]
   );
   const canSaveEdit =
-    editLines.every((l) => l.feeItemId && toNumberOrZero(l.amount) > 0) &&
+    editLines.every(
+      (l) => l.feeItemId && Number.isInteger(toNumberOrZero(l.amount)) && toNumberOrZero(l.amount) > 0
+    ) &&
     new Set(editSelectedIds).size === editSelectedIds.length;
 
   const openEdit = (plan) => {
@@ -113,7 +115,9 @@ export default function FeePlansTab() {
     classId &&
     year &&
     term &&
-    planLines.every((l) => l.feeItemId && toNumberOrZero(l.amount) > 0) &&
+    planLines.every(
+      (l) => l.feeItemId && Number.isInteger(toNumberOrZero(l.amount)) && toNumberOrZero(l.amount) > 0
+    ) &&
     new Set(selectedIds).size === selectedIds.length; // no duplicates
 
   return (
@@ -174,6 +178,8 @@ export default function FeePlansTab() {
                 <div className="md:col-span-3">
                   <Input
                     type="number"
+                    step="1"
+                    min="0"
                     placeholder="Amount"
                     value={l.amount}
                     onChange={(e) => {
@@ -224,6 +230,10 @@ export default function FeePlansTab() {
 
             {new Set(selectedIds).size !== selectedIds.length && (
               <div className="text-sm text-destructive">Duplicate fee items detected — remove duplicates.</div>
+            )}
+
+            {planLines.some((l) => l.feeItemId && !Number.isInteger(toNumberOrZero(l.amount))) && (
+              <div className="text-sm text-destructive">Amounts must be whole numbers (no cents/decimals).</div>
             )}
           </div>
 
@@ -396,6 +406,8 @@ export default function FeePlansTab() {
                 <div className="md:col-span-3">
                   <Input
                     type="number"
+                    step="1"
+                    min="0"
                     placeholder="Amount"
                     value={l.amount}
                     onChange={(e) => {
@@ -440,6 +452,10 @@ export default function FeePlansTab() {
 
             {new Set(editSelectedIds).size !== editSelectedIds.length && (
               <div className="text-sm text-destructive">Duplicate fee items detected — remove duplicates.</div>
+            )}
+
+            {editLines.some((l) => l.feeItemId && !Number.isInteger(toNumberOrZero(l.amount))) && (
+              <div className="text-sm text-destructive">Amounts must be whole numbers (no cents/decimals).</div>
             )}
           </div>
 

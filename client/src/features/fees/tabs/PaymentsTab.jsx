@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { openReceiptPdf } from "@/api/fees.api";
+import { getErrorMessage } from "@/lib/errors";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,16 +25,32 @@ export default function PaymentsTab() {
 
   // Optional: allow searching by paymentId to reprint (admin/audit convenience)
   const [paymentId, setPaymentId] = useState("");
+  const [printing, setPrinting] = useState(false);
 
   const clearReceipt = () => {
     setLastReceipt(null);
     localStorage.removeItem("fees:lastReceipt");
   };
 
+  // openReceiptPdf() rejects on a bad/unknown paymentId (e.g. 404). It was
+  // previously called with no catch, so a failed lookup left an unhandled
+  // promise rejection and the user just saw nothing happen.
+  const printPdf = async (id) => {
+    if (!id || printing) return;
+    setPrinting(true);
+    try {
+      await openReceiptPdf(id);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to open receipt PDF."));
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   const printById = () => {
     const id = paymentId.trim();
     if (!id) return;
-    openReceiptPdf(id);
+    printPdf(id);
   };
 
   return (
@@ -69,8 +87,8 @@ export default function PaymentsTab() {
           </div>
 
           <div className="md:col-span-2 flex gap-2 justify-end">
-            <Button variant="outline" onClick={printById} disabled={!paymentId.trim()}>
-              Print Receipt (PDF)
+            <Button variant="outline" onClick={printById} disabled={!paymentId.trim() || printing}>
+              {printing ? "Opening…" : "Print Receipt (PDF)"}
             </Button>
             <Button variant="ghost" onClick={() => setPaymentId("")} disabled={!paymentId.trim()}>
               Clear
@@ -97,8 +115,12 @@ export default function PaymentsTab() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => openReceiptPdf(lastReceipt.paymentId)}>
-                Print Receipt (PDF)
+              <Button
+                variant="outline"
+                onClick={() => printPdf(lastReceipt.paymentId)}
+                disabled={printing}
+              >
+                {printing ? "Opening…" : "Print Receipt (PDF)"}
               </Button>
               <Button variant="ghost" onClick={clearReceipt}>
                 Clear Receipt

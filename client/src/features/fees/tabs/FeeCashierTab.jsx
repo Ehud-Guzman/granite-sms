@@ -38,6 +38,13 @@ function getInitialLastReceipt() {
   }
 }
 
+function newClientTxnId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `txn_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
 export default function FeeCashierTab({ onReceiptReady }) {
   const qc = useQueryClient();
 
@@ -55,6 +62,15 @@ export default function FeeCashierTab({ onReceiptReady }) {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("CASH");
   const [reference, setReference] = useState("");
+
+  // Idempotency key for the payment currently being entered. The backend
+  // dedupes on this (see POST /fees/payments), but only if the client
+  // actually sends one — without it, a retried/duplicated request (flaky
+  // network, double click that slips past the disabled-button guard) could
+  // post the same payment twice. Regenerated per invoice and after each
+  // successful post so retries of the *same* attempt stay deduped while a
+  // genuinely new payment gets a fresh key.
+  const [clientTxnId, setClientTxnId] = useState(newClientTxnId);
 
   // last receipt cache (quick reprint)
   const [lastReceipt, setLastReceipt] = useState(() => getInitialLastReceipt());
@@ -231,6 +247,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
       setSelectedInvoiceId(inv?.id || "");
       const bal = toNumberOrZero(inv?.balance);
       setAmount(bal > 0 ? String(bal) : "");
+      setClientTxnId(newClientTxnId());
       setTimeout(() => amountRef.current?.focus(), 50);
       toast.success("Invoice generated");
     },
@@ -254,6 +271,8 @@ export default function FeeCashierTab({ onReceiptReady }) {
       // reset form
       setAmount("");
       setReference("");
+      // fresh idempotency key for the next payment attempt on this invoice
+      setClientTxnId(newClientTxnId());
 
       // cache quick reprint
       persistReceipt({
@@ -312,6 +331,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
     setSelectedInvoiceId("");
     setAmount("");
     setReference("");
+    setClientTxnId(newClientTxnId());
   };
 
   const doGenerateInvoice = () => {
@@ -330,10 +350,16 @@ export default function FeeCashierTab({ onReceiptReady }) {
     setSelectedInvoiceId(inv.id);
     const bal = toNumberOrZero(inv.balance);
     setAmount(bal > 0 ? String(bal) : "");
+    setClientTxnId(newClientTxnId());
     setTimeout(() => amountRef.current?.focus(), 50);
   };
 
   const submitPayment = () => {
+    // Guard against double-submit: the "Post Payment" button already disables
+    // itself while payMut.isPending, but the Enter-key shortcut below calls
+    // this function directly and isn't gated by that disabled attribute, so
+    // a second rapid Enter press could fire a second concurrent mutation.
+    if (payMut.isPending) return;
     if (!canPostPayment) return toast.error("You are not allowed to post payments");
     if (isReadOnly) return toast.error("Read-only mode");
     if (!activeInvoiceId) return toast.error("No invoice selected");
@@ -341,6 +367,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
 
     const amt = toNumberOrZero(amount);
     if (amt <= 0) return toast.error("Enter a valid amount");
+    if (!Number.isInteger(amt)) return toast.error("Amount must be a whole number");
     if (amt > activeInvoiceBalance) return toast.error("Overpayment is not allowed");
 
     payMut.mutate({
@@ -348,6 +375,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
       amount: amt,
       method,
       reference: reference.trim() || undefined,
+      clientTxnId,
     });
   };
 
@@ -394,7 +422,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, method, reference, activeInvoiceId, isReadOnly, reverseOpen, voidOpen, role]);
+  }, [amount, method, reference, activeInvoiceId, isReadOnly, reverseOpen, voidOpen, role, clientTxnId]);
 
   // -------------------------
   // UI

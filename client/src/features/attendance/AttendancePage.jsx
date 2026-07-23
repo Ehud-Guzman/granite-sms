@@ -9,6 +9,7 @@ import {
   listAttendanceSessions,
 } from "@/api/attendance.api";
 import { useMe } from "@/hooks/useMe";
+import { getErrorMessage } from "@/lib/errors";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -102,15 +103,9 @@ export default function AttendancePage() {
 
   const canCreate = !!classId && !!term && !createMut.isPending;
 
-  const createErrorMsg =
-    createMut.error?.response?.data?.message ||
-    createMut.error?.message ||
-    "Failed to create/open session.";
+  const createErrorMsg = getErrorMessage(createMut.error, "Failed to create/open session.");
 
-  const sessionsErrorMsg =
-    sessionsQ.error?.response?.data?.message ||
-    sessionsQ.error?.message ||
-    "Server error";
+  const sessionsErrorMsg = getErrorMessage(sessionsQ.error, "Server error");
 
   if (meLoading) return <div className="p-6">Loading...</div>;
 

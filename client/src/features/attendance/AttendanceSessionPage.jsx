@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useMe } from "@/hooks/useMe";
+import { getErrorMessage } from "@/lib/errors";
 import { listStudents } from "@/features/students/students.api";
 import {
   getAttendanceSession,
@@ -72,6 +73,13 @@ export default function AttendanceSessionPage() {
   const [search, setSearch] = useState("");
   const [local, setLocal] = useState([]); // [{ studentId, status, minutesLate, comment }]
 
+  // Tracks whether `local` has edits that haven't been persisted via Save.
+  // "Submit" only flips the session's status server-side — it does NOT send
+  // `local`, so submitting while dirty would lock in whatever was last
+  // *saved*, silently discarding on-screen edits the user thinks they just
+  // submitted. Gate the Submit button on this instead.
+  const [dirty, setDirty] = useState(false);
+
   // Seed `local` from session + students exactly once per session, adjusting
   // state during render instead of in an effect (no extra commit/paint
   // cycle, no need for a "have I seeded yet" ref-guarded effect).
@@ -109,6 +117,7 @@ export default function AttendanceSessionPage() {
       }
 
       setLocal(merged);
+      setDirty(false);
     } else if (local.length > 0) {
       // Session changed but the new session's data isn't ready yet —
       // clear stale rows from the previous session rather than show them.
@@ -119,7 +128,10 @@ export default function AttendanceSessionPage() {
   // Mutations
   const saveMut = useMutation({
     mutationFn: (records) => updateAttendanceRecords(sessionId, records),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["attendanceSession", sessionId] }),
+    onSuccess: () => {
+      setDirty(false);
+      qc.invalidateQueries({ queryKey: ["attendanceSession", sessionId] });
+    },
   });
 
   const submitMut = useMutation({
@@ -153,21 +165,26 @@ export default function AttendanceSessionPage() {
           : r
       )
     );
+    setDirty(true);
   };
 
   const setMinutesLate = (studentId, minutesLate) => {
     const n = Number(minutesLate);
+    // Clamp to the backend's allowed range (0-600) so a typo can't produce a
+    // save the server will just reject with a 400.
     setLocal((prev) =>
       prev.map((r) =>
         r.studentId === studentId
-          ? { ...r, minutesLate: Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : null }
+          ? { ...r, minutesLate: Number.isFinite(n) ? Math.min(600, Math.max(0, Math.trunc(n))) : null }
           : r
       )
     );
+    setDirty(true);
   };
 
   const setComment = (studentId, comment) => {
     setLocal((prev) => prev.map((r) => (r.studentId === studentId ? { ...r, comment } : r)));
+    setDirty(true);
   };
 
   const save = () => {
@@ -248,7 +265,8 @@ export default function AttendanceSessionPage() {
               <Button
                 variant="outline"
                 onClick={() => submitMut.mutate()}
-                disabled={!local.length || disableEdits || submitMut.isPending}
+                disabled={!local.length || disableEdits || submitMut.isPending || dirty}
+                title={dirty ? "Save your changes before submitting" : undefined}
               >
                 {submitMut.isPending ? "Submitting…" : "Submit"}
               </Button>
@@ -279,11 +297,17 @@ export default function AttendanceSessionPage() {
 
           {(saveMut.isError || submitMut.isError || lockMut.isError || unlockMut.isError) && (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
-              {saveMut.error?.response?.data?.message ||
-                submitMut.error?.response?.data?.message ||
-                lockMut.error?.response?.data?.message ||
-                unlockMut.error?.response?.data?.message ||
-                "Action failed."}
+              {getErrorMessage(
+                saveMut.error || submitMut.error || lockMut.error || unlockMut.error,
+                "Action failed."
+              )}
+            </div>
+          )}
+
+          {dirty && !disableEdits && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+              You have unsaved changes. Click <b>Save</b> before submitting — Submit locks in the
+              last saved records, not what&apos;s on screen.
             </div>
           )}
 
@@ -313,9 +337,7 @@ export default function AttendanceSessionPage() {
             <div className="text-sm">
               <div className="font-medium">Failed to load data</div>
               <div className="text-muted-foreground mt-1">
-                {sessionQ.error?.response?.data?.message ||
-                  studentsQ.error?.response?.data?.message ||
-                  "Server error"}
+                {getErrorMessage(sessionQ.error || studentsQ.error, "Server error")}
               </div>
             </div>
           )}
@@ -393,6 +415,8 @@ export default function AttendanceSessionPage() {
                               <Input
                                 className="w-28"
                                 type="number"
+                                min={0}
+                                max={600}
                                 placeholder="mins late"
                                 value={r.minutesLate ?? ""}
                                 onChange={(e) => setMinutesLate(r.studentId, e.target.value)}
@@ -404,6 +428,7 @@ export default function AttendanceSessionPage() {
                                 value={r.comment || ""}
                                 onChange={(e) => setComment(r.studentId, e.target.value)}
                                 disabled={disableEdits}
+                                maxLength={250}
                               />
                             </div>
                           </div>

@@ -1,3 +1,5 @@
+import { getErrorMessage } from "@/lib/errors";
+
 export default function QueryBlock({
   isLoading,
   isError,
@@ -11,10 +13,7 @@ export default function QueryBlock({
   }
 
   if (isError) {
-    const msg =
-      error?.response?.data?.message ||
-      error?.message ||
-      "Something went wrong.";
+    const msg = getErrorMessage(error, "Something went wrong.");
     return <div className="text-sm text-destructive">{msg}</div>;
   }
 

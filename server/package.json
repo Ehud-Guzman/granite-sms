@@ -14,7 +14,8 @@
     "prisma:studio": "prisma studio",
     "seed:demo": "node prisma/seedDemo.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "fees:reconcile": "node scripts/reconcileFees.js"
   },
   "keywords": [],
   "author": "",

@@ -45,6 +45,42 @@ function computeInvoiceStatus(total, paid, discount = 0) {
 }
 
 /**
+ * Locks one invoice row for the rest of the transaction (SELECT ... FOR UPDATE).
+ * Every write that changes an invoice's money (payment, reversal, discount,
+ * void) takes this lock first, so two of them on the same invoice run one
+ * after the other instead of both reading the same old balance.
+ * Returns the locked invoice, or null if it isn't in this school.
+ */
+async function lockInvoice(tx, schoolId, invoiceId) {
+  const rows = await tx.$queryRaw`
+    SELECT id FROM "FeeInvoice"
+    WHERE id = ${String(invoiceId)} AND "schoolId" = ${String(schoolId)}
+    FOR UPDATE`;
+  if (!rows.length) return null;
+  return tx.feeInvoice.findUnique({ where: { id: rows[0].id } });
+}
+
+/**
+ * Sets paid/balance/status from the invoice's non-reversed payment rows, which
+ * are the source of truth. Call inside the transaction, after lockInvoice.
+ */
+async function recomputeInvoiceTotals(tx, invoice) {
+  const agg = await tx.feePayment.aggregate({
+    where: { invoiceId: invoice.id, isReversed: false },
+    _sum: { amount: true },
+  });
+  const paid = Number(agg._sum.amount || 0);
+  if (invoice.status === "VOID") {
+    return tx.feeInvoice.update({ where: { id: invoice.id }, data: { paid, balance: 0 } });
+  }
+  const { balance, status } = computeInvoiceStatus(invoice.total, paid, invoice.discount);
+  return tx.feeInvoice.update({
+    where: { id: invoice.id },
+    data: { paid, balance, status },
+  });
+}
+
+/**
  * Creates a single FeeInvoice (+ lines) from a FeePlan, inside the given
  * prisma client (pass `tx` inside a $transaction, or `prisma` standalone).
  * Shared by both the single-student and bulk invoice generation routes.
@@ -821,10 +857,10 @@ router.post(
       if (!reason) return res.status(400).json({ message: "Void reason is required." });
 
       const result = await prisma.$transaction(async (tx) => {
-        const invoice = await tx.feeInvoice.findFirst({
-          where: { id: String(id), schoolId: req.schoolId },
-          include: { payments: true },
-        });
+        const locked = await lockInvoice(tx, req.schoolId, id);
+        const invoice = locked
+          ? await tx.feeInvoice.findUnique({ where: { id: locked.id }, include: { payments: true } })
+          : null;
 
         if (!invoice) {
           const e = new Error("Invoice not found.");
@@ -892,9 +928,7 @@ router.post(
       }
 
       const result = await prisma.$transaction(async (tx) => {
-        const invoice = await tx.feeInvoice.findFirst({
-          where: { id: String(id), schoolId: req.schoolId },
-        });
+        const invoice = await lockInvoice(tx, req.schoolId, id);
         if (!invoice) {
           const e = new Error("Invoice not found.");
           e.status = 404;
@@ -1182,22 +1216,23 @@ router.post(
       const result = await prisma.$transaction(async (tx) => {
         const txnId = clientTxnId ? String(clientTxnId) : null;
 
-        // Idempotency
+        // Lock first: everything below sees the invoice as it is after any
+        // payment/reversal already in flight on it has committed.
+        const invoice = await lockInvoice(tx, req.schoolId, invoiceId);
+        if (!invoice) {
+          const e = new Error("Invoice not found.");
+          e.status = 404;
+          throw e;
+        }
+
+        // Idempotency (checked under the lock, so a double-submit waits for
+        // the first request and then returns its payment).
         if (txnId) {
           const existing = await tx.feePayment.findFirst({
             where: { schoolId: req.schoolId, clientTxnId: txnId },
             include: { invoice: true },
           });
           if (existing) return { payment: existing, invoice: existing.invoice, idempotent: true };
-        }
-
-        const invoice = await tx.feeInvoice.findFirst({
-          where: { id: String(invoiceId), schoolId: req.schoolId },
-        });
-        if (!invoice) {
-          const e = new Error("Invoice not found.");
-          e.status = 404;
-          throw e;
         }
 
         if (invoice.status === "VOID") {
@@ -1228,17 +1263,7 @@ router.post(
           },
         });
 
-        const newPaid = Number(invoice.paid || 0) + amt;
-        const { balance: newBalance, status: newStatus } = computeInvoiceStatus(
-          invoice.total,
-          newPaid,
-          invoice.discount
-        );
-
-        const updatedInvoice = await tx.feeInvoice.update({
-          where: { id: invoice.id },
-          data: { paid: newPaid, balance: newBalance, status: newStatus },
-        });
+        const updatedInvoice = await recomputeInvoiceTotals(tx, invoice);
 
         return { payment, invoice: updatedInvoice, idempotent: false };
       });
@@ -1280,36 +1305,31 @@ router.post(
       if (!reason) return res.status(400).json({ message: "Reversal reason is required." });
 
       const result = await prisma.$transaction(async (tx) => {
-        const payment = await tx.feePayment.findFirst({
+        const found = await tx.feePayment.findFirst({
           where: { id: String(id), schoolId: req.schoolId },
+          select: { invoiceId: true },
         });
-        if (!payment) {
+        if (!found) {
           const e = new Error("Payment not found.");
           e.status = 404;
           throw e;
         }
+
+        // Lock the invoice, then re-read the payment: a concurrent reversal of
+        // the same payment will have committed by now and is seen here.
+        const invoice = await lockInvoice(tx, req.schoolId, found.invoiceId);
+        if (!invoice) {
+          const e = new Error("Invoice not found for payment.");
+          e.status = 404;
+          throw e;
+        }
+        const payment = await tx.feePayment.findUnique({ where: { id: String(id) } });
 
         if (payment.isReversed) {
           const e = new Error("Payment already reversed.");
           e.status = 400;
           throw e;
         }
-
-        const invoice = await tx.feeInvoice.findFirst({
-          where: { id: payment.invoiceId, schoolId: req.schoolId },
-        });
-        if (!invoice) {
-          const e = new Error("Invoice not found for payment.");
-          e.status = 404;
-          throw e;
-        }
-
-        const newPaid = Math.max(Number(invoice.paid || 0) - Number(payment.amount || 0), 0);
-        const { balance: newBalance, status: newStatus } = computeInvoiceStatus(
-          invoice.total,
-          newPaid,
-          invoice.discount
-        );
 
         const reversedPayment = await tx.feePayment.update({
           where: { id: payment.id },
@@ -1321,10 +1341,7 @@ router.post(
           },
         });
 
-        const updatedInvoice = await tx.feeInvoice.update({
-          where: { id: invoice.id },
-          data: { paid: newPaid, balance: newBalance, status: newStatus },
-        });
+        const updatedInvoice = await recomputeInvoiceTotals(tx, invoice);
 
         return { payment: reversedPayment, invoice: updatedInvoice };
       });

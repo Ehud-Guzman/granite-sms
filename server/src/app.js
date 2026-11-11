@@ -226,13 +226,30 @@ app.use((req, res) => {
 });
 
 // ---- Global error handler ----
+// Client mistakes get a 4xx with a usable message; only real faults are 500.
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error("GLOBAL ERROR:", err);
-
   if (err?.message?.includes("CORS")) {
     return res.status(403).json({ message: "Blocked by CORS" });
   }
+  // body-parser
+  if (err?.type === "entity.too.large") {
+    return res.status(413).json({ message: "Request is too large.", code: "PAYLOAD_TOO_LARGE" });
+  }
+  if (err?.type === "entity.parse.failed") {
+    return res.status(400).json({ message: "Request body is not valid JSON.", code: "BAD_JSON" });
+  }
+  // Prisma rejected a value (wrong type, unknown enum value, ...)
+  if (err?.name === "PrismaClientValidationError") {
+    return res.status(400).json({ message: "Some of the values sent are not valid.", code: "INVALID_INPUT" });
+  }
+  // Errors thrown on purpose with a status (e.g. Object.assign(new Error(..), { status: 400 }))
+  const status = Number(err?.status || err?.statusCode);
+  if (status >= 400 && status < 500) {
+    return res.status(status).json({ message: err.message || "Bad request" });
+  }
 
+  console.error("GLOBAL ERROR:", err);
   return res.status(500).json({ message: "Server error" });
 });
 

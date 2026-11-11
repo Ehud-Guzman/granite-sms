@@ -1,0 +1,4 @@
+# Cloudflare Workers: do not upload these files from dist/.
+# _redirects is for Netlify; on Cloudflare its SPA rule is rejected as a loop.
+# wrangler.demo.jsonc handles SPA routing (not_found_handling) instead.
+_redirects

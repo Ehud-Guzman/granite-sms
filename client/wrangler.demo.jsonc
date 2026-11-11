@@ -4,7 +4,7 @@
   //
   // In the Worker's Settings > Build, set the deploy command to:
   //   npx wrangler deploy --config wrangler.demo.jsonc
-  "name": "granite-sms-demo",
+  "name": "granite-sms",
   "compatibility_date": "2025-09-01",
   "assets": {
     "directory": "./dist",

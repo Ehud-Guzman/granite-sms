@@ -8,7 +8,7 @@ Mwangaza Academy.
 | --- | --- |
 | Database | Neon (free, does not expire), database named `granite_demo` |
 | API | Render web service `granite-sms-demo-api` (separate from the real `granite-sms`) |
-| Website | Cloudflare Worker `granite-sms-demo`, built from `client/wrangler.demo.jsonc` |
+| Website | Cloudflare Worker `granite-sms`, built from `client/wrangler.demo.jsonc` |
 | Fresh data | GitHub Action "Refresh demo", every night at 00:10 UTC |
 
 ## What demo mode does
@@ -94,7 +94,7 @@ sign-in buttons say so while they wait).
 
 ## 4. The website (Cloudflare)
 
-1. Cloudflare → Workers & Pages → Create → **Import a repository** → this repository. Name it `granite-sms-demo` (it must
+1. Cloudflare → Workers & Pages → Create → **Import a repository** → this repository. Name it `granite-sms` (it must
    match `name` in `client/wrangler.demo.jsonc`).
 2. Root directory `client`. Build command `npm run build`. Deploy command
    `npx wrangler deploy --config wrangler.demo.jsonc`.

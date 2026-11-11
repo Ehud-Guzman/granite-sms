@@ -1,13 +1,14 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { fmtClass } from "../utils/format";
 
 export default function SessionsList({ sessions, activeSessionId, onOpen, classLabelById }) {
   return (
     <div className="grid gap-3">
       {sessions.map((s) => {
         const isActive = s.id === activeSessionId;
-        const cls = classLabelById.get(s.classId) || s.classId;
+        const cls = classLabelById.get(s.classId) || (s.class ? fmtClass(s.class) : "");
 
         return (
           <Card key={s.id} className={isActive ? "border-primary" : ""}>

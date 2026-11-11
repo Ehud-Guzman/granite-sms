@@ -50,8 +50,8 @@ router.post(
 // ------------------------
 router.get(
   "/sessions",
-  // Optional extra role gate (recommended)
-  requireRole("ADMIN", "TEACHER"),
+  // STUDENT sees only their own class's published sessions (scoped in the service).
+  requireRole("ADMIN", "TEACHER", "STUDENT"),
   requireEntitlement("EXAMS_READ"),
   ctrl.listExamSessions
 );

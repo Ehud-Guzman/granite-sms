@@ -183,11 +183,18 @@ export async function listExamSessions(req) {
 
   let termFilter;
   if (termRaw) {
-    const termStr = String(termRaw).trim().toLowerCase();
-    if (termStr === 'all') {
+    // The Term enum is uppercase (TERM1...). This used to lowercase the value
+    // and keep assertTerm's (undefined) return, so any term filter failed.
+    const termStr = String(termRaw).trim().toUpperCase();
+    if (termStr === "ALL") {
       termFilter = undefined; // all terms
     } else {
-      termFilter = assertTerm(termStr); // validate real term
+      try {
+        assertTerm(termStr);
+      } catch (e) {
+        throw Object.assign(e, { statusCode: 400 });
+      }
+      termFilter = termStr;
     }
   } else {
     termFilter = undefined; // missing term = all terms
@@ -223,6 +230,21 @@ export async function listExamSessions(req) {
       const assignedClassIds = await getTeacherAssignedClassIds({ schoolId, teacherId });
       where.classId = { in: assignedClassIds };
     }
+  }
+
+  // A STUDENT may list only the published sessions of their own class, so the
+  // Results page can offer them their result slips. Anything they pass for
+  // classId or status is overridden.
+  if (req.user.role === "STUDENT") {
+    const me = req.user.studentId
+      ? await prisma.student.findFirst({
+          where: { id: req.user.studentId, schoolId },
+          select: { classId: true },
+        })
+      : null;
+    if (!me?.classId) return [];
+    where.classId = me.classId;
+    where.status = ExamSessionStatus.PUBLISHED;
   }
 
   return prisma.examSession.findMany({
@@ -920,6 +942,11 @@ export async function getStudentResults(req) {
     select: { id: true, classId: true, term: true, year: true, name: true, status: true },
   });
   if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
+
+  // Students see a result slip only once the school has published it.
+  if (req.user.role === "STUDENT" && session.status !== ExamSessionStatus.PUBLISHED) {
+    throw Object.assign(new Error("These results have not been published yet."), { statusCode: 403 });
+  }
 
   const student = await prisma.student.findFirst({
     where: { id: studentId, schoolId },

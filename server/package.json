@@ -11,7 +11,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "seed:demo": "node prisma/seedDemo.js"
   },
   "keywords": [],
   "author": "",

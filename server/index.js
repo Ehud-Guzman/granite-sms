@@ -33,11 +33,24 @@ import usersRoutes from "./src/routes/users.js";
 import { requireAuth } from "./src/middleware/auth.js";
 import { tenantContext } from "./src/middleware/tenant.js";
 import { assertJwtSecretStrong } from "./src/utils/jwt.js";
+import { demoGuard } from "./src/middleware/demoGuard.js";
+import { isDemo, isDemoDatabase, dbNameOf } from "./src/config/demo.js";
 
 dotenv.config();
 
 // Fail loud at boot if the signing secret is missing/weak (auth bypass otherwise).
 assertJwtSecretStrong();
+
+// A demo signs strangers in with one click, so it must never run against a
+// real database. Refuse to start unless the database name contains "demo".
+if (isDemo() && !isDemoDatabase(process.env.DATABASE_URL)) {
+  console.error(
+    `DEMO_MODE is on but the database "${dbNameOf(process.env.DATABASE_URL) || "?"}" ` +
+      `does not have "demo" in its name. Refusing to start.`
+  );
+  process.exit(1);
+}
+if (isDemo()) console.log("DEMO MODE: read-only, one-click demo sign-in enabled.");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -118,6 +131,10 @@ const authLimiter = rateLimit({
 });
 
 app.use("/api", globalLimiter);
+
+// A demo deployment refuses every write (config/demo.js). Mounted before all
+// routes so nothing below can be reached by a write. No-op when DEMO_MODE is off.
+app.use("/api", demoGuard);
 
 // ---- Dev request logger ----
 app.use((req, res, next) => {

@@ -1,0 +1,23 @@
+{
+  // The portfolio demo's website on Cloudflare (Workers Builds). Same code as the
+  // real site, built in demo mode and pointed at the demo API. See DEMO.md.
+  //
+  // In the Worker's Settings > Build, set the deploy command to:
+  //   npx wrangler deploy --config wrangler.demo.jsonc
+  "name": "granite-sms-demo",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./dist",
+    // Any path that is not a file gets index.html (the app draws every screen
+    // itself), so a link straight to /app/fees works instead of a 404.
+    "not_found_handling": "single-page-application"
+  },
+  // Set these as the Worker's *build* variables in the dashboard too: Vite
+  // reads them while building.
+  "vars": {
+    "NODE_VERSION": "22",
+    "VITE_DEMO_MODE": "true",
+    "VITE_PORTFOLIO_URL": "https://glimmerink.co.ke",
+    "VITE_API_URL": "https://granite-sms-demo-api.onrender.com"
+  }
+}

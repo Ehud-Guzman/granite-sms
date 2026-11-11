@@ -2,14 +2,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { login } from "../api/auth.api";
+import { login, demoLogin } from "../api/auth.api";
+import { IS_DEMO, DEMO_ROLES } from "@/lib/demo";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const DEMO_ACCOUNTS = [
+// Local development shortcuts only (matching prisma/seed.js). They are never
+// shown on a deployed site, which is built in production mode.
+const DEV_ACCOUNTS = [
   {
     key: "admin",
     label: "School Admin",
@@ -104,6 +107,74 @@ export default function Login() {
     setPassword(acc.password);
   };
 
+  // Demo build: one tap per role, no password.
+  const [demoBusy, setDemoBusy] = useState("");
+  const enterDemo = async (role) => {
+    if (demoBusy) return;
+    setDemoBusy(role);
+    try {
+      const data = await demoLogin(role);
+      if (!data?.token) throw new Error("The demo did not answer. Please try again.");
+      navigate(role === "SYSTEM_ADMIN" ? "/select-school" : "/app/dashboard", { replace: true });
+    } catch (err) {
+      // A free-tier API that has been asleep answers the first request slowly.
+      toast.error(
+        err?.response?.data?.message ||
+          "The demo is waking up. Please try again in a few seconds."
+      );
+      setDemoBusy("");
+    }
+  };
+
+  if (IS_DEMO) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Granite SMS</h1>
+            <p className="text-muted-foreground">
+              School management for Mwangaza Academy, a sample school
+            </p>
+          </div>
+
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl">Explore the live demo</CardTitle>
+              <CardDescription>
+                Pick a role. No sign-up and no password. Everything is sample data, and nothing you do is saved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {DEMO_ROLES.map((r) => (
+                <button
+                  key={r.role}
+                  type="button"
+                  onClick={() => enterDemo(r.role)}
+                  disabled={!!demoBusy}
+                  className="w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 disabled:opacity-60"
+                >
+                  <div className="font-medium">
+                    {demoBusy === r.role ? "Opening…" : `Explore as ${r.label}`}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{r.note}</div>
+                </button>
+              ))}
+              {demoBusy && (
+                <p className="pt-1 text-center text-xs text-muted-foreground" role="status">
+                  If nobody has visited for a while, the demo can take up to a minute to wake up.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="text-center text-xs text-muted-foreground">
+            <p>© {new Date().getFullYear()} GlimmerInk Creations</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-background flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
@@ -176,7 +247,8 @@ export default function Login() {
           </CardContent>
         </Card>
 
-        {/* Demo Accounts */}
+        {/* Dev shortcuts (local development only) */}
+        {import.meta.env.DEV && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Demo Access</CardTitle>
@@ -185,7 +257,7 @@ export default function Login() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {DEMO_ACCOUNTS.map((acc) => (
+            {DEV_ACCOUNTS.map((acc) => (
               <div
                 key={acc.key}
                 className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/30 transition-colors"
@@ -213,6 +285,7 @@ export default function Login() {
             </div>
           </CardContent>
         </Card>
+        )}
 
         {/* Footer */}
         <div className="text-center text-xs text-muted-foreground">

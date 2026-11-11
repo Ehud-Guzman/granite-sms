@@ -314,14 +314,16 @@ export async function getActivity(req) {
         where: { schoolId, isReversed: false },
         orderBy: { receivedAt: "desc" },
         take: limit,
+        // FeePayment has no user-id column; receivedBy is a free-text name.
+        // (Selecting fields that don't exist used to throw here, and the catch
+        // below silently dropped every payment from the feed.)
         select: {
           id: true,
           receivedAt: true,
           amount: true,
           receiptNo: true,
-          // Depending on your schema, one of these may exist:
-          receivedByUserId: true,
-          createdByUserId: true,
+          method: true,
+          receivedBy: true,
         },
       });
 
@@ -331,9 +333,10 @@ export async function getActivity(req) {
           at: r.receivedAt,
           module: "FEES",
           action: "PAYMENT_RECEIVED",
-          actorUserId: r.receivedByUserId || r.createdByUserId || null,
+          actorUserId: null,
+          actorName: r.receivedBy || null,
           entity: { receiptNo: r.receiptNo || null },
-          meta: { amount: r.amount },
+          meta: { amount: r.amount, method: r.method },
         });
       }
     } catch {
@@ -360,7 +363,7 @@ export async function getActivity(req) {
           entityType: true,
           entityId: true,
           actorUserId: true,
-          meta: true,
+          after: true,
         },
       });
 
@@ -372,7 +375,7 @@ export async function getActivity(req) {
           action: r.action,
           actorUserId: r.actorUserId || null,
           entity: { type: r.entityType, id: r.entityId },
-          meta: r.meta,
+          meta: r.after ?? null,
         });
       }
     } catch {
@@ -393,7 +396,13 @@ export async function getActivity(req) {
     try {
       const users = await prisma.user.findMany({
         where: { id: { in: actorIds } },
-        select: { id: true, email: true, firstName: true, lastName: true, role: true },
+        // User has no name columns; a teacher's name lives on Teacher.
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          teacher: { select: { firstName: true, lastName: true } },
+        },
       });
       usersById = new Map(users.map((u) => [u.id, u]));
     } catch {
@@ -403,10 +412,9 @@ export async function getActivity(req) {
 
   const enriched = sliced.map((x) => {
     const u = x.actorUserId ? usersById.get(x.actorUserId) : null;
-    const actor =
-      u
-        ? `${(u.firstName || "").trim()} ${(u.lastName || "").trim()}`.trim() || u.email || u.id
-        : null;
+    const actor = u
+      ? `${(u.teacher?.firstName || "").trim()} ${(u.teacher?.lastName || "").trim()}`.trim() || u.email || u.id
+      : x.actorName || null;
 
     return {
       ...x,

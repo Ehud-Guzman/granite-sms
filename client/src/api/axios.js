@@ -1,5 +1,6 @@
 // src/api/axios.js
 import axios from "axios";
+import { toast } from "sonner";
 
 const baseURL = import.meta.env.VITE_API_URL?.trim() || "http://localhost:5000";
 
@@ -101,6 +102,15 @@ api.interceptors.response.use(
       localStorage.removeItem("selectedSchool");
       localStorage.removeItem("user");
       authEvents.dispatchEvent(new Event("logout"));
+      return Promise.reject(err);
+    }
+
+    // Demo build: the server refuses every save. Say so once, kindly, with a
+    // fixed toast id so repeated clicks don't stack messages.
+    if (status === 403 && safeUpper(data?.code) === "DEMO_READ_ONLY") {
+      toast.info(data?.message || "This is a read-only demo, so nothing can be saved.", {
+        id: "demo-read-only",
+      });
       return Promise.reject(err);
     }
 

@@ -1,0 +1,72 @@
+# Keeps the portfolio demo fresh by itself.
+#
+# The demo school's data is dated from the day it is built (attendance for the
+# last four weeks, fees paid "today", exams in progress), and nobody can add
+# anything to a read-only demo, so it would go stale. This rebuilds it every
+# night just after midnight UTC (03:00 in Nairobi), so the dashboard's "today"
+# figures always have something in them.
+#
+# Safety: the seed refuses any database whose name does not contain "demo",
+# and the secret below points only at the demo database. It can never touch a
+# real school's data.
+#
+# Set-up (once): GitHub > Settings > Secrets and variables > Actions > New
+# repository secret, named DEMO_DATABASE_URL, holding the demo database's
+# connection string (the same one the demo API uses on Render). Without the
+# secret the workflow does nothing. Run it any time from Actions > Refresh demo
+# > Run workflow.
+name: Refresh demo
+
+on:
+  schedule:
+    - cron: "10 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: Rebuild the demo school
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DEMO_DATABASE_URL }}
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - name: Not configured
+        if: env.DATABASE_URL == ''
+        run: |
+          echo "DEMO_DATABASE_URL is not set, so nothing was refreshed." | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Add the DEMO_DATABASE_URL secret to refresh the demo automatically."
+
+      - uses: actions/checkout@v4
+        if: env.DATABASE_URL != ''
+
+      - uses: actions/setup-node@v4
+        if: env.DATABASE_URL != ''
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install
+        if: env.DATABASE_URL != ''
+        run: npm ci && npx prisma generate
+
+      - name: Bring the database schema up to date
+        if: env.DATABASE_URL != ''
+        run: npx prisma migrate deploy
+
+      - name: Rebuild the sample school
+        if: env.DATABASE_URL != ''
+        run: |
+          npm run seed:demo -- --confirm-write --reset | tee ../seed.txt
+          {
+            echo '### Demo refreshed'
+            echo '```'
+            tail -n 30 ../seed.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

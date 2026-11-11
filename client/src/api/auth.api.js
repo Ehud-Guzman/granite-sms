@@ -74,6 +74,20 @@ export async function login(payload) {
   return data;
 }
 
+/** Demo builds only: one-click sign-in as the sample account for a role. */
+export async function demoLogin(role) {
+  const { data } = await api.post("/api/auth/demo-login", { role });
+
+  if (data?.token) {
+    setToken(data.token);
+    clearSelectedSchool();
+    if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+    authEvents?.dispatchEvent(new Event("session-changed"));
+  }
+
+  return data;
+}
+
 export async function me() {
   const { data } = await api.get("/api/me");
   return data; // { user }

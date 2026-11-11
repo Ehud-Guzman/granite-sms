@@ -365,14 +365,21 @@ async function main() {
   // -------------------------
   // USERS (real)
   // -------------------------
-  // SYSTEM ADMIN (global)
-  await ensureUser({
-    email: "nyamuehud@gmail.com",
-    password: "Ehudmwai2000.",
-    role: Role.SYSTEM_ADMIN,
-    schoolId: null,
-    mustChangePassword: false,
-  });
+  // SYSTEM ADMIN (global). Its login comes from the environment, never from this
+  // file, because this file is in git. Without both variables it is not created.
+  const sysEmail = String(process.env.SEED_SYSADMIN_EMAIL || "").trim().toLowerCase();
+  const sysPassword = String(process.env.SEED_SYSADMIN_PASSWORD || "");
+  if (sysEmail && sysPassword) {
+    await ensureUser({
+      email: sysEmail,
+      password: sysPassword,
+      role: Role.SYSTEM_ADMIN,
+      schoolId: null,
+      mustChangePassword: false,
+    });
+  } else {
+    console.log("ℹ️  No SEED_SYSADMIN_EMAIL / SEED_SYSADMIN_PASSWORD set: system admin not created.");
+  }
 
   // KPS Admin
   await ensureUser({

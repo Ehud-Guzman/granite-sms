@@ -7,6 +7,7 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { tenantContext } from "../middleware/tenant.js";
 import { logAudit } from "../utils/audit.js";
 import { upper } from "../utils/validate.js";
+import { isDemo, DEMO_ACCOUNTS } from "../config/demo.js";
 
 const router = Router();
 
@@ -300,6 +301,67 @@ router.post("/login", async (req, res) => {
     });
   } catch (err) {
     console.error("LOGIN ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+/**
+ * Demo sign-in (demo deployments only)
+ * POST /api/auth/demo-login
+ * Body: { role } one of SYSTEM_ADMIN | ADMIN | BURSAR | TEACHER | STUDENT
+ *
+ * The demo has no passwords to hand out, so this signs the visitor in as the
+ * seeded sample account for that role. It answers 404 unless DEMO_MODE is on,
+ * and it only ever looks up the fixed demo emails in config/demo.js, so on a
+ * normal deployment it cannot sign anyone in.
+ */
+router.post("/demo-login", async (req, res) => {
+  try {
+    if (!isDemo()) return res.status(404).json({ message: "Not found" });
+
+    const role = upper(req.body?.role);
+    const email = DEMO_ACCOUNTS[role];
+    if (!email) {
+      return res.status(400).json({
+        message: `Choose a role to explore as: ${Object.keys(DEMO_ACCOUNTS).join(", ")}.`,
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, role: true, schoolId: true, isActive: true },
+    });
+    if (!user || !user.isActive || user.role !== role) {
+      return res.status(503).json({ message: "The demo is being set up. Please try again in a minute." });
+    }
+
+    const isSystem = user.role === "SYSTEM_ADMIN";
+    const token = signToken({
+      sub: user.id,
+      role: user.role,
+      schoolId: isSystem ? null : user.schoolId ?? null,
+    });
+
+    await logAudit({
+      req,
+      ...auditActorFromUser(user),
+      schoolId: isSystem ? null : user.schoolId,
+      action: "AUTH_LOGIN_SUCCESS",
+      metadata: { demo: true },
+    });
+
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        schoolId: isSystem ? null : user.schoolId,
+        mustChangePassword: false,
+      },
+      token,
+    });
+  } catch (err) {
+    console.error("DEMO LOGIN ERROR:", err);
     return res.status(500).json({ message: "Server error" });
   }
 });

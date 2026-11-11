@@ -97,7 +97,8 @@ sign-in buttons say so while they wait).
 1. Cloudflare → Workers & Pages → Create → **Import a repository** → this repository. Name it `granite-sms` (it must
    match `name` in `client/wrangler.demo.jsonc`).
 2. Root directory `client`. Build command `npm run build`. Deploy command
-   `npx wrangler deploy --config wrangler.demo.jsonc`.
+   `rm -f dist/_redirects && npx wrangler deploy --config wrangler.demo.jsonc` (the `_redirects` file is for
+   Netlify; Cloudflare rejects its rule as an infinite loop, and the demo config handles page links itself).
 3. Build variables: `NODE_VERSION=22`, `VITE_DEMO_MODE=true`, `VITE_API_URL=https://granite-sms-demo-api.onrender.com`,
    `VITE_PORTFOLIO_URL=https://glimmerink.co.ke`.
 4. Put the Worker's address into the demo API's `ALLOWED_ORIGINS` on Render, and redeploy the API.

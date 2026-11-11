@@ -3,7 +3,9 @@
   // real site, built in demo mode and pointed at the demo API. See DEMO.md.
   //
   // In the Worker's Settings > Build, set the deploy command to:
-  //   npx wrangler deploy --config wrangler.demo.jsonc
+  //   rm -f dist/_redirects && npx wrangler deploy --config wrangler.demo.jsonc
+  // (_redirects is for Netlify; Cloudflare rejects its rule as a loop. SPA
+  // routing here comes from not_found_handling below instead.)
   "name": "granite-sms",
   "compatibility_date": "2025-09-01",
   "assets": {

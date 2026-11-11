@@ -22,6 +22,18 @@ const validatePassword = (password) => {
   return p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
 };
 
+// One message for every failed sign-in (wrong password, unknown email,
+// inactive or locked account), so the response never reveals whether an
+// email has an account or is locked.
+const LOGIN_FAILED = {
+  message: "Incorrect email or password. After repeated failures, sign-in is paused for 15 minutes.",
+  code: "AUTH_INVALID",
+};
+
+// Compared against when the email is unknown, so the response takes as long
+// as a real password check (no timing hint that the account doesn't exist).
+const DUMMY_HASH = bcrypt.hashSync("dummy-password-for-timing", 10);
+
 const normalizeId = (v) => {
   const s = String(v || "").trim();
   return s ? s : null;
@@ -142,8 +154,11 @@ router.post("/signup", async (req, res) => {
  */
 router.post("/login", async (req, res) => {
   try {
-    const MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS || 5);
-    const LOCK_MINUTES = Number(process.env.AUTH_LOCK_MINUTES || 30);
+    // Per-network limits (middleware/rateLimits.js) stop guessing from one
+    // place; this account lock is the backstop against guessing spread over
+    // many networks, so it is deliberately higher and shorter.
+    const MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS || 10);
+    const LOCK_MINUTES = Number(process.env.AUTH_LOCK_MINUTES || 15);
 
     const email = cleanEmail(req.body?.email);
     const password = String(req.body?.password || "");
@@ -171,6 +186,7 @@ router.post("/login", async (req, res) => {
 
     // Generic fail (avoid enumeration)
     if (!user || !user.isActive) {
+      await bcrypt.compare(password, DUMMY_HASH);
       await logAudit({
         req,
         actorEmail: email,
@@ -178,11 +194,22 @@ router.post("/login", async (req, res) => {
         action: "AUTH_LOGIN_FAILED",
         metadata: { reason: "invalid_credentials" },
       });
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json(LOGIN_FAILED);
+    }
+
+    // A lock that has run out starts a fresh count. Without this the counter
+    // stayed at the limit, so one more mistake locked the account again.
+    const now = new Date();
+    if (user.lockUntil && user.lockUntil <= now) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockUntil: null },
+      });
+      user.failedLoginAttempts = 0;
+      user.lockUntil = null;
     }
 
     // Locked check
-    const now = new Date();
     if (user.lockUntil && user.lockUntil > now) {
       await logAudit({
         req,
@@ -192,10 +219,7 @@ router.post("/login", async (req, res) => {
         metadata: { lockUntil: user.lockUntil },
       });
 
-      return res.status(403).json({
-        message: "Account temporarily locked. Try again later.",
-        code: "ACCOUNT_LOCKED",
-      });
+      return res.status(401).json(LOGIN_FAILED);
     }
 
     // Password check
@@ -228,7 +252,7 @@ router.post("/login", async (req, res) => {
         metadata: { attempts: nextAttempts, max: MAX_ATTEMPTS },
       });
 
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json(LOGIN_FAILED);
     }
 
     // Tenant rule for non-system users:

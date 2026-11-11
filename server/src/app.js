@@ -5,7 +5,6 @@
 import path from "path";
 import express from "express";
 import cors from "cors";
-import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { fileURLToPath } from "url";
 
@@ -35,6 +34,7 @@ import usersRoutes from "./routes/users.js";
 import { requireAuth } from "./middleware/auth.js";
 import { tenantContext } from "./middleware/tenant.js";
 import { demoGuard } from "./middleware/demoGuard.js";
+import { ipLimiter, userLimiter, loginPerAccountLimiter, loginPerIpLimiter } from "./middleware/rateLimits.js";
 
 
 const app = express();
@@ -95,26 +95,11 @@ app.use(
 
 app.use(express.json({ limit: "1mb" }));
 
-// ---- Rate limiting ----
-// Global safety net across the API.
-const globalLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 300, // per IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Too many requests. Please slow down.", code: "RATE_LIMITED" },
-});
-
-// Tighter limiter for auth endpoints (credential stuffing / brute force).
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30, // per IP per window
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Too many auth attempts. Try again later.", code: "AUTH_RATE_LIMITED" },
-});
-
-app.use("/api", globalLimiter);
+// ---- Rate limiting (see middleware/rateLimits.js) ----
+app.use("/api", ipLimiter);
+// Only credential-checking routes get the sign-in limiters; changing a
+// password or switching school is not a guessing target.
+app.post(["/api/auth/login", "/api/auth/signup", "/api/auth/demo-login"], loginPerIpLimiter, loginPerAccountLimiter);
 
 // A demo deployment refuses every write (config/demo.js). Mounted before all
 // routes so nothing below can be reached by a write. No-op when DEMO_MODE is off.
@@ -142,7 +127,7 @@ app.disable("etag");
 // ===============================
 // PUBLIC ROUTES
 // ===============================
-app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/auth", authRoutes);
 
 // ===============================
 // PLATFORM ROUTES (SYSTEM_ADMIN)
@@ -156,7 +141,7 @@ app.use("/api/users", usersRoutes);
 // TENANT ROUTES (everything else)
 // requireAuth + tenantContext
 // ===============================
-app.use("/api", requireAuth, tenantContext);
+app.use("/api", requireAuth, tenantContext, userLimiter);
 
 // Core
 app.use("/api/students", studentRoutes);

@@ -12,7 +12,9 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
     "prisma:studio": "prisma studio",
-    "seed:demo": "node prisma/seedDemo.js"
+    "seed:demo": "node prisma/seedDemo.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
@@ -33,6 +35,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.11",
-    "prisma": "^6.19.1"
+    "prisma": "^6.19.1",
+    "supertest": "^7.1.4",
+    "vitest": "^3.2.4"
   }
 }

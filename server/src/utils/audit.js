@@ -186,7 +186,13 @@ export async function logAudit(opts = {}) {
       action: actionNorm,
       targetType: clampStr(targetType, MAX_TARGET_TYPE_LENGTH),
       targetId: clampStr(targetId, MAX_TARGET_ID_LENGTH),
-      metadata: safeMetadata(metadata, category),
+      // A SYSTEM_ADMIN impersonating this user did the action: record who.
+      metadata: safeMetadata(
+        req?.auth?.impersonatedBy
+          ? { ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : { value: metadata }), impersonatedBy: req.auth.impersonatedBy }
+          : metadata,
+        category
+      ),
       ip,
       userAgent,
     };

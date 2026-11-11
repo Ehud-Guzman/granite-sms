@@ -42,6 +42,11 @@ model User {
   lockUntil           DateTime?
   lastLoginAt         DateTime?
 
+  // Bumped on password change/reset, deactivation and role/email/school
+  // changes. Tokens carry the version they were issued with; an older one
+  // is rejected, which signs that user out everywhere.
+  tokenVersion        Int       @default(0)
+
   @@index([role])
   @@index([schoolId])
   // Queried together in routes/users.js (list by school+role) and in

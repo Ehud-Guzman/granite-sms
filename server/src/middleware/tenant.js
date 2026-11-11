@@ -1,5 +1,6 @@
 // src/middleware/tenant.js
 import { prisma } from "../lib/prisma.js";
+import { sessionProblem } from "./session.js";
 
 function normalizeHeader(v) {
   if (Array.isArray(v)) return v[0];
@@ -43,12 +44,23 @@ async function getUserDb(userId) {
       schoolId: true,
       email: true,
       isActive: true,
+      tokenVersion: true,
+      mustChangePassword: true,
       teacher: { select: { id: true, schoolId: true } },
       student: { select: { id: true, schoolId: true } },
     },
   });
 
   return cacheSet(USER_CACHE, id, u);
+}
+
+/**
+ * Drop a user from the cache so a change (deactivation, role, password,
+ * session revocation) applies on their very next request instead of up to
+ * 30s later. Call after any write to that user.
+ */
+export function invalidateUserCache(userId) {
+  if (userId) USER_CACHE.delete(String(userId));
 }
 
 async function resolveSchoolByIdOrCodeCached(key) {
@@ -76,9 +88,8 @@ export async function tenantContext(req, res, next) {
 
     const userDb = await getUserDb(userId);
 
-    if (!userDb || !userDb.isActive) {
-      return res.status(401).json({ message: "User not found or inactive" });
-    }
+    const problem = sessionProblem(req, userDb);
+    if (problem) return res.status(problem.status).json(problem.body);
 
     req.role = userDb.role;
     req.userEmail = userDb.email;
@@ -90,6 +101,7 @@ export async function tenantContext(req, res, next) {
       schoolId: userDb.schoolId ?? null,
       teacherId: userDb.teacher?.id ?? null,
       studentId: userDb.student?.id ?? null,
+      mustChangePassword: !!userDb.mustChangePassword,
     };
 
     req.teacherId = req.user.teacherId;

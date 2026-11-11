@@ -191,11 +191,18 @@ export default function UsersSettingsTab() {
                       </Badge>
                     </div>
                   </div>
-                  <ManageUserDialog
-                    actor={actor}
-                    user={u}
-                    onChanged={() => usersQ.refetch()}
-                  />
+                  {actorRole === "ADMIN" && String(u.role || "").toUpperCase() === "ADMIN" ? (
+                    // The server only lets the platform owner change admin accounts.
+                    <span className="text-xs text-muted-foreground max-w-[10rem] text-right">
+                      Admin accounts are managed by the platform owner
+                    </span>
+                  ) : (
+                    <ManageUserDialog
+                      actor={actor}
+                      user={u}
+                      onChanged={() => usersQ.refetch()}
+                    />
+                  )}
                 </div>
               </CardContent>
             </Card>

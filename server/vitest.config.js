@@ -19,6 +19,14 @@ export default defineConfig({
       JWT_ISSUER: "sms-api",
       JWT_AUDIENCE: "sms-client",
       DEMO_MODE: "false",
+      // Prisma loads server/.env into process.env without overriding keys that
+      // already exist. Pin everything the code reads so a developer's .env
+      // can't change test behaviour ("" = use the code's default).
+      JWT_EXPIRES_IN: "",
+      JWT_ALGORITHM: "",
+      ALLOW_IMPERSONATION: "false",
+      ALLOW_BOOTSTRAP: "false",
+      ALLOWED_ORIGINS: "",
     },
   },
 });

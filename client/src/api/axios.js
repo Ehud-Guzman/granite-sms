@@ -107,6 +107,15 @@ api.interceptors.response.use(
 
     // Demo build: the server refuses every save. Say so once, kindly, with a
     // fixed toast id so repeated clicks don't stack messages.
+    // The server refuses everything except changing the password until the
+    // user has replaced their temporary one.
+    if (status === 403 && safeUpper(data?.code) === "PASSWORD_CHANGE_REQUIRED") {
+      if (!window.location.pathname.startsWith("/auth/change-password")) {
+        window.location.assign("/auth/change-password");
+      }
+      return Promise.reject(err);
+    }
+
     if (status === 403 && safeUpper(data?.code) === "DEMO_READ_ONLY") {
       toast.info(data?.message || "This is a read-only demo, so nothing can be saved.", {
         id: "demo-read-only",

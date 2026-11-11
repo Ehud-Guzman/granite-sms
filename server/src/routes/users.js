@@ -10,7 +10,7 @@ import { loadSubscription, requireLimit, effectiveCap, capHit } from "../middlew
 
 // ✅ Ensure auth + tenant context for every /api/users request
 import { requireAuth } from "../middleware/auth.js";
-import { tenantContext, requireTenant } from "../middleware/tenant.js";
+import { tenantContext, requireTenant, invalidateUserCache } from "../middleware/tenant.js";
 
 const router = Router();
 
@@ -93,6 +93,16 @@ async function assertSchoolActive(schoolId) {
   if (!school.isActive) return { ok: false, code: 403, message: "School is suspended" };
   return { ok: true, school };
 }
+
+// School ADMINs manage teachers, bursars and students. Another ADMIN account
+// (including their own, beyond the self-service password change) can only be
+// changed by the platform owner — otherwise one admin could change a fellow
+// admin's email, reset the password and take the account over.
+function adminTargetsAdmin(actorRole, target) {
+  return String(actorRole).toUpperCase() === "ADMIN" && String(target?.role).toUpperCase() === "ADMIN";
+}
+const ADMIN_ON_ADMIN_MESSAGE =
+  "Only the platform owner can change an admin account. Use Change password for your own password.";
 
 function isActor(role, ...allowed) {
   const r = String(role || "").toUpperCase();
@@ -328,6 +338,10 @@ router.patch("/:id", async (req, res) => {
       return res.status(403).json({ message: "Cannot modify SYSTEM_ADMIN accounts" });
     }
 
+    if (adminTargetsAdmin(actorRole, target)) {
+      return res.status(403).json({ message: ADMIN_ON_ADMIN_MESSAGE, code: "ADMIN_TARGET_FORBIDDEN" });
+    }
+
     // Prevent an actor from changing their own role — self-demotion (e.g. an
     // ADMIN dropping themselves to TEACHER) can lock the account out of admin
     // capabilities with no one left to reverse it. Mirrors the "can't suspend
@@ -376,9 +390,12 @@ router.patch("/:id", async (req, res) => {
         ...(nextEmail ? { email: nextEmail } : {}),
         ...(nextRole ? { role: nextRole } : {}),
         ...(nextSchoolId ? { schoolId: nextSchoolId } : {}),
+        // A changed email, role or school ends the user's existing sessions.
+        ...(changed.email || changed.role || changed.schoolId ? { tokenVersion: { increment: 1 } } : {}),
       },
       select: safeUserSelect(),
     });
+    invalidateUserCache(id);
 
     const action = changed.role ? "USER_ROLE_CHANGED" : "USER_UPDATED";
 
@@ -425,6 +442,10 @@ router.post("/:id/status", async (req, res) => {
 
     if (String(target.role).toUpperCase() === "SYSTEM_ADMIN") {
       return res.status(403).json({ message: "Cannot modify SYSTEM_ADMIN accounts" });
+    }
+
+    if (adminTargetsAdmin(actorRole, target)) {
+      return res.status(403).json({ message: ADMIN_ON_ADMIN_MESSAGE, code: "ADMIN_TARGET_FORBIDDEN" });
     }
 
     // Prevent an actor from suspending their own account — with no one else
@@ -488,9 +509,10 @@ router.post("/:id/status", async (req, res) => {
 
     const updated = await prisma.user.update({
       where: { id },
-      data: { isActive },
+      data: { isActive, ...(isActive ? {} : { tokenVersion: { increment: 1 } }) },
       select: safeUserSelect(),
     });
+    invalidateUserCache(id);
 
   await logAudit({
   req,
@@ -532,20 +554,19 @@ router.post("/:id/reset-password", async (req, res) => {
       return res.status(403).json({ message: "Cannot reset SYSTEM_ADMIN password here" });
     }
 
+    if (adminTargetsAdmin(actorRole, target)) {
+      return res.status(403).json({ message: ADMIN_ON_ADMIN_MESSAGE, code: "ADMIN_TARGET_FORBIDDEN" });
+    }
+
     if (actorRole === "ADMIN") {
       if (!req.schoolId) return res.status(403).json({ message: "Tenant context required" });
       if (target.schoolId !== req.schoolId) return res.status(403).json({ message: "Forbidden" });
     }
 
-    const providedPassword = req.body?.password ? String(req.body.password) : "";
-    const generatedPassword = !providedPassword;
-    const nextPassword = providedPassword || generateTempPassword(16);
-
-    if (!validatePassword(nextPassword)) {
-      return res.status(400).json({
-        message: "Password must be at least 8 chars and include letters + numbers",
-      });
-    }
+    // Always generate: the person resetting never chooses (and so never
+    // knows) the user's password beyond the one-time temporary value.
+    const generatedPassword = true;
+    const nextPassword = generateTempPassword(16);
 
     const hashed = await bcrypt.hash(nextPassword, 10);
 
@@ -556,8 +577,10 @@ router.post("/:id/reset-password", async (req, res) => {
         mustChangePassword: true,
         failedLoginAttempts: 0,
         lockUntil: null,
+        tokenVersion: { increment: 1 },
       },
     });
+    invalidateUserCache(id);
 
    await logAudit({
   req,
@@ -570,10 +593,7 @@ router.post("/:id/reset-password", async (req, res) => {
 });
 
 
-    return res.json({
-      ok: true,
-      tempPassword: generatedPassword ? nextPassword : null,
-    });
+    return res.json({ ok: true, tempPassword: nextPassword });
   } catch (err) {
     console.error("RESET PASSWORD ERROR:", err);
     return res.status(500).json({ message: "Server error" });

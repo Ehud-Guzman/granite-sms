@@ -4,7 +4,8 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { signToken } from "../utils/jwt.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { tenantContext } from "../middleware/tenant.js";
+import { tenantContext, invalidateUserCache } from "../middleware/tenant.js";
+import { sessionProblem } from "../middleware/session.js";
 import { logAudit } from "../utils/audit.js";
 import { upper } from "../utils/validate.js";
 import { isDemo, DEMO_ACCOUNTS } from "../config/demo.js";
@@ -164,6 +165,7 @@ router.post("/login", async (req, res) => {
         mustChangePassword: true,
         failedLoginAttempts: true,
         lockUntil: true,
+        tokenVersion: true,
       },
     });
 
@@ -287,6 +289,7 @@ router.post("/login", async (req, res) => {
       sub: user.id,
       role: user.role,
       schoolId: upper(user.role) === "SYSTEM_ADMIN" ? null : (user.schoolId ?? null),
+      tokenVersion: user.tokenVersion,
     });
 
     return res.json({
@@ -329,7 +332,7 @@ router.post("/demo-login", async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { email },
-      select: { id: true, email: true, role: true, schoolId: true, isActive: true },
+      select: { id: true, email: true, role: true, schoolId: true, isActive: true, tokenVersion: true },
     });
     if (!user || !user.isActive || user.role !== role) {
       return res.status(503).json({ message: "The demo is being set up. Please try again in a minute." });
@@ -340,6 +343,7 @@ router.post("/demo-login", async (req, res) => {
       sub: user.id,
       role: user.role,
       schoolId: isSystem ? null : user.schoolId ?? null,
+      tokenVersion: user.tokenVersion,
     });
 
     await logAudit({
@@ -392,10 +396,20 @@ router.post("/change-password", requireAuth, async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id: String(userId) },
-      select: { id: true, email: true, role: true, schoolId: true, password: true, isActive: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        schoolId: true,
+        password: true,
+        isActive: true,
+        tokenVersion: true,
+        mustChangePassword: true,
+      },
     });
 
-    if (!user || !user.isActive) return res.status(401).json({ message: "Invalid credentials" });
+    const problem = sessionProblem(req, user, { enforcePasswordChange: false });
+    if (problem) return res.status(problem.status).json(problem.body);
 
     const ok = await bcrypt.compare(currentPassword, user.password);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
@@ -409,8 +423,12 @@ router.post("/change-password", requireAuth, async (req, res) => {
         mustChangePassword: false,
         failedLoginAttempts: 0,
         lockUntil: null,
+        // Ends every existing session, including this one (the client sends
+        // the user back to sign in with the new password).
+        tokenVersion: { increment: 1 },
       },
     });
+    invalidateUserCache(user.id);
 
     await logAudit({
       req,
@@ -457,6 +475,7 @@ router.post("/impersonate", requireAuth, tenantContext, requireRole("SYSTEM_ADMI
         schoolId: true,
         isActive: true,
         mustChangePassword: true,
+        tokenVersion: true,
       },
     });
 
@@ -468,6 +487,8 @@ router.post("/impersonate", requireAuth, tenantContext, requireRole("SYSTEM_ADMI
       sub: target.id,
       role: target.role,
       schoolId: target.schoolId ?? null,
+      tokenVersion: target.tokenVersion,
+      impersonatedBy: req.user.id,
     });
 
     await logAudit({
@@ -521,6 +542,8 @@ router.post("/select-school", requireAuth, tenantContext, requireRole("SYSTEM_AD
       sub: req.user.id,
       role: "SYSTEM_ADMIN",
       schoolId: school.id, // normalize to real id
+      // tenantContext already confirmed this matches the database.
+      tokenVersion: req.auth?.tokenVersion ?? 0,
     });
 
     await logAudit({

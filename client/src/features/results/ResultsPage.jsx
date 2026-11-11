@@ -190,7 +190,11 @@ export default function ResultsPage() {
     const cid =
       classPayload?.session?.classId ||
       activeSession?.classId;
-    return classLabelById.get(cid) || cid || "-";
+    return (
+      classLabelById.get(cid) ||
+      (activeSession?.class ? fmtClass(activeSession.class) : "") ||
+      "-"
+    );
   }, [classPayload, activeSession, classLabelById]);
 
   const canPrintClass =

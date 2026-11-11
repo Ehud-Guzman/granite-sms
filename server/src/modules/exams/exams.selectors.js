@@ -23,6 +23,9 @@ export const examSessionSelect = {
   createdAt: true,
   updatedAt: true,
   examType: { select: { id: true, name: true, code: true, weight: true } },
+  // Lets the client label the class even when the caller (e.g. a STUDENT)
+  // cannot list classes.
+  class: { select: { id: true, name: true, stream: true, year: true } },
 };
 
 export const markSheetSelect = {

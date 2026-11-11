@@ -12,6 +12,7 @@ import {
   createFeePayment,
   getPaymentReceiptJson,
   reverseFeePayment,
+  requestPaymentReversal,
   voidFeeInvoice,
 } from "@/api/fees.api";
 
@@ -114,7 +115,9 @@ export default function FeeCashierTab({ onReceiptReady }) {
 
   // Capabilities (single truth)
   const canPostPayment = isAdmin || isBursar;
-  const canReversePayment = isAdmin || isBursar; // realistic school flow
+  // Admins reverse directly; a bursar can only ask an admin to (server-enforced).
+  const canReversePayment = isAdmin || isBursar;
+  const reversalNeedsApproval = !isAdmin;
   const canGenerateInvoice = isAdmin; // admin only
   const canVoidInvoice = isAdmin; // admin only
 
@@ -295,13 +298,17 @@ export default function FeeCashierTab({ onReceiptReady }) {
   });
 
   const reverseMut = useMutation({
-    mutationFn: async ({ paymentId, reason }) => reverseFeePayment(paymentId, { reason }),
+    mutationFn: async ({ paymentId, reason }) =>
+      reversalNeedsApproval
+        ? requestPaymentReversal(paymentId, { reason })
+        : reverseFeePayment(paymentId, { reason }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["feeInvoices", { studentId, year, term }] });
+      await qc.invalidateQueries({ queryKey: ["feeReversalRequests"] });
       setReverseReason("");
       setReverseOpen(false);
       setSelectedPaymentForReverse(null);
-      toast.success("Payment reversed");
+      toast.success(reversalNeedsApproval ? "Reversal requested. An admin must approve it." : "Payment reversed");
     },
     onError: (err) => {
       console.error("REVERSE ERROR:", err?.response?.data || err);
@@ -764,7 +771,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
                             onClick={() => askReverse(p)}
                             title={p.isReversed ? "Already reversed" : undefined}
                           >
-                            Reverse
+                            {reversalNeedsApproval ? "Request reversal" : "Reverse"}
                           </Button>
                         )}
                       </div>
@@ -779,7 +786,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
 
       {/* Reverse modal */}
       <SimpleModal
-        title="Reverse payment"
+        title={reversalNeedsApproval ? "Request a reversal" : "Reverse payment"}
         open={reverseOpen}
         onClose={() => {
           setReverseOpen(false);
@@ -796,14 +803,20 @@ export default function FeeCashierTab({ onReceiptReady }) {
               disabled={reverseMut.isPending || isReadOnly || !reverseReason.trim()}
               onClick={confirmReverse}
             >
-              {reverseMut.isPending ? "Reversing…" : "Confirm Reverse"}
+              {reverseMut.isPending
+                ? "Sending…"
+                : reversalNeedsApproval
+                  ? "Send request"
+                  : "Confirm Reverse"}
             </Button>
           </div>
         }
       >
         <div className="space-y-2">
           <div className="text-sm text-muted-foreground">
-            This will mark the payment as reversed and restore balances.
+            {reversalNeedsApproval
+              ? "An admin will review this request. The payment stays on the invoice until it is approved."
+              : "This will mark the payment as reversed and restore balances."}
           </div>
           <Input
             value={reverseReason}

@@ -447,6 +447,8 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+            {/* The server sends fees only to roles that handle money. */}
+            {fees && (
             <Card>
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground mb-1">Fees collected today</div>
@@ -458,6 +460,7 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+            )}
           </div>
 
           {/* Current Plan Panel for tenant users */}

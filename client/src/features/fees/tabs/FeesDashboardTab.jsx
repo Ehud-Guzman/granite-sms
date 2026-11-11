@@ -5,6 +5,7 @@ import { feesCollections, getStudentFeesSummary } from "@/api/fees.api";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { money } from "../components/FeeMoney";
+import ReversalRequestsCard from "../components/ReversalRequestsCard";
 
 const norm = (v) => String(v || "").trim().toUpperCase();
 
@@ -36,6 +37,8 @@ export default function FeesDashboardTab() {
 
   return (
     <div className="grid gap-3">
+      {isStaff && <ReversalRequestsCard isAdmin={role === "ADMIN"} />}
+
       {isStaff && (
         <Card>
           <CardHeader className="pb-2">

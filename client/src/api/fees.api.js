@@ -112,6 +112,22 @@ export async function reverseFeePayment(paymentId, payload) {
   return data;
 }
 
+/** BURSAR (or ADMIN): ask an admin to reverse a payment. */
+export async function requestPaymentReversal(paymentId, payload) {
+  const { data } = await api.post(`/api/fees/payments/${paymentId}/reversal-requests`, payload);
+  return data;
+}
+
+export async function listReversalRequests(params = {}) {
+  const { data } = await api.get("/api/fees/reversal-requests", { params });
+  return data?.requests || [];
+}
+
+export async function decideReversalRequest(requestId, decision, payload = {}) {
+  const { data } = await api.post(`/api/fees/reversal-requests/${requestId}/${decision}`, payload);
+  return data;
+}
+
 export async function voidFeeInvoice(invoiceId, payload) {
   const { data } = await api.post(`/api/fees/invoices/${invoiceId}/void`, payload);
   return data;

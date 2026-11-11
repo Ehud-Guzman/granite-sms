@@ -45,7 +45,7 @@ model User {
   // Bumped on password change/reset, deactivation and role/email/school
   // changes. Tokens carry the version they were issued with; an older one
   // is rejected, which signs that user out everywhere.
-  tokenVersion        Int       @default(0)
+  tokenVersion Int @default(0)
 
   @@index([role])
   @@index([schoolId])
@@ -319,6 +319,7 @@ model School {
   feePlans            FeePlan[]
   feeInvoices         FeeInvoice[]
   feePayments         FeePayment[]
+  feeReversalRequests FeeReversalRequest[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
@@ -523,6 +524,8 @@ model FeePayment {
   school  School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   invoice FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
+  reversalRequests FeeReversalRequest[]
+
   @@unique([schoolId, receiptNo])
   @@unique([schoolId, clientTxnId])
   @@index([schoolId, invoiceId])
@@ -532,6 +535,35 @@ model FeePayment {
 // =====================
 // ATTENDANCE MODULE
 // =====================
+
+enum ReversalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A bursar asks for a payment to be reversed; an admin approves or rejects.
+// Keeps whoever handled the cash from silently undoing their own receipt.
+model FeeReversalRequest {
+  id        String @id @default(cuid())
+  schoolId  String
+  paymentId String
+
+  status      ReversalRequestStatus @default(PENDING)
+  reason      String
+  requestedBy String
+  requestedAt DateTime              @default(now())
+
+  decidedBy    String?
+  decidedAt    DateTime?
+  decisionNote String?
+
+  school  School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  payment FeePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, status, requestedAt])
+  @@index([paymentId])
+}
 
 enum AttendanceStatus {
   PRESENT

@@ -1,0 +1,86 @@
+# Nightly off-site backup of the production database (audit finding C2).
+#
+# Dumps the database, proves the dump restores into a scratch Postgres,
+# encrypts it, and uploads it to Cloudflare R2. Does nothing until these
+# repository secrets exist (Settings > Secrets and variables > Actions):
+#
+#   PROD_DATABASE_URL     direct (non-pooled) Neon connection string
+#   BACKUP_PASSPHRASE     long random string; without it backups can't be read
+#   R2_ACCOUNT_ID         Cloudflare account id
+#   R2_ACCESS_KEY_ID      R2 API token (Object Read & Write on the bucket)
+#   R2_SECRET_ACCESS_KEY
+#   R2_BUCKET             e.g. granite-sms-backups
+#
+# Restore steps: docs/BACKUPS.md
+name: Back up database
+
+on:
+  schedule:
+    - cron: "0 23 * * *" # 02:00 Nairobi time
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Dump, verify, encrypt, upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+    steps:
+      - name: Not configured
+        if: env.PROD_DATABASE_URL == '' || env.BACKUP_PASSPHRASE == '' || env.R2_BUCKET == ''
+        run: |
+          echo "Backup secrets are not set, so no backup was taken." | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "::warning::Add PROD_DATABASE_URL, BACKUP_PASSPHRASE and the R2_* secrets to enable nightly backups."
+
+      - name: Dump
+        if: env.PROD_DATABASE_URL != '' && env.BACKUP_PASSPHRASE != '' && env.R2_BUCKET != ''
+        run: |
+          STAMP=$(date -u +%Y-%m-%dT%H%MZ)
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          # Use the same Postgres major version as the server for every tool:
+          # a newer pg_dump writes settings an older server can't restore.
+          PGMAJOR=$(docker run --rm postgres:17 psql "$PROD_DATABASE_URL" -At -c "SELECT current_setting('server_version_num')::int / 10000")
+          echo "PGMAJOR=$PGMAJOR" >> "$GITHUB_ENV"
+          echo "Server is Postgres $PGMAJOR"
+          docker run --rm -v "$PWD:/out" "postgres:$PGMAJOR"             pg_dump --format=custom --no-owner --no-privileges --file "/out/granite-$STAMP.dump" "$PROD_DATABASE_URL"
+          ls -lh "granite-$STAMP.dump"
+
+      - name: Verify the dump restores
+        if: env.PROD_DATABASE_URL != '' && env.BACKUP_PASSPHRASE != '' && env.R2_BUCKET != ''
+        run: |
+          docker run -d --name scratch -e POSTGRES_PASSWORD=verify -p 5433:5432 "postgres:$PGMAJOR"
+          for i in $(seq 1 30); do docker exec scratch pg_isready -U postgres && break; sleep 2; done
+          docker run --rm --network host -v "$PWD:/out" -e PGPASSWORD=verify "postgres:$PGMAJOR"             pg_restore --no-owner --no-privileges --exit-on-error -h localhost -p 5433 -U postgres -d postgres "/out/granite-$STAMP.dump"
+          docker exec scratch psql -U postgres -At -c "
+            SELECT 'schools', count(*) FROM \"School\" UNION ALL
+            SELECT 'students', count(*) FROM \"Student\" UNION ALL
+            SELECT 'invoices', count(*) FROM \"FeeInvoice\" UNION ALL
+            SELECT 'payments', count(*) FROM \"FeePayment\" UNION ALL
+            SELECT 'marks', count(*) FROM \"Mark\" UNION ALL
+            SELECT 'attendance records', count(*) FROM \"AttendanceRecord\"" | tee counts.txt
+          docker rm -f scratch
+          { echo "### Backup $STAMP (Postgres $PGMAJOR) restored cleanly"; echo '```'; cat counts.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Encrypt
+        if: env.PROD_DATABASE_URL != '' && env.BACKUP_PASSPHRASE != '' && env.R2_BUCKET != ''
+        run: |
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+            --symmetric --cipher-algo AES256 --output "granite-$STAMP.dump.gpg" "granite-$STAMP.dump"
+          rm "granite-$STAMP.dump"
+
+      - name: Upload to R2
+        if: env.PROD_DATABASE_URL != '' && env.BACKUP_PASSPHRASE != '' && env.R2_BUCKET != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          aws s3 cp "granite-$STAMP.dump.gpg" "s3://$R2_BUCKET/daily/granite-$STAMP.dump.gpg" \
+            --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          echo "Uploaded daily/granite-$STAMP.dump.gpg" >> "$GITHUB_STEP_SUMMARY"

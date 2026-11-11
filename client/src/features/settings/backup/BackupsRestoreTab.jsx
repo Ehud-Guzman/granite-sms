@@ -373,13 +373,12 @@ export default function BackupsRestoreTab() {
               >
                 MERGE (safe)
               </Button>
-              <Button
-                size="sm"
-                variant={restoreMode === "REPLACE" ? "destructive" : "outline"}
-                onClick={() => setRestoreMode("REPLACE")}
-              >
-                REPLACE (wipe then restore)
-              </Button>
+              {/* REPLACE restore is switched off on the server: snapshots don't contain
+                  fees, marks or attendance, so a wipe-and-restore would lose them. Full
+                  rollbacks use the database backups (docs/BACKUPS.md). */}
+              <span className="text-xs text-muted-foreground self-center">
+                Full rollback is done from the database backups, not here.
+              </span>
             </div>
 
             {restoreMode === "REPLACE" ? (

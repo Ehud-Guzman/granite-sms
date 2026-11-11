@@ -160,6 +160,11 @@ export async function makeSchool() {
   };
 }
 
+/** A platform owner (SYSTEM_ADMIN). Use with .set("x-school-id", id) for tenant routes. */
+export async function makeSystemAdmin() {
+  return makeUser(null, "SYSTEM_ADMIN");
+}
+
 /** Sum of non-reversed payments on an invoice, straight from the payment rows. */
 export async function paymentsTotal(invoiceId) {
   const agg = await prisma.feePayment.aggregate({

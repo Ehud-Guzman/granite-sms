@@ -366,7 +366,9 @@ export async function restoreBackup({ backupId, mode, targetSchoolId, confirm, a
         }
 
         // Subscription create (new row)
-        const subData = pickSubscription(subscription);
+        // MERGE never touches the plan: restoring an old snapshot must not
+        // change what the school currently pays for.
+        const subData = normalizedMode === "REPLACE" ? pickSubscription(subscription) : null;
         if (subData) {
           await tx.subscription.create({
             data: { schoolId: destSchoolId, ...subData },
@@ -414,17 +416,10 @@ export async function restoreBackup({ backupId, mode, targetSchoolId, confirm, a
           for (const u of preppedUsers) {
             const ex = existingByEmail.get(u.email);
             if (ex) {
-              await tx.user.update({
-                where: { id: ex.id },
-                data: {
-                  role: u.role,
-                  isActive: u.isActive,
-                  mustChangePassword: true,
-                  failedLoginAttempts: 0,
-                  lockUntil: null,
-                  lastLoginAt: null,
-                },
-              });
+              // Existing accounts are left exactly as they are. Restoring an
+              // old role could re-promote someone who was demoted, and forcing
+              // a password change would lock out every member of staff.
+              continue;
             } else {
               try {
                 await tx.user.create({

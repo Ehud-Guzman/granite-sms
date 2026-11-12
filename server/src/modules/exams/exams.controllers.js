@@ -1,5 +1,6 @@
 // src/modules/exams/exams.controllers.js
 import * as svc from "./exams.services.js";
+import * as reportCards from "./reportCards.js";
 
 export async function wrap(req, res, fn) {
   try {
@@ -26,5 +27,9 @@ export const unlockMarkSheet = (req, res) => wrap(req, res, svc.unlockMarkSheet)
 
 export const publishResults = (req, res) => wrap(req, res, svc.publishResults);
 export const unpublishResults = (req, res) => wrap(req, res, svc.unpublishResults);
+
+export const getClassReportCards = (req, res) => wrap(req, res, reportCards.getClassReportCards);
+export const getStudentReportCard = (req, res) => wrap(req, res, reportCards.getStudentReportCard);
+export const saveReportComment = (req, res) => wrap(req, res, reportCards.saveReportComment);
 export const getClassResults = (req, res) => wrap(req, res, svc.getClassResults);
 export const getStudentResults = (req, res) => wrap(req, res, svc.getStudentResults);

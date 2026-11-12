@@ -120,6 +120,18 @@ router.post(
 );
 
 // ------------------------
+// Term report cards (published exams of a term, combined by weight)
+// ------------------------
+router.get("/report-cards", requireRole("ADMIN", "TEACHER"), requireEntitlement("EXAMS_READ"), ctrl.getClassReportCards);
+router.get(
+  "/report-cards/students/:studentId",
+  requireRole("ADMIN", "TEACHER", "STUDENT"),
+  requireEntitlement("EXAMS_READ"),
+  ctrl.getStudentReportCard
+);
+router.put("/report-cards/comments", requireRole("ADMIN", "TEACHER"), requireEntitlement("EXAMS_WRITE"), ctrl.saveReportComment);
+
+// ------------------------
 // Results read
 // ------------------------
 router.get(

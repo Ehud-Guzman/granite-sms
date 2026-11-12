@@ -36,6 +36,7 @@ const MarksEntryPage = lazy(() => import("@/features/exams/marks/MarksEntryPage.
 const ExamsListPage = lazy(() => import("@/features/exams/ExamsListPage.jsx"));
 const SessionMarkSheetsPage = lazy(() => import("@/features/exams/SessionMarkSheetsPage.jsx"));
 const ResultsPage = lazy(() => import("@/features/results/ResultsPage.jsx"));
+const ReportCardsPage = lazy(() => import("@/features/results/ReportCardsPage.jsx"));
 
 // Reports
 const ReportsPage = lazy(() => import("@/features/reports/ReportsPage.jsx"));
@@ -241,6 +242,14 @@ export default function App() {
             element={
               <RoleGuard allow={ADMIN_TEACHER_STUDENT}>
                 <ResultsPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="report-cards"
+            element={
+              <RoleGuard allow={ADMIN_TEACHER_STUDENT}>
+                <ReportCardsPage />
               </RoleGuard>
             }
           />

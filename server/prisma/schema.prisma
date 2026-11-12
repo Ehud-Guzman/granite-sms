@@ -150,6 +150,7 @@ model Student {
   feeInvoices       FeeInvoice[]
   attendanceRecords AttendanceRecord[]
   guardianLinks     StudentGuardian[]
+  reportComments    ReportCardComment[]
 
   @@unique([schoolId, admissionNo])
   @@index([schoolId, classId])
@@ -347,6 +348,7 @@ model School {
   documentCounters    DocumentCounter[]
   logo                SchoolLogo?
   guardians           Guardian[]
+  reportComments      ReportCardComment[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
@@ -1032,6 +1034,27 @@ model SubjectResult {
 
   @@unique([schoolId, studentResultId, subjectId])
   @@index([schoolId, subjectId])
+}
+
+// Comments printed on a learner's term report card.
+model ReportCardComment {
+  id        String @id @default(cuid())
+  schoolId  String
+  studentId String
+  year      Int
+  term      Term
+
+  classTeacherComment String?
+  headComment         String?
+  updatedById         String?
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, studentId, year, term])
 }
 
 model ExamAuditLog {

@@ -49,7 +49,7 @@ function safeDateLabel(v) {
 }
 
 export default function AttendancePage() {
-  const { timezone } = useSchoolCalendar();
+  const { timezone, today } = useSchoolCalendar();
   const nav = useNavigate();
   const qc = useQueryClient();
 
@@ -159,7 +159,7 @@ export default function AttendancePage() {
             </select>
 
             {/* Date */}
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} />
 
             {/* Term */}
             <select

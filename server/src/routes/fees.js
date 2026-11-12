@@ -72,6 +72,10 @@ function computeInvoiceStatus(total, paid, discount = 0) {
   return { balance, status };
 }
 
+// Payments on one invoice queue behind its row lock, so allow time to wait
+// for a connection and to finish (Prisma's defaults are 2s and 5s).
+const MONEY_TX_OPTIONS = { maxWait: 10_000, timeout: 20_000 };
+
 /**
  * Locks one invoice row for the rest of the transaction (SELECT ... FOR UPDATE).
  * Every write that changes an invoice's money (payment, reversal, discount,
@@ -1274,6 +1278,10 @@ router.post(
         });
       }
 
+      // Read before the transaction: inside it every query must use tx, or it
+      // needs a second pooled connection while this one waits on the lock.
+      const { timezone } = await getSchoolCalendar(req.schoolId);
+
       const result = await prisma.$transaction(async (tx) => {
         const txnId = clientTxnId ? String(clientTxnId) : null;
 
@@ -1317,7 +1325,7 @@ router.post(
             method: normalizedMethod,
             reference: reference ? String(reference) : null,
             receivedBy: req.user?.id || null,
-            receiptNo: makeReceiptNo((await getSchoolCalendar(req.schoolId)).timezone),
+            receiptNo: makeReceiptNo(timezone),
             // keep both for compatibility
             receivedAt: new Date(),
             receiptIssuedAt: new Date(),
@@ -1327,7 +1335,7 @@ router.post(
         const updatedInvoice = await recomputeInvoiceTotals(tx, invoice);
 
         return { payment, invoice: updatedInvoice, idempotent: false };
-      });
+      }, MONEY_TX_OPTIONS);
 
       await feesAudit(req, {
         action: result.idempotent ? "FEES_PAYMENT_IDEMPOTENT" : "FEES_PAYMENT_POSTED",
@@ -1414,8 +1422,9 @@ router.post(
       const reason = String(req.body?.reason || "").trim();
       if (!reason) return res.status(400).json({ message: "Reversal reason is required." });
 
-      const result = await prisma.$transaction((tx) =>
-        reversePaymentTx(tx, { schoolId: req.schoolId, paymentId: id, actorId: req.user?.id, reason })
+      const result = await prisma.$transaction(
+        (tx) => reversePaymentTx(tx, { schoolId: req.schoolId, paymentId: id, actorId: req.user?.id, reason }),
+        MONEY_TX_OPTIONS
       );
 
       await feesAudit(req, {
@@ -1488,7 +1497,7 @@ router.post(
           data: { schoolId: req.schoolId, paymentId: payment.id, reason, requestedBy: req.user.id },
           include: reversalRequestInclude,
         });
-      });
+      }, MONEY_TX_OPTIONS);
 
       await feesAudit(req, {
         action: "FEES_REVERSAL_REQUESTED",
@@ -1593,7 +1602,7 @@ async function decideReversalRequest(req, res, decision) {
         data: { status: "APPROVED", decidedBy: req.user.id, decidedAt: new Date(), decisionNote: note },
       });
       return { request: approved, ...reversal };
-    });
+    }, MONEY_TX_OPTIONS);
 
     await feesAudit(req, {
       action: decision === "approve" ? "FEES_REVERSAL_APPROVED" : "FEES_REVERSAL_REJECTED",

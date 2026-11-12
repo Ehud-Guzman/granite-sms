@@ -1,6 +1,8 @@
 // src/modules/attendance/attendance.validators.js
 import { AttendanceStatus, AttendanceSessionStatus, Term } from "@prisma/client";
 
+export const MARKABLE_STATUSES = Object.values(AttendanceStatus).filter((s) => s !== "UNMARKED");
+
 function httpError(message, statusCode = 400) {
   const err = new Error(message);
   err.statusCode = statusCode;
@@ -95,9 +97,10 @@ export function assertRecordsPayload(records) {
       throw httpError("Each record must include studentId (string).", 400);
     }
 
-    if (!r.status || !Object.values(AttendanceStatus).includes(r.status)) {
+    // UNMARKED is only the starting state; a teacher marks a real status.
+    if (!r.status || !MARKABLE_STATUSES.includes(r.status)) {
       throw httpError(
-        `Invalid status for student ${r.studentId}. Allowed: ${Object.values(AttendanceStatus).join(", ")}`,
+        `Invalid status for student ${r.studentId}. Allowed: ${MARKABLE_STATUSES.join(", ")}`,
         400
       );
     }

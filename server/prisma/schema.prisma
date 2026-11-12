@@ -593,6 +593,9 @@ enum AttendanceStatus {
   ABSENT
   LATE
   EXCUSED
+  // Register opened but this learner not marked yet. A register can't be
+  // submitted while any remain (audit M2: everyone used to start PRESENT).
+  UNMARKED
 }
 
 enum AttendanceSessionStatus {
@@ -639,7 +642,7 @@ model AttendanceRecord {
   sessionId String
   studentId String
 
-  status      AttendanceStatus @default(PRESENT)
+  status      AttendanceStatus @default(UNMARKED)
   minutesLate Int?
   comment     String?
 

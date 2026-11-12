@@ -113,34 +113,28 @@ export async function upsertSessionAndEnsureRecords({
     select: { id: true, status: true },
   });
 
-  const session = await prisma.attendanceSession.upsert({
-    where: { schoolId_classId_date: { schoolId, classId, date } },
-    create: {
-      schoolId,
-      classId,
-      date,
-      year,
-      term,
-      takenByUserId,
-      status: AttendanceSessionStatus.DRAFT,
-    },
-    update: {
-      year,
-      term,
-      takenByUserId: takenByUserId || undefined,
-    },
-  });
+  // Opening an existing register just returns it: a submitted or locked one
+  // is not modified, and nothing is logged (opening used to rewrite its
+  // year/term/taker and add a REOPEN log entry every time).
+  const session = existing
+    ? await prisma.attendanceSession.findUnique({ where: { id: existing.id } })
+    : await prisma.attendanceSession.create({
+        data: { schoolId, classId, date, year, term, takenByUserId, status: AttendanceSessionStatus.DRAFT },
+      });
 
-  await prisma.attendanceEditLog.create({
-    data: {
-      schoolId,
-      sessionId: session.id,
-      editedByUserId: takenByUserId,
-      action: existing ? "REOPEN_SESSION" : "CREATE_SESSION",
-      before: existing ? { status: existing.status } : null,
-      after: { status: session.status, classId, date, year, term },
-    },
-  });
+  if (!existing) {
+    await prisma.attendanceEditLog.create({
+      data: {
+        schoolId,
+        sessionId: session.id,
+        editedByUserId: takenByUserId,
+        action: "CREATE_SESSION",
+        before: null,
+        after: { status: session.status, classId, date, year, term },
+      },
+    });
+  }
+  if (session.status !== AttendanceSessionStatus.DRAFT) return { session, createdRecords: 0 };
 
   const students = await prisma.student.findMany({
     where: { schoolId, classId, isActive: true },
@@ -153,7 +147,7 @@ export async function upsertSessionAndEnsureRecords({
     schoolId,
     sessionId: session.id,
     studentId: s.id,
-    status: "PRESENT",
+    status: "UNMARKED",
   }));
 
   const result = await prisma.attendanceRecord.createMany({
@@ -378,6 +372,16 @@ export async function submitSession({ schoolId, sessionId, editorUserId, role })
     throw err;
   }
 
+  const unmarked = await prisma.attendanceRecord.count({
+    where: { schoolId, sessionId, status: "UNMARKED", student: { isActive: true } },
+  });
+  if (unmarked > 0) {
+    const err = new Error(`${unmarked} learner(s) not marked yet. Mark everyone before submitting.`);
+    err.statusCode = 409;
+    err.code = "ATTENDANCE_UNMARKED";
+    throw err;
+  }
+
   const updated = await prisma.attendanceSession.update({
     where: { id: sessionId },
     data: {
@@ -516,9 +520,11 @@ export async function summaryStudent({ schoolId, studentId, from, to, role, user
     await assertTeacherAccessOrThrow({ schoolId, userId, classId: student.classId });
   }
 
+  // Unmarked rows are not attendance data yet, so they are left out.
   const where = {
     schoolId,
     studentId,
+    status: { not: "UNMARKED" },
     session: { date: { gte: from || undefined, lte: to || undefined } },
   };
 
@@ -528,7 +534,8 @@ export async function summaryStudent({ schoolId, studentId, from, to, role, user
   const late = await prisma.attendanceRecord.count({ where: { ...where, status: "LATE" } });
   const excused = await prisma.attendanceRecord.count({ where: { ...where, status: "EXCUSED" } });
 
-  const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+  // Late learners were in school: they count as attending.
+  const rate = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
 
   return { studentId, total, present, absent, late, excused, attendanceRatePct: rate };
 }
@@ -563,7 +570,7 @@ export async function summaryClass({ schoolId, classId, from, to, role, userId }
 
   for (const r of records) {
     const row = map.get(r.sessionId);
-    if (!row) continue;
+    if (!row || r.status === "UNMARKED") continue;
     row.total += 1;
     if (r.status === "PRESENT") row.present += 1;
     if (r.status === "ABSENT") row.absent += 1;
@@ -573,7 +580,7 @@ export async function summaryClass({ schoolId, classId, from, to, role, userId }
 
   const days = Array.from(map.values()).map((d) => ({
     ...d,
-    attendanceRatePct: d.total > 0 ? Math.round((d.present / d.total) * 100) : 0,
+    attendanceRatePct: d.total > 0 ? Math.round(((d.present + d.late) / d.total) * 100) : 0,
   }));
 
   return { classId, days };

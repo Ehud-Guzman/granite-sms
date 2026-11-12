@@ -7,6 +7,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { fileURLToPath } from "url";
+import crypto from "crypto";
 
 import { prisma } from "./lib/prisma.js";
 import { getSchoolCalendar } from "./utils/schoolTime.js";
@@ -39,6 +40,17 @@ import { ipLimiter, userLimiter, loginPerAccountLimiter, loginPerIpLimiter } fro
 
 
 const app = express();
+
+// ---- Request id ----
+// Every request gets an id (or keeps a sane one from the caller), returned
+// in X-Request-Id and written on its log line, so "Server error (ref …)"
+// on someone's screen can be found in the logs (audit M17).
+app.use((req, res, next) => {
+  const incoming = String(req.headers["x-request-id"] || "");
+  req.id = /^[A-Za-z0-9._-]{8,64}$/.test(incoming) ? incoming : crypto.randomUUID();
+  res.setHeader("X-Request-Id", req.id);
+  next();
+});
 
 /** Project root: two levels up from server/src */
 const __filename = fileURLToPath(import.meta.url);
@@ -106,12 +118,32 @@ app.post(["/api/auth/login", "/api/auth/signup", "/api/auth/demo-login"], loginP
 // routes so nothing below can be reached by a write. No-op when DEMO_MODE is off.
 app.use("/api", demoGuard);
 
-// ---- Dev request logger ----
+// ---- Request log ----
+// Production: one JSON line per request (log platforms can filter on it),
+// without query strings, which can carry search terms. Development: short
+// text. Tests: quiet.
+const LOG_MODE = process.env.NODE_ENV === "production" ? "json" : process.env.NODE_ENV === "test" ? "off" : "text";
 app.use((req, res, next) => {
+  if (LOG_MODE === "off") return next();
   const start = Date.now();
   res.on("finish", () => {
     const ms = Date.now() - start;
-    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} - ${ms}ms`);
+    if (LOG_MODE === "json") {
+      console.log(
+        JSON.stringify({
+          t: new Date().toISOString(),
+          id: req.id,
+          method: req.method,
+          path: String(req.originalUrl || "").split("?")[0],
+          status: res.statusCode,
+          ms,
+          user: req.user?.id || null,
+          school: req.schoolId || null,
+        })
+      );
+    } else {
+      console.log(`${req.method} ${req.originalUrl} ${res.statusCode} - ${ms}ms`);
+    }
   });
   next();
 });
@@ -119,6 +151,21 @@ app.use((req, res, next) => {
 // ---- Health ----
 app.get("/health", (req, res) => {
   res.json({ status: "ok", message: "School API running" });
+});
+
+// Ready = the database answers. Point Render's health check here so a
+// broken database connection shows up as an unhealthy service.
+app.get("/health/ready", async (req, res) => {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
+    ]);
+    return res.json({ status: "ok", database: "ok" });
+  } catch (err) {
+    console.error("READY CHECK FAILED:", err?.message);
+    return res.status(503).json({ status: "unavailable", database: "down" });
+  }
 });
 
 app.get("/favicon.ico", (req, res) => res.status(204).end());
@@ -289,8 +336,8 @@ app.use((err, req, res, next) => {
     return res.status(status).json({ message: err.message || "Bad request" });
   }
 
-  console.error("GLOBAL ERROR:", err);
-  return res.status(500).json({ message: "Server error" });
+  console.error(`GLOBAL ERROR [${req.id}]:`, err);
+  return res.status(500).json({ message: "Server error", requestId: req.id });
 });
 
 export default app;

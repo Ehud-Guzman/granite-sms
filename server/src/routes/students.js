@@ -21,6 +21,30 @@ const toDateOrNull = (value) => {
 
 const cleanStr = (v) => (v == null ? null : String(v).trim());
 
+// Student fields are checked, not just stored (audit M17: "banana" was a
+// gender and 2099 a birth date). Returns { value } or { error }.
+const GENDERS = { M: "MALE", MALE: "MALE", BOY: "MALE", F: "FEMALE", FEMALE: "FEMALE", GIRL: "FEMALE" };
+function parseGender(v) {
+  if (v == null || String(v).trim() === "") return { value: null };
+  const g = GENDERS[String(v).trim().toUpperCase()];
+  return g ? { value: g } : { error: "gender must be MALE or FEMALE" };
+}
+function parseDob(v) {
+  if (v == null || v === "") return { value: null };
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return { error: "dob must be a date (YYYY-MM-DD)" };
+  if (d > new Date()) return { error: "dob can't be in the future" };
+  if (d.getUTCFullYear() < 1950) return { error: "dob looks wrong (before 1950)" };
+  return { value: d };
+}
+function checkNames({ admissionNo, firstName, lastName }) {
+  if (admissionNo != null && String(admissionNo).length > 30) return "admissionNo is too long (max 30)";
+  for (const [k, v] of [["firstName", firstName], ["lastName", lastName]]) {
+    if (v != null && String(v).length > 60) return `${k} is too long (max 60)`;
+  }
+  return null;
+}
+
 const pickStudentUpdate = (body) => {
   const allowed = [
     "admissionNo",
@@ -87,8 +111,6 @@ router.post(
       const admissionNo = cleanStr(req.body?.admissionNo);
       const firstName = cleanStr(req.body?.firstName);
       const lastName = cleanStr(req.body?.lastName);
-      const gender = cleanStr(req.body?.gender);
-      const dob = req.body?.dob ? toDateOrNull(req.body.dob) : null;
       const classId = req.body?.classId
         ? String(req.body.classId).trim()
         : null;
@@ -97,6 +119,12 @@ router.post(
         return res
           .status(400)
           .json({ message: "admissionNo, firstName, lastName are required" });
+      }
+      const g = parseGender(req.body?.gender);
+      const birth = parseDob(req.body?.dob);
+      const nameErr = checkNames({ admissionNo, firstName, lastName });
+      if (g.error || birth.error || nameErr) {
+        return res.status(400).json({ message: g.error || birth.error || nameErr });
       }
 
       // Validate class belongs to school (if provided)
@@ -118,8 +146,8 @@ router.post(
           admissionNo,
           firstName,
           lastName,
-          gender: gender || null,
-          dob,
+          gender: g.value,
+          dob: birth.value,
           classId: classRow ? classRow.id : null,
           isActive: true,
         },
@@ -342,6 +370,18 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
     if ("lastName" in data && !data.lastName) {
       return res.status(400).json({ message: "lastName cannot be empty" });
     }
+    if ("gender" in (req.body || {})) {
+      const g = parseGender(req.body.gender);
+      if (g.error) return res.status(400).json({ message: g.error });
+      data.gender = g.value;
+    }
+    if ("dob" in (req.body || {})) {
+      const birth = parseDob(req.body.dob);
+      if (birth.error) return res.status(400).json({ message: birth.error });
+      data.dob = birth.value;
+    }
+    const nameErr = checkNames(data);
+    if (nameErr) return res.status(400).json({ message: nameErr });
 
     if ("classId" in data) {
       if (data.classId) {

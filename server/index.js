@@ -22,6 +22,27 @@ const { default: app } = await import("./src/app.js");
 const PORT = process.env.PORT || 5000;
 
 // ---- Start ----
-app.listen(PORT, "0.0.0.0", () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// ---- Graceful shutdown ----
+// Render (and Docker) send SIGTERM before replacing the instance: stop taking
+// new connections, let in-flight requests (e.g. a payment) finish, then close
+// the database pool. Forced exit after 10s.
+const { prisma } = await import("./src/lib/prisma.js");
+let stopping = false;
+function shutdown(signal) {
+  if (stopping) return;
+  stopping = true;
+  console.log(`${signal} received: shutting down`);
+  const force = setTimeout(() => process.exit(1), 10_000);
+  force.unref();
+  server.close(async () => {
+    await prisma.$disconnect().catch(() => {});
+    process.exit(0);
+  });
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("unhandledRejection", (reason) => console.error("UNHANDLED REJECTION:", reason));

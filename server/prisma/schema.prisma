@@ -504,6 +504,8 @@ model FeeInvoice {
   @@unique([schoolId, invoiceNo]) // ✅ IMPORTANT
   @@index([schoolId, classId, year, term])
   @@index([schoolId, studentId])
+  // Paged invoice list: newest first within a school / year / term.
+  @@index([schoolId, year, term, createdAt])
 }
 
 model FeeInvoiceLine {

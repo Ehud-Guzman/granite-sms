@@ -57,6 +57,12 @@ export async function listFeeInvoices(params = {}) {
   const { data } = await api.get("/api/fees/invoices", { params });
   return asArray(data);
 }
+/** One page of invoices: { items, total, page, pageSize, totals }. */
+export async function listFeeInvoicesPage(params = {}) {
+  const { data } = await api.get("/api/fees/invoices", { params: { page: 1, pageSize: 50, ...params } });
+  return data;
+}
+
 export async function getFeeInvoice(id) {
   const { data } = await api.get(`/api/fees/invoices/${id}`);
   return data;

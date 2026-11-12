@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMe } from "@/hooks/useMe";
 import { listClasses } from "@/api/classes.api";
 import {
-  listFeeInvoices,
+  listFeeInvoicesPage,
   getFeeInvoice,
   listFeePlans,
   generateInvoicesBulk,
@@ -40,22 +40,36 @@ export default function InvoicesTab() {
 
   const classesQ = useQuery({ queryKey: ["classes"], queryFn: () => listClasses({}) });
 
+  // Server-side paging and search (audit H10).
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
   const invoicesQ = useQuery({
-    queryKey: ["feeInvoices", { studentId, classId, year, term, status }],
+    queryKey: ["feeInvoices", { q: studentId, classId, year, term, status, page }],
     queryFn: () =>
-      listFeeInvoices({
-        studentId: studentId || undefined,
+      listFeeInvoicesPage({
+        q: studentId.trim() || undefined,
         classId: classId || undefined,
         year: year || undefined,
         term: term || undefined,
         status: status || undefined,
+        page,
+        pageSize: PAGE_SIZE,
       }),
+    placeholderData: (prev) => prev,
   });
 
   const invoiceDetailsMut = useMutation({ mutationFn: getFeeInvoice });
 
   const classes = Array.isArray(classesQ.data) ? classesQ.data : [];
-  const invoices = Array.isArray(invoicesQ.data) ? invoicesQ.data : [];
+  const invoices = invoicesQ.data?.items || [];
+  const totalCount = invoicesQ.data?.total || 0;
+  const pageTotals = invoicesQ.data?.totals || null;
+  const pageCount = Math.max(Math.ceil(totalCount / PAGE_SIZE), 1);
+  // Any filter change goes back to page 1.
+  const resetPage = (fn) => (v) => {
+    setPage(1);
+    fn(v);
+  };
 
   const refreshList = () => qc.invalidateQueries({ queryKey: ["feeInvoices"] });
 
@@ -129,9 +143,13 @@ export default function InvoicesTab() {
           <CardTitle className="text-base">Filters</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-5">
-          <Input placeholder="StudentId (optional)" value={studentId} onChange={(e) => setStudentId(e.target.value)} />
+          <Input
+            placeholder="Search name, adm. no or invoice no"
+            value={studentId}
+            onChange={(e) => resetPage(setStudentId)(e.target.value)}
+          />
 
-          <select className="h-10 rounded-md border bg-background px-3 text-sm" value={classId} onChange={(e) => setClassId(e.target.value)}>
+          <select className="h-10 rounded-md border bg-background px-3 text-sm" value={classId} onChange={(e) => resetPage(setClassId)(e.target.value)}>
             <option value="">All classes…</option>
             {classes.map((c) => (
               <option key={c.id} value={c.id}>
@@ -141,15 +159,15 @@ export default function InvoicesTab() {
             ))}
           </select>
 
-          <Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} />
+          <Input type="number" value={year} onChange={(e) => resetPage(setYear)(Number(e.target.value))} />
 
-          <select className="h-10 rounded-md border bg-background px-3 text-sm" value={term} onChange={(e) => setTerm(e.target.value)}>
+          <select className="h-10 rounded-md border bg-background px-3 text-sm" value={term} onChange={(e) => resetPage(setTerm)(e.target.value)}>
             <option value="TERM1">TERM1</option>
             <option value="TERM2">TERM2</option>
             <option value="TERM3">TERM3</option>
           </select>
 
-          <select className="h-10 rounded-md border bg-background px-3 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select className="h-10 rounded-md border bg-background px-3 text-sm" value={status} onChange={(e) => resetPage(setStatus)(e.target.value)}>
             <option value="">All statuses…</option>
             <option value="ISSUED">ISSUED</option>
             <option value="PARTIALLY_PAID">PARTIALLY_PAID</option>
@@ -212,11 +230,18 @@ export default function InvoicesTab() {
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center justify-between">
             <span>Invoices</span>
-            <span className="text-xs text-muted-foreground">{invoices.length} found</span>
+            <span className="text-xs text-muted-foreground">{totalCount} found</span>
           </CardTitle>
         </CardHeader>
 
         <CardContent className="space-y-2">
+          {pageTotals && (
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="secondary">Billed {money(pageTotals.billed)}</Badge>
+              <Badge variant="secondary">Paid {money(pageTotals.paid)}</Badge>
+              <Badge variant="secondary">Balance {money(pageTotals.balance)}</Badge>
+            </div>
+          )}
           <QueryBlock
             isLoading={invoicesQ.isLoading}
             isError={invoicesQ.isError}
@@ -227,8 +252,14 @@ export default function InvoicesTab() {
             <div className="grid gap-2">
               {invoices.map((inv) => (
                 <div key={inv.id} className="border rounded-md p-3 bg-background flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-medium">Invoice</div>
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">
+                      {inv.student ? `${inv.student.firstName} ${inv.student.lastName}` : "Invoice"}
+                      <span className="text-muted-foreground font-normal">
+                        {" "}
+                        · {inv.student?.admissionNo || "—"} · {inv.invoiceNo || "—"}
+                      </span>
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       {inv.term} {inv.year} • Status: {inv.status} • Total: {money(inv.total)} • Paid: {money(inv.paid)} • Balance: {money(inv.balance)}
                     </div>
@@ -241,6 +272,20 @@ export default function InvoicesTab() {
               ))}
             </div>
           </QueryBlock>
+
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page {page} of {pageCount}
+              </span>
+              <Button size="sm" variant="outline" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
+          )}
 
           {invoiceDetailsMut.isError && (
             <div className="text-sm text-destructive">

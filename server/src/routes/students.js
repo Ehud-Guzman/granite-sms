@@ -243,10 +243,53 @@ router.get("/", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
       if (!where.classId) where.classId = { in: allowedClassIds };
     }
 
+    // Optional search over name / admission number.
+    const q = String(req.query.q || "").trim().slice(0, 80);
+    if (q) {
+      where.OR = [
+        { admissionNo: { contains: q, mode: "insensitive" } },
+        { firstName: { contains: q, mode: "insensitive" } },
+        { lastName: { contains: q, mode: "insensitive" } },
+      ];
+    }
+    // Only the class fields the lists show (was the whole class row each time).
+    const select = {
+      id: true,
+      schoolId: true,
+      userId: true,
+      admissionNo: true,
+      firstName: true,
+      lastName: true,
+      gender: true,
+      dob: true,
+      classId: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+      class: { select: { id: true, name: true, stream: true, year: true } },
+    };
+
+    // ?page=N: { items, total, page, pageSize }. Without it: the full array.
+    if (req.query.page !== undefined) {
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 100, 1), 500);
+      const [items, total] = await Promise.all([
+        prisma.student.findMany({
+          where,
+          orderBy: [{ admissionNo: "asc" }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          select,
+        }),
+        prisma.student.count({ where }),
+      ]);
+      return res.json({ items, total, page, pageSize });
+    }
+
     const students = await prisma.student.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      include: { class: true },
+      select,
     });
 
     return res.json(students);

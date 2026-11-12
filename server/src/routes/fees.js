@@ -647,22 +647,88 @@ router.delete(
  * WRITE (generate/void): ADMIN only
  */
 
+/**
+ * GET /api/fees/invoices
+ * With ?page=N (1-based): one page of lightweight rows plus totals for the
+ * whole filter — { items, total, page, pageSize, totals }. Searches student
+ * name, admission number and invoice number with ?q=. (Audit H10: the list
+ * used to return every invoice with lines and payments: 8.8 MB at 6,300.)
+ * Without ?page: the old array form, capped, for per-student lookups.
+ */
 router.get("/invoices", requireRole("ADMIN", "BURSAR"), async (req, res) => {
   const studentId = req.query?.studentId ? String(req.query.studentId) : null;
   const classId = req.query?.classId ? String(req.query.classId) : null;
   const year = toInt(req.query?.year, null);
   const term = req.query?.term ? String(req.query.term) : null;
   const status = req.query?.status ? String(req.query.status) : null;
+  const q = String(req.query?.q || "").trim().slice(0, 80);
+
+  const where = {
+    schoolId: req.schoolId,
+    studentId: studentId || undefined,
+    classId: classId || undefined,
+    year: year ?? undefined,
+    term: term || undefined,
+    status: status || undefined,
+    ...(q
+      ? {
+          OR: [
+            { invoiceNo: { contains: q, mode: "insensitive" } },
+            { student: { admissionNo: { contains: q, mode: "insensitive" } } },
+            { student: { firstName: { contains: q, mode: "insensitive" } } },
+            { student: { lastName: { contains: q, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+  };
+
+  if (req.query?.page !== undefined) {
+    const page = Math.max(toInt(req.query.page, 1) || 1, 1);
+    const pageSize = Math.min(Math.max(toInt(req.query.pageSize, 50) || 50, 1), 200);
+    const [items, total, agg] = await Promise.all([
+      prisma.feeInvoice.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          invoiceNo: true,
+          year: true,
+          term: true,
+          status: true,
+          total: true,
+          discount: true,
+          paid: true,
+          balance: true,
+          createdAt: true,
+          classId: true,
+          student: { select: { id: true, admissionNo: true, firstName: true, lastName: true } },
+        },
+      }),
+      prisma.feeInvoice.count({ where }),
+      prisma.feeInvoice.aggregate({
+        where: { ...where, status: where.status || { not: "VOID" } },
+        _sum: { total: true, discount: true, paid: true, balance: true },
+      }),
+    ]);
+    return res.json({
+      items,
+      total,
+      page,
+      pageSize,
+      totals: {
+        billed: agg._sum.total || 0,
+        discount: agg._sum.discount || 0,
+        paid: agg._sum.paid || 0,
+        balance: agg._sum.balance || 0,
+      },
+    });
+  }
 
   const invoices = await prisma.feeInvoice.findMany({
-    where: {
-      schoolId: req.schoolId,
-      studentId: studentId || undefined,
-      classId: classId || undefined,
-      year: year ?? undefined,
-      term: term || undefined,
-      status: status || undefined,
-    },
+    where,
+    take: 500,
     include: {
       lines: true,
       payments: {

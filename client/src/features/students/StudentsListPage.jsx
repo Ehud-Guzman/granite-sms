@@ -216,6 +216,14 @@ const activateMut = useMutation({
     });
   }, [students, search]);
 
+  // Draw rows in batches: a 1,500-learner school would otherwise render
+  // every row at once. Changing filters starts again from the first batch.
+  const BATCH = 100;
+  const [shown, setShown] = useState({ key: "", count: BATCH });
+  const filterKey = `${active}|${classId}|${search}`;
+  const visibleCount = shown.key === filterKey ? shown.count : BATCH;
+  const visibleStudents = filteredStudents.slice(0, visibleCount);
+
   const openCreate = () => {
     if (role === "ADMIN" && !canCreateStudent) {
       toast.error(createBlockedMsg || "Cannot create student right now.");
@@ -508,7 +516,7 @@ const activateMut = useMutation({
                   </TableHeader>
 
                   <TableBody>
-                    {filteredStudents.map((s) => (
+                    {visibleStudents.map((s) => (
                       <TableRow key={s.id} className="hover:bg-muted/30">
                         <TableCell className="font-medium">
                           <div className="font-mono">{s.admissionNo}</div>
@@ -616,6 +624,13 @@ const activateMut = useMutation({
                   </TableBody>
                 </Table>
               </div>
+              {filteredStudents.length > visibleCount && (
+                <div className="flex justify-center pt-3">
+                  <Button variant="outline" onClick={() => setShown({ key: filterKey, count: visibleCount + BATCH })}>
+                    Show more ({filteredStudents.length - visibleCount} left)
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

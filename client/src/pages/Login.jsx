@@ -9,6 +9,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Building2, GraduationCap, ShieldCheck, UserRound, Wallet } from "lucide-react";
+
+// One icon per demo role, so the five rows are scannable at a glance instead
+// of reading as identical text. Decorative only — the real role check still
+// happens server-side in POST /api/auth/demo-login.
+const ROLE_ICONS = {
+  ADMIN: ShieldCheck,
+  TEACHER: GraduationCap,
+  BURSAR: Wallet,
+  STUDENT: UserRound,
+  SYSTEM_ADMIN: Building2,
+};
 
 // Local development shortcuts only (matching prisma/seed.js). They are never
 // shown on a deployed site, which is built in production mode.
@@ -145,20 +157,28 @@ export default function Login() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              {DEMO_ROLES.map((r) => (
-                <button
-                  key={r.role}
-                  type="button"
-                  onClick={() => enterDemo(r.role)}
-                  disabled={!!demoBusy}
-                  className="w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 disabled:opacity-60"
-                >
-                  <div className="font-medium">
-                    {demoBusy === r.role ? "Opening…" : `Explore as ${r.label}`}
-                  </div>
-                  <div className="text-xs text-muted-foreground">{r.note}</div>
-                </button>
-              ))}
+              {DEMO_ROLES.map((r) => {
+                const Icon = ROLE_ICONS[r.role] || UserRound;
+                return (
+                  <button
+                    key={r.role}
+                    type="button"
+                    onClick={() => enterDemo(r.role)}
+                    disabled={!!demoBusy}
+                    className="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 hover:border-primary/40 disabled:opacity-60"
+                  >
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Icon className="h-4.5 w-4.5" aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0">
+                      <div className="font-medium">
+                        {demoBusy === r.role ? "Opening…" : `Explore as ${r.label}`}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{r.note}</div>
+                    </span>
+                  </button>
+                );
+              })}
               {demoBusy && (
                 <p className="pt-1 text-center text-xs text-muted-foreground" role="status">
                   If nobody has visited for a while, the demo can take up to a minute to wake up.

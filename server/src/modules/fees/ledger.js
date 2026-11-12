@@ -11,6 +11,21 @@
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
+/**
+ * Next number in a per-school, per-year sequence, e.g. RCPT-2026-000123.
+ * One atomic statement (INSERT ... ON CONFLICT ... RETURNING), and it runs
+ * inside the caller's transaction, so a document that fails to save gives
+ * its number back and the sequence has no gaps (audit M6).
+ */
+export async function nextDocumentNo(tx, { schoolId, kind, year, prefix }) {
+  const rows = await tx.$queryRaw`
+    INSERT INTO "DocumentCounter" ("schoolId", kind, year, next)
+    VALUES (${String(schoolId)}, ${kind}, ${Number(year)}, 1)
+    ON CONFLICT ("schoolId", kind, year) DO UPDATE SET next = "DocumentCounter".next + 1
+    RETURNING next`;
+  return `${prefix}-${year}-${String(rows[0].next).padStart(6, "0")}`;
+}
+
 export function computeInvoiceStatus(total, paid, discount = 0) {
   const payable = Math.max((Number(total) || 0) - Math.max(Number(discount) || 0, 0), 0);
   const p = Math.max(Number(paid) || 0, 0);

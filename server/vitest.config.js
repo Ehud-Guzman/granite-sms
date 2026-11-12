@@ -28,6 +28,7 @@ export default defineConfig({
       ALLOW_BOOTSTRAP: "false",
       ALLOWED_ORIGINS: "",
       SMS_PROVIDER: "",
+      MPESA_ALLOWED_IPS: "",
     },
   },
 });

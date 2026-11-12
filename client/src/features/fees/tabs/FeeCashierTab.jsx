@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { api } from "@/api/axios";
 
 import { me } from "@/api/auth.api";
 import {
@@ -260,6 +261,12 @@ export default function FeeCashierTab({ onReceiptReady }) {
       console.error("GENERATE INVOICE ERROR:", err?.response?.data || err);
       toast.error(err?.response?.data?.message || "Failed to generate invoice");
     },
+  });
+
+  const stkMut = useMutation({
+    mutationFn: () => api.post("/api/mpesa/stk", { studentId, amount: toNumberOrZero(amount) }).then((r) => r.data),
+    onSuccess: () => toast.success("Prompt sent to the parent's phone. The payment appears once they enter their PIN."),
+    onError: (e) => toast.error(e?.response?.data?.message || "Could not send the prompt"),
   });
 
   const payMut = useMutation({
@@ -738,6 +745,15 @@ export default function FeeCashierTab({ onReceiptReady }) {
                   onClick={submitPayment}
                 >
                   {payMut.isPending ? "Posting…" : "Post Payment"}
+                </Button>
+                {/* Sends "enter your M-Pesa PIN" to the primary parent's phone;
+                    the payment is recorded when Safaricom confirms it. */}
+                <Button
+                  variant="outline"
+                  disabled={stkMut.isPending || isReadOnly || !studentId || toNumberOrZero(amount) <= 0}
+                  onClick={() => stkMut.mutate()}
+                >
+                  {stkMut.isPending ? "Sending…" : "Send M-Pesa prompt"}
                 </Button>
               </div>
 

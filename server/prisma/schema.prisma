@@ -360,6 +360,9 @@ model School {
   guardians           Guardian[]
   reportComments      ReportCardComment[]
   smsMessages         SmsMessage[]
+  mpesaConfig         MpesaConfig?
+  mpesaTransactions   MpesaTransaction[]
+  mpesaStkRequests    MpesaStkRequest[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
@@ -409,6 +412,80 @@ model StudentGuardian {
 
   @@unique([studentId, guardianId])
   @@index([schoolId, guardianId])
+}
+
+// A school's M-Pesa (Daraja) set-up (missing feature 3). Secrets are stored
+// encrypted with MPESA_ENC_KEY (utils/secretBox.js), never returned by the API.
+model MpesaConfig {
+  id                String    @id @default(cuid())
+  schoolId          String    @unique
+  shortcode         String    @db.VarChar(12)
+  // PAYBILL | TILL
+  kind              String    @default("PAYBILL") @db.VarChar(8)
+  // sandbox | production
+  environment       String    @default("sandbox") @db.VarChar(12)
+  consumerKeyEnc    String?
+  consumerSecretEnc String?
+  passkeyEnc        String?
+  // Secret part of this school's callback URLs.
+  callbackToken     String    @unique
+  isActive          Boolean   @default(true)
+  urlsRegisteredAt  DateTime?
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MpesaTxnStatus {
+  MATCHED
+  UNMATCHED
+  ASSIGNED
+  IGNORED
+}
+
+// Each M-Pesa payment Safaricom tells us about, matched or not.
+model MpesaTransaction {
+  id        String         @id @default(cuid())
+  schoolId  String
+  transId   String         @unique // M-Pesa receipt, e.g. SGK3XYZ12
+  amount    Int
+  billRef   String? // account number the payer typed
+  msisdn    String? // payer phone
+  payerName String?
+  transTime DateTime?
+  source    String         @default("C2B") @db.VarChar(8) // C2B | STK
+  status    MpesaTxnStatus
+  paymentId String?        @unique
+  studentId String?
+  note      String?
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, status, createdAt])
+}
+
+// Pending STK push requests, so the callback can find the learner.
+model MpesaStkRequest {
+  id                String   @id @default(cuid())
+  schoolId          String
+  checkoutRequestId String   @unique
+  studentId         String
+  amount            Int
+  phone             String
+  status            String   @default("PENDING") @db.VarChar(12) // PENDING | PAID | FAILED
+  resultDesc        String?
+  requestedById     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, createdAt])
 }
 
 enum SmsStatus {

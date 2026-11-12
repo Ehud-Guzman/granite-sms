@@ -24,6 +24,7 @@ import classTeacherRoutes from "./routes/classTeachers.js";
 import guardianRoutes from "./routes/guardians.js";
 import gradeScaleRoutes from "./routes/gradeScales.js";
 import smsRoutes from "./routes/sms.js";
+import mpesaRoutes, { publicRouter as mpesaPublicRoutes } from "./routes/mpesa.js";
 import studentImportRoutes from "./routes/studentImport.js";
 
 // Feature modules
@@ -176,6 +177,9 @@ app.get("/health/ready", async (req, res) => {
 
 app.get("/favicon.ico", (req, res) => res.status(204).end());
 
+// ---- Public: Safaricom M-Pesa callbacks (token in the path; routes/mpesa.js) ----
+app.use("/api/public/mpesa", mpesaPublicRoutes);
+
 // ---- Public: school logos (stored in the database, see SchoolLogo) ----
 // No sign-in: logos appear on login pages, printouts and <img> tags.
 // The last path segment is a content hash, so responses can be cached forever.
@@ -228,6 +232,7 @@ app.use("/api/class-teachers", classTeacherRoutes);
 app.use("/api/guardians", guardianRoutes);
 app.use("/api/grade-scales", gradeScaleRoutes);
 app.use("/api/sms", smsRoutes);
+app.use("/api/mpesa", mpesaRoutes);
 
 // Features
 app.use("/api/attendance", attendanceRoutes);

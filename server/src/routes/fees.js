@@ -20,6 +20,7 @@ import {
   applyCredit,
   accountSummary,
   reversePayment,
+  nextDocumentNo,
 } from "../modules/fees/ledger.js";
 import { notifyPayment } from "../modules/sms/notify.js";
 
@@ -124,20 +125,6 @@ async function createInvoiceForStudent(client, { schoolId, studentId, classId, y
 }
 
 
-/**
- * Next number in a per-school, per-year sequence, e.g. RCPT-2026-000123.
- * One atomic statement (INSERT ... ON CONFLICT ... RETURNING), and it runs
- * inside the caller's transaction, so a document that fails to save gives
- * its number back and the sequence has no gaps (audit M6).
- */
-async function nextDocumentNo(tx, { schoolId, kind, year, prefix }) {
-  const rows = await tx.$queryRaw`
-    INSERT INTO "DocumentCounter" ("schoolId", kind, year, next)
-    VALUES (${String(schoolId)}, ${kind}, ${Number(year)}, 1)
-    ON CONFLICT ("schoolId", kind, year) DO UPDATE SET next = "DocumentCounter".next + 1
-    RETURNING next`;
-  return `${prefix}-${year}-${String(rows[0].next).padStart(6, "0")}`;
-}
 
 /** One invoice and its number, in one transaction (a failed save frees the number). */
 function createInvoice(args) {

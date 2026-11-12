@@ -2,6 +2,36 @@
 
 **Date:** 11 Nov 2026 · **Scope:** whole repo (server, client, schema, migrations, infra, demo) · **Status:** findings only, nothing fixed yet
 
+## Fix status (12 Nov 2026, branch `audit-wave-1`)
+
+| Finding | Status | Commit |
+|---|---|---|
+| C1 concurrent payments | Fixed, tested | d36c8e8 |
+| C2 backups | REPLACE restore off; nightly verified off-site dump ready (needs secrets) | 5f1e324 |
+| C3 missing foreign keys | Fixed + drift check in CI | f21532d |
+| C4, H1, H2 accounts and sessions | Fixed | 657546a |
+| H3, H4 rate limits and lockout | Fixed | b5c329f |
+| H5, H6, H7 fee controls | Fixed | 105bc37 |
+| H8 CBC grading | **Open (Wave 3)** | |
+| H9 frozen results | Fixed | 7975ae9 |
+| H10 pagination | Fixed (8.8 MB / 4.6 s -> 18 KB / 35-143 ms) | 8e1e8a9 |
+| H11 tests and CI | 113 tests, CI on every push | bdf4f5e, 12189be |
+| H12 dependencies | Fixed except Prisma 7 / exceljs (see commit) | 11df972 |
+| M1 | Fixed | 74bbeae |
+| M2 attendance rules | Fixed | 6b4b792 |
+| M3, M4 time zone, current term | Fixed | b013bb9 |
+| M5 fee ledger, M15 student home | **Open (Wave 3)** | |
+| M6 receipts | Fixed | 79cb5fd |
+| M7, M8, M9 exams | Fixed | 7975ae9 |
+| M10, M11, M12, M14 | Fixed | 5390697 |
+| M13 data export | Fixed | d26b8bd |
+| M16 logos, L7 | Fixed | 8464316 |
+| M17 ops | Fixed (Sentry not added: needs a DSN) | 48ca4ee |
+| L5 lint | Fixed | 12189be |
+| L1-L4, L6, L8, L9 | Open | |
+| Features 1, 7, 8 (guardians, promotion, import) | Built | 045b4e4, 7315d18, a4c130b |
+| Features 2-6, 9-11 (SMS, M-Pesa, ledger, CBC, term report, parent portal...) | **Open (Wave 3)** | |
+
 ## How this was done
 
 - Read every server route, middleware and service, the Prisma schema and all 22 migrations, plus the client's API layer, guards, fees, attendance, exams, dashboard and settings screens.

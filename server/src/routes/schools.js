@@ -6,6 +6,7 @@ import { logAudit, actorCtx } from "../utils/audit.js";
 import { PLAN_DEFAULTS, normalizePlanCode as normalizePlan } from "../config/plans.js";
 import { isValidId } from "../utils/validate.js";
 import { sessionProblem } from "../middleware/session.js";
+import { invalidateSchoolCache } from "../middleware/tenant.js";
 
 const router = Router();
 
@@ -239,6 +240,7 @@ router.patch("/:id", async (req, res) => {
       data: { name },
       select: { id: true, name: true, isActive: true, createdAt: true },
     });
+    invalidateSchoolCache();
 
     await logAudit({
       req,
@@ -286,6 +288,8 @@ router.patch("/:id/status", async (req, res) => {
       data: { isActive },
       select: { id: true, name: true, isActive: true, createdAt: true },
     });
+    // A suspension applies on the next request, not up to 30s later (audit M10).
+    invalidateSchoolCache();
 
     await logAudit({
       req,

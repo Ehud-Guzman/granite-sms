@@ -63,6 +63,11 @@ export function invalidateUserCache(userId) {
   if (userId) USER_CACHE.delete(String(userId));
 }
 
+/** Call after a school is suspended/reactivated or renamed (cache is keyed by id and code). */
+export function invalidateSchoolCache() {
+  SCHOOL_CACHE.clear();
+}
+
 async function resolveSchoolByIdOrCodeCached(key) {
   const k = String(key || "").trim();
   if (!k) return null;

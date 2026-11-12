@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { me } from "@/api/auth.api";
-import { createBackup, listBackups, downloadBackupUrl } from "./backups.api";
+import { createBackup, listBackups, downloadBackup } from "./backups.api";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,10 +69,12 @@ export default function BackupsTab() {
     }
   }
 
-  function onDownload(id) {
-    const baseURL = import.meta.env.VITE_API_BASE_URL?.trim() || "http://localhost:5000";
-    const url = downloadBackupUrl(baseURL, id, schoolId);
-    window.open(url, "_blank");
+  async function onDownload(id) {
+    try {
+      await downloadBackup(id, schoolId);
+    } catch (e) {
+      toast.error(e?.response?.status === 403 ? "Not allowed" : "Download failed");
+    }
   }
 
   if (meQ.isLoading) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;

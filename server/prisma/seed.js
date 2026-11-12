@@ -329,6 +329,20 @@ async function main() {
       "Refusing to seed in production. Set SEED_ALLOW_PROD=true only if you truly mean it."
     );
   }
+  // NODE_ENV is often unset on a laptop whose .env points at a cloud database
+  // (audit M12). Only seed local databases unless explicitly allowed.
+  let host = "";
+  try {
+    host = new URL(process.env.DATABASE_URL || "").hostname;
+  } catch {
+    host = "";
+  }
+  const local = ["localhost", "127.0.0.1", "db", "host.docker.internal"].includes(host);
+  if (!local && process.env.SEED_ALLOW_REMOTE !== "true") {
+    throw new Error(
+      `Refusing to seed the database at "${host}": it is not local. Set SEED_ALLOW_REMOTE=true if you mean it.`
+    );
+  }
 
   console.log("🌱 Seeding start...");
 

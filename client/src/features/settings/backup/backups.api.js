@@ -22,8 +22,22 @@ export async function restoreBackup(id, payload = {}, params = {}) {
 }
 
 // Download is a normal GET returning JSON attachment; easiest is open new tab
-export function downloadBackupUrl(baseURL, id, schoolId) {
-  const url = new URL(`/api/settings/backup/${id}/download`, baseURL);
-  if (schoolId) url.searchParams.set("schoolId", schoolId);
-  return url.toString();
+/**
+ * Downloads a backup file through the shared API client, so the request is
+ * signed in and goes to the configured API (window.open on a bare URL sent
+ * no token and used a different env variable: audit M11).
+ */
+export async function downloadBackup(id, schoolId) {
+  const res = await api.get(`/api/settings/backup/${id}/download`, {
+    params: schoolId ? { schoolId } : undefined,
+    responseType: "blob",
+  });
+  const href = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = `backup_${schoolId || "school"}_${id}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 60_000);
 }

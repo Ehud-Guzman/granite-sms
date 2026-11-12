@@ -3,7 +3,8 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { listSessionMarkSheets, publishResults } from "@/api/exams.api";
+import { listSessionMarkSheets, publishResults, unpublishResults } from "@/api/exams.api";
+import UnlockReasonDialog from "./marks/UnlockReasonDialog";
 import { listClasses } from "@/api/classes.api";
 import { useMe } from "@/hooks/useMe";
 
@@ -166,8 +167,38 @@ export default function SessionMarkSheetsPage() {
     },
   });
 
+  // Published results are frozen. To correct one, unpublish (with a reason),
+  // unlock the marksheet, fix, resubmit and publish again.
+  const [unpubOpen, setUnpubOpen] = useState(false);
+  const unpubMut = useMutation({
+    mutationFn: (reason) => unpublishResults(sessionId, reason),
+    onSuccess: () => {
+      setUnpubOpen(false);
+      setNotice({
+        type: "success",
+        message: "Results unpublished. Students can no longer see them. Unlock a marksheet to correct it, then publish again.",
+      });
+      qc.invalidateQueries({ queryKey: ["sessionMarkSheets", sessionId] });
+      qc.invalidateQueries({ queryKey: ["examSessions"], exact: false });
+      qc.invalidateQueries({ queryKey: ["classResults"], exact: false });
+      qc.invalidateQueries({ queryKey: ["studentResults"], exact: false });
+    },
+    onError: (err) => setNotice({ type: "error", message: `Unpublish failed: ${errMsg(err)}` }),
+  });
+
   return (
     <div className="space-y-4">
+      <UnlockReasonDialog
+        open={unpubOpen}
+        onOpenChange={setUnpubOpen}
+        onConfirm={(reason) => unpubMut.mutate(reason)}
+        loading={unpubMut.isPending}
+        title="Unpublish results to correct them"
+        hint="Students stop seeing these results until you publish again. The reason is kept in the audit log."
+        placeholder="e.g. Maths mark for ADM-0042 entered wrongly"
+        confirmLabel="Unpublish"
+        busyLabel="Unpublishing..."
+      />
       <Card>
         <CardHeader className="space-y-1">
           <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -205,7 +236,13 @@ export default function SessionMarkSheetsPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant={badgeVariant(sessionStatus)}>{sessionStatus}</Badge>
 
-              {role === "ADMIN" && (
+              {role === "ADMIN" && isAlreadyPublished && (
+                <Button variant="outline" onClick={() => setUnpubOpen(true)} disabled={unpubMut.isPending}>
+                  Unpublish to correct
+                </Button>
+              )}
+
+              {role === "ADMIN" && !isAlreadyPublished && (
                 <Button
                   onClick={() => pubMut.mutate()}
                   disabled={!canPublish || pubMut.isPending}

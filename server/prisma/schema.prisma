@@ -711,6 +711,7 @@ enum ExamAuditAction {
   SUBMIT
   UNLOCK
   PUBLISH
+  UNPUBLISH
 }
 
 model ExamType {
@@ -896,6 +897,13 @@ model StudentResult {
   overallGrade  String?
   overallRemark String?
 
+  // Frozen at publish (audit H9): later edits to students, classes or marks
+  // don't change a result slip that has already gone home.
+  position     Int?
+  missingCount Int     @default(0)
+  studentName  String?
+  admissionNo  String?
+
   createdAt DateTime @default(now())
 
   school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
@@ -914,9 +922,10 @@ model SubjectResult {
   studentResultId String
   subjectId       String
 
-  score  Float
-  grade  String?
-  remark String?
+  score       Float?
+  grade       String?
+  remark      String?
+  subjectName String?
 
   school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   studentResult StudentResult @relation(fields: [studentResultId], references: [id], onDelete: Cascade)

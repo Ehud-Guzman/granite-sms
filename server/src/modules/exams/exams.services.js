@@ -71,20 +71,6 @@ async function getTeacherAssignedClassIds({ schoolId, teacherId }) {
   ];
 }
 
-// Backfill Mark rows for every markSheet in a session so a student who
-// joined the class after the marksheets/session were created (and whose
-// marksheet hasn't been individually opened/edited/submitted since) still
-// shows up in class/student results instead of being silently omitted.
-async function ensureMarkRowsForSession({ schoolId, sessionId, classId }) {
-  const sheets = await prisma.markSheet.findMany({
-    where: { schoolId, examSessionId: sessionId },
-    select: { id: true },
-  });
-  await Promise.all(
-    sheets.map((ms) => ensureMarkRowsForCurrentStudents({ schoolId, markSheetId: ms.id, classId }))
-  );
-}
-
 // Shared by getClassResults and getStudentResults so total/average/grade
 // math is computed in exactly one place.
 function summarizeSubjectScores(subjectScores) {
@@ -110,9 +96,31 @@ async function assertMarkSheetAccess(req, markSheet, { allowClaim = false } = {}
 
   if (markSheet.teacherId === teacherId) return;
 
-  if (allowClaim && markSheet.teacherId === null) return;
+  // An unassigned marksheet can only be taken by a teacher who teaches that
+  // subject to that class (audit M8: any teacher in the school could).
+  if (
+    allowClaim &&
+    markSheet.teacherId === null &&
+    (await teachesSubject({
+      schoolId: req.user.schoolId,
+      teacherId,
+      classId: markSheet.examSession?.classId,
+      subjectId: markSheet.subjectId,
+    }))
+  ) {
+    return;
+  }
 
   throw Object.assign(new Error("Access denied: not your marksheet."), { statusCode: 403 });
+}
+
+async function teachesSubject({ schoolId, teacherId, classId, subjectId }) {
+  if (!teacherId || !classId || !subjectId) return false;
+  const row = await prisma.teachingAssignment.findFirst({
+    where: { schoolId, teacherId, classId, subjectId, isActive: true },
+    select: { id: true },
+  });
+  return !!row;
 }
 
 async function claimMarkSheetIfUnassigned({ schoolId, markSheetId, teacherId }) {
@@ -443,15 +451,25 @@ export async function getMarkSheet(req) {
     if (ms.teacherId !== null && ms.teacherId !== teacherId) {
       throw Object.assign(new Error("Not your marksheet."), { statusCode: 403 });
     }
+    if (
+      ms.teacherId === null &&
+      !(await teachesSubject({ schoolId, teacherId, classId: ms.examSession.classId, subjectId: ms.subjectId }))
+    ) {
+      throw Object.assign(new Error("Not your marksheet."), { statusCode: 403 });
+    }
   } else {
     await assertMarkSheetAccess(req, ms);
   }
 
-  await ensureMarkRowsForCurrentStudents({
-    schoolId,
-    markSheetId: ms.id,
-    classId: ms.examSession.classId,
-  });
+  // Add rows for learners who joined the class since the sheet was made, so
+  // they can be marked. Only while marks can still change.
+  if (ms.examSession.status !== ExamSessionStatus.PUBLISHED) {
+    await ensureMarkRowsForCurrentStudents({
+      schoolId,
+      markSheetId: ms.id,
+      classId: ms.examSession.classId,
+    });
+  }
 
   return prisma.markSheet.findFirst({
     where: { id, schoolId },
@@ -500,6 +518,7 @@ export async function upsertBulkMarks(req) {
       id: true,
       status: true,
       teacherId: true,
+      subjectId: true,
       examSession: { select: { id: true, status: true, classId: true } },
     },
   });
@@ -761,7 +780,11 @@ export async function listSessionMarkSheets(req) {
   if (req.user.role === "TEACHER") {
     const teacherId = await getTeacherIdFromReq(req);
     if (!teacherId) throw Object.assign(new Error("Teacher profile not linked."), { statusCode: 403 });
-    where.OR = [{ teacherId }, { teacherId: null }];
+    const taught = await prisma.teachingAssignment.findMany({
+      where: { schoolId, teacherId, classId: session.classId, isActive: true },
+      select: { subjectId: true },
+    });
+    where.OR = [{ teacherId }, { teacherId: null, subjectId: { in: taught.map((t) => t.subjectId) } }];
   }
 
   const markSheets = await prisma.markSheet.findMany({
@@ -802,99 +825,16 @@ export async function listSessionMarkSheets(req) {
 // ────────────────────────────────────────────────
 // Results
 // ────────────────────────────────────────────────
-/**
- * Canonical results engine for a session: fetches marks once and computes
- * total/average/grade/position in exactly one place. Both the class results
- * screen and the class-performance report consume this — no re-derivation
- * elsewhere (previously duplicated, and drifted, in three separate places:
- * this file, reports.services.js, and the client table component).
- *
- * Shape:
- * {
- *   session: { id, classId, term, year },
- *   subjects: [{ id, name }],
- *   results: [{
- *     student: { id, admissionNo, firstName, lastName },
- *     subjectScores: [{ subjectId, subjectName, score }],
- *     total, average, overallGrade, missingCount, position
- *   }]
- * }
- */
-export async function getClassResults(req) {
-  const schoolId = req.user.schoolId;
-  const sessionId = assertCuid("sessionId", req.params?.id);
+// Before publishing, results are calculated live from the marks (and nothing
+// is written while reading). Publishing saves a frozen copy in
+// ResultPublish / StudentResult / SubjectResult, and every read of a
+// published session uses that copy, so a result slip that has gone home
+// can't change because a student later moved class or left (audit H9).
+// To correct a published result an admin unpublishes it (with a reason),
+// fixes the marks, and publishes again.
 
-  const session = await prisma.examSession.findFirst({
-    where: { id: sessionId, schoolId },
-    select: { id: true, classId: true, term: true, year: true, name: true, status: true },
-  });
-
-  if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
-
-  // TEACHER callers may only view results for classes they actually teach
-  // (class-teacher or active teaching assignment) — previously any teacher
-  // could pull the full class report card for any class in the school.
-  if (req.user.role === "TEACHER") {
-    const teacherId = await getTeacherIdFromReq(req);
-    await assertTeacherClassAccess({ schoolId, teacherId, classId: session.classId });
-  }
-
-  // Backfill mark rows for currently-active students so a student added to
-  // the class after the marksheets were created (and never re-opened since)
-  // isn't silently dropped from the results/ranking entirely.
-  await ensureMarkRowsForSession({ schoolId, sessionId, classId: session.classId });
-
-  const marks = await prisma.mark.findMany({
-    where: {
-      schoolId,
-      markSheet: { examSessionId: sessionId },
-      student: { isActive: true },
-    },
-    select: {
-      studentId: true,
-      score: true,
-      student: {
-        select: { id: true, admissionNo: true, firstName: true, lastName: true },
-      },
-      markSheet: {
-        select: {
-          subjectId: true,
-          subject: { select: { id: true, name: true } },
-        },
-      },
-    },
-  });
-
-  const subjectsById = new Map();
-  const byStudent = new Map();
-
-  for (const m of marks) {
-    const subjectId = m.markSheet.subjectId;
-    if (!subjectsById.has(subjectId)) {
-      subjectsById.set(subjectId, {
-        id: subjectId,
-        name: m.markSheet.subject?.name || "NO_SUBJECT_NAME",
-      });
-    }
-
-    if (!byStudent.has(m.studentId)) {
-      byStudent.set(m.studentId, { student: m.student, subjectScores: [] });
-    }
-
-    byStudent.get(m.studentId).subjectScores.push({
-      subjectId,
-      subjectName: m.markSheet.subject?.name || "NO_SUBJECT_NAME",
-      score: m.score,
-    });
-  }
-
-  const results = Array.from(byStudent.values()).map(({ student, subjectScores }) => ({
-    student,
-    subjectScores,
-    ...summarizeSubjectScores(subjectScores),
-  }));
-
-  // Ranking: dense-ish (ties share a position)
+function rankResults(results) {
+  // Ranking: ties share a position.
   results.sort((a, b) => b.total - a.total || b.average - a.average);
   let position = 0;
   let prevTotal = null;
@@ -907,23 +847,146 @@ export async function getClassResults(req) {
     }
     r.position = position;
   });
+  return results;
+}
 
-  return {
-    session,
-    subjects: Array.from(subjectsById.values()),
-    results,
-  };
+/**
+ * Live results for a session, read-only. Includes every active student
+ * currently in the class (with blanks where marks are missing) and any
+ * active student who has marks in this session.
+ * Shape: { subjects: [{id,name}], results: [{ student, subjectScores, total, average, overallGrade, missingCount, position }] }
+ */
+async function computeLiveResults(db, { schoolId, session }) {
+  const [sheets, classStudents, marks] = await Promise.all([
+    db.markSheet.findMany({
+      where: { schoolId, examSessionId: session.id },
+      select: { id: true, subjectId: true, subject: { select: { id: true, name: true } } },
+    }),
+    db.student.findMany({
+      where: { schoolId, classId: session.classId, isActive: true },
+      select: { id: true, admissionNo: true, firstName: true, lastName: true },
+    }),
+    db.mark.findMany({
+      where: { schoolId, markSheet: { examSessionId: session.id }, student: { isActive: true } },
+      select: {
+        studentId: true,
+        score: true,
+        markSheet: { select: { subjectId: true } },
+        student: { select: { id: true, admissionNo: true, firstName: true, lastName: true } },
+      },
+    }),
+  ]);
+
+  const subjects = [];
+  const seenSubjects = new Set();
+  for (const ms of sheets) {
+    if (seenSubjects.has(ms.subjectId)) continue;
+    seenSubjects.add(ms.subjectId);
+    subjects.push({ id: ms.subjectId, name: ms.subject?.name || "NO_SUBJECT_NAME" });
+  }
+
+  subjects.sort((a, b) => a.name.localeCompare(b.name));
+
+  const students = new Map(classStudents.map((st) => [st.id, st]));
+  const scoreOf = new Map(); // `${studentId}:${subjectId}` -> score
+  for (const m of marks) {
+    students.set(m.studentId, m.student);
+    scoreOf.set(`${m.studentId}:${m.markSheet.subjectId}`, m.score);
+  }
+
+  const results = [...students.values()].map((student) => {
+    const subjectScores = subjects.map((sub) => ({
+      subjectId: sub.id,
+      subjectName: sub.name,
+      score: scoreOf.get(`${student.id}:${sub.id}`) ?? null,
+    }));
+    return { student, subjectScores, ...summarizeSubjectScores(subjectScores) };
+  });
+
+  return { subjects, results: rankResults(results) };
+}
+
+/** The frozen copy of a published session, in the same shape as live results; null if none. */
+async function readFrozenResults({ schoolId, sessionId, studentId = null }) {
+  const publish = await prisma.resultPublish.findFirst({
+    where: { schoolId, examSessionId: sessionId },
+    select: {
+      id: true,
+      publishedAt: true,
+      studentResults: {
+        where: studentId ? { studentId } : undefined,
+        orderBy: [{ position: "asc" }, { admissionNo: "asc" }],
+        select: {
+          studentId: true,
+          totalScore: true,
+          averageScore: true,
+          overallGrade: true,
+          position: true,
+          missingCount: true,
+          studentName: true,
+          admissionNo: true,
+          subjectResults: { select: { subjectId: true, subjectName: true, score: true } },
+        },
+      },
+    },
+  });
+  if (!publish) return null;
+
+  const subjects = [];
+  const seen = new Set();
+  const results = publish.studentResults.map((r) => {
+    for (const sr of r.subjectResults) {
+      if (!seen.has(sr.subjectId)) {
+        seen.add(sr.subjectId);
+        subjects.push({ id: sr.subjectId, name: sr.subjectName || "NO_SUBJECT_NAME" });
+      }
+    }
+    const [firstName, ...rest] = String(r.studentName || "").split(" ");
+    return {
+      student: { id: r.studentId, admissionNo: r.admissionNo, firstName: firstName || "", lastName: rest.join(" ") },
+      subjectScores: r.subjectResults
+        .map((sr) => ({ subjectId: sr.subjectId, subjectName: sr.subjectName || "NO_SUBJECT_NAME", score: sr.score }))
+        .sort((a, b) => a.subjectName.localeCompare(b.subjectName)),
+      total: r.totalScore,
+      average: r.averageScore,
+      overallGrade: r.overallGrade,
+      missingCount: r.missingCount,
+      position: r.position,
+    };
+  });
+  // Keep the subject order the slips were published with.
+  subjects.sort((a, b) => a.name.localeCompare(b.name));
+  return { publishedAt: publish.publishedAt, subjects, results };
+}
+
+const sessionSummarySelect = { id: true, classId: true, term: true, year: true, name: true, status: true };
+
+export async function getClassResults(req) {
+  const schoolId = req.user.schoolId;
+  const sessionId = assertCuid("sessionId", req.params?.id);
+
+  const session = await prisma.examSession.findFirst({ where: { id: sessionId, schoolId }, select: sessionSummarySelect });
+  if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
+
+  // TEACHER callers may only view results for classes they actually teach.
+  if (req.user.role === "TEACHER") {
+    const teacherId = await getTeacherIdFromReq(req);
+    await assertTeacherClassAccess({ schoolId, teacherId, classId: session.classId });
+  }
+
+  if (session.status === ExamSessionStatus.PUBLISHED) {
+    const frozen = await readFrozenResults({ schoolId, sessionId });
+    if (frozen) return { session, subjects: frozen.subjects, results: frozen.results, frozen: true, publishedAt: frozen.publishedAt };
+  }
+
+  const live = await computeLiveResults(prisma, { schoolId, session });
+  return { session, subjects: live.subjects, results: live.results, frozen: false };
 }
 
 /**
  * A single student's results for one exam session (the "student slip").
  * Route: GET /sessions/:id/results/students/:studentId
- * - :id is the exam session id (NOT the student id — this was previously
- *   misread as the student id, which meant this endpoint always returned
- *   an empty result set in production).
- * - STUDENT-role callers may only fetch their own record (enforced here,
- *   not just at the router role-gate, to close an IDOR: nothing previously
- *   stopped a STUDENT token from passing any studentId in the URL).
+ * STUDENT callers may only fetch their own, and only once published.
  */
 export async function getStudentResults(req) {
   const schoolId = req.user.schoolId;
@@ -931,19 +994,12 @@ export async function getStudentResults(req) {
   const studentId = assertCuid("studentId", req.params?.studentId);
 
   if (req.user.role === "STUDENT" && req.user.studentId !== studentId) {
-    throw Object.assign(
-      new Error("Students can only view their own results."),
-      { statusCode: 403 }
-    );
+    throw Object.assign(new Error("Students can only view their own results."), { statusCode: 403 });
   }
 
-  const session = await prisma.examSession.findFirst({
-    where: { id: sessionId, schoolId },
-    select: { id: true, classId: true, term: true, year: true, name: true, status: true },
-  });
+  const session = await prisma.examSession.findFirst({ where: { id: sessionId, schoolId }, select: sessionSummarySelect });
   if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
 
-  // Students see a result slip only once the school has published it.
   if (req.user.role === "STUDENT" && session.status !== ExamSessionStatus.PUBLISHED) {
     throw Object.assign(new Error("These results have not been published yet."), { statusCode: 403 });
   }
@@ -954,46 +1010,87 @@ export async function getStudentResults(req) {
   });
   if (!student) throw Object.assign(new Error("Student not found."), { statusCode: 404 });
 
-  // TEACHER callers may only view results for students in classes they
-  // actually teach — previously any teacher could pull any student's full
-  // result slip regardless of assignment.
   if (req.user.role === "TEACHER") {
     const teacherId = await getTeacherIdFromReq(req);
     await assertTeacherClassAccess({ schoolId, teacherId, classId: student.classId });
   }
 
-  // Same backfill as getClassResults: make sure this student has a Mark row
-  // in every subject's marksheet for the session before summarizing.
-  await ensureMarkRowsForSession({ schoolId, sessionId, classId: session.classId });
-
-  const marks = await prisma.mark.findMany({
-    where: {
-      schoolId,
-      studentId,
-      markSheet: { examSessionId: sessionId },
-    },
-    select: {
-      score: true,
-      markSheet: {
-        select: { subjectId: true, subject: { select: { id: true, name: true } } },
-      },
-    },
-  });
-
-  const subjectScores = marks.map((m) => ({
-    subjectId: m.markSheet.subjectId,
-    subjectName: m.markSheet.subject?.name || "NO_SUBJECT_NAME",
-    score: m.score,
-  }));
-
   const { classId: _studentClassId, ...studentOut } = student;
 
+  if (session.status === ExamSessionStatus.PUBLISHED) {
+    const frozen = await readFrozenResults({ schoolId, sessionId, studentId });
+    if (frozen) {
+      const r = frozen.results[0];
+      if (!r) throw Object.assign(new Error("This student has no published result for this exam."), { statusCode: 404 });
+      return {
+        session,
+        student: studentOut,
+        subjectScores: r.subjectScores,
+        total: r.total,
+        average: r.average,
+        overallGrade: r.overallGrade,
+        missingCount: r.missingCount,
+        position: r.position,
+        outOf: (await prisma.studentResult.count({ where: { schoolId, resultPublish: { examSessionId: sessionId } } })),
+        frozen: true,
+        publishedAt: frozen.publishedAt,
+      };
+    }
+  }
+
+  const live = await computeLiveResults(prisma, { schoolId, session });
+  const mine = live.results.find((x) => x.student.id === studentId);
+  const subjectScores = mine
+    ? mine.subjectScores
+    : live.subjects.map((s) => ({ subjectId: s.id, subjectName: s.name, score: null }));
   return {
     session,
     student: studentOut,
     subjectScores,
     ...summarizeSubjectScores(subjectScores),
+    position: mine?.position ?? null,
+    outOf: live.results.length,
+    frozen: false,
   };
+}
+
+/**
+ * Saves the frozen copy of a session's results (inside a transaction).
+ * Used when publishing, and by scripts/freezePublishedResults.js for
+ * sessions published before frozen copies existed.
+ */
+export async function writeResultSnapshot(tx, { schoolId, session, publishedById, publishedAt = null }) {
+  const live = await computeLiveResults(tx, { schoolId, session });
+  await tx.resultPublish.deleteMany({ where: { schoolId, examSessionId: session.id } });
+  const publish = await tx.resultPublish.create({
+    data: { schoolId, examSessionId: session.id, publishedById, ...(publishedAt ? { publishedAt } : {}) },
+  });
+  for (const r of live.results) {
+    await tx.studentResult.create({
+      data: {
+        schoolId,
+        resultPublishId: publish.id,
+        studentId: r.student.id,
+        totalScore: r.total,
+        averageScore: r.average,
+        overallGrade: r.overallGrade,
+        position: r.position,
+        missingCount: r.missingCount,
+        studentName: `${r.student.firstName} ${r.student.lastName}`.trim(),
+        admissionNo: r.student.admissionNo,
+        subjectResults: {
+          create: r.subjectScores.map((sc) => ({
+            schoolId,
+            subjectId: sc.subjectId,
+            subjectName: sc.subjectName,
+            score: sc.score,
+            grade: sc.score == null ? null : gradeFromScore(Math.round(Number(sc.score))),
+          })),
+        },
+      },
+    });
+  }
+  return live.results.length;
 }
 
 export async function publishResults(req) {
@@ -1001,41 +1098,35 @@ export async function publishResults(req) {
   const sessionId = assertCuid("sessionId", req.params?.id);
   const actorUserId = req.user.id;
 
-  const session = await prisma.examSession.findFirst({
-    where: { id: sessionId, schoolId },
-    select: { id: true, status: true },
-  });
-
+  const session = await prisma.examSession.findFirst({ where: { id: sessionId, schoolId }, select: sessionSummarySelect });
   if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
   if (session.status === ExamSessionStatus.PUBLISHED) {
     throw Object.assign(new Error("Results already published."), { statusCode: 400 });
   }
 
   const notSubmitted = await prisma.markSheet.count({
-    where: {
-      schoolId,
-      examSessionId: sessionId,
-      status: { not: MarkSheetStatus.SUBMITTED },
-    },
+    where: { schoolId, examSessionId: sessionId, status: { not: MarkSheetStatus.SUBMITTED } },
   });
-
   if (notSubmitted > 0) {
-    throw Object.assign(
-      new Error(`Cannot publish: ${notSubmitted} marksheet(s) are not yet submitted.`),
-      { statusCode: 409 }
-    );
+    throw Object.assign(new Error(`Cannot publish: ${notSubmitted} marksheet(s) are not yet submitted.`), {
+      statusCode: 409,
+    });
   }
 
-  await prisma.examSession.updateMany({
-    where: { id: sessionId, schoolId },
-    data: {
-      status: ExamSessionStatus.PUBLISHED,
-      publishedAt: new Date(),
-      publishedById: actorUserId,
-    },
-  });
+  const updated = await prisma.$transaction(
+    async (tx) => {
+      // Flip DRAFT -> PUBLISHED atomically: a second publish racing this one gets 0 rows.
+      const flipped = await tx.examSession.updateMany({
+        where: { id: sessionId, schoolId, status: ExamSessionStatus.DRAFT },
+        data: { status: ExamSessionStatus.PUBLISHED, publishedAt: new Date(), publishedById: actorUserId },
+      });
+      if (flipped.count !== 1) throw Object.assign(new Error("Results already published."), { statusCode: 400 });
 
-  const updated = await prisma.examSession.findFirst({ where: { id: sessionId, schoolId } });
+      await writeResultSnapshot(tx, { schoolId, session, publishedById: actorUserId });
+      return tx.examSession.findFirst({ where: { id: sessionId, schoolId } });
+    },
+    { maxWait: 10_000, timeout: 60_000 }
+  );
 
   await audit(schoolId, buildAuditPayload({
     action: ExamAuditAction.PUBLISH,
@@ -1043,6 +1134,45 @@ export async function publishResults(req) {
     entityId: sessionId,
     actorUserId,
     after: { status: updated.status },
+  }));
+
+  return updated;
+}
+
+/**
+ * ADMIN: take published results back to draft to correct them. The frozen
+ * copy is discarded (the audit log keeps the reason); marksheets stay
+ * submitted, so the admin unlocks the one that needs fixing, the teacher
+ * corrects and resubmits, and the session is published again.
+ */
+export async function unpublishResults(req) {
+  const schoolId = req.user.schoolId;
+  const sessionId = assertCuid("sessionId", req.params?.id);
+  const actorUserId = req.user.id;
+  const reason = cleanStr(req.body?.reason);
+  if (!reason) throw Object.assign(new Error("Say why the results are being unpublished."), { statusCode: 400 });
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const flipped = await tx.examSession.updateMany({
+      where: { id: sessionId, schoolId, status: ExamSessionStatus.PUBLISHED },
+      data: { status: ExamSessionStatus.DRAFT, publishedAt: null, publishedById: null },
+    });
+    if (flipped.count !== 1) {
+      const exists = await tx.examSession.findFirst({ where: { id: sessionId, schoolId }, select: { id: true } });
+      if (!exists) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
+      throw Object.assign(new Error("These results are not published."), { statusCode: 400 });
+    }
+    await tx.resultPublish.deleteMany({ where: { schoolId, examSessionId: sessionId } });
+    return tx.examSession.findFirst({ where: { id: sessionId, schoolId } });
+  });
+
+  await audit(schoolId, buildAuditPayload({
+    action: ExamAuditAction.UNPUBLISH,
+    entityType: "ExamSession",
+    entityId: sessionId,
+    actorUserId,
+    before: { status: ExamSessionStatus.PUBLISHED },
+    after: { status: updated.status, reason },
   }));
 
   return updated;

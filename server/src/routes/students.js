@@ -55,6 +55,21 @@ const pickStudentUpdate = (body) => {
   return data;
 };
 
+
+/**
+ * Classes a teacher may see: class teacher of, or teaches a subject in.
+ * The same rule attendance and exams use (audit M7: this list used only
+ * class-teacher links, so subject teachers saw an empty "My Students").
+ */
+async function teacherClassIds(schoolId, teacherId) {
+  if (!teacherId) return [];
+  const [ct, ta] = await Promise.all([
+    prisma.classTeacher.findMany({ where: { schoolId, teacherId: String(teacherId), isActive: true }, select: { classId: true } }),
+    prisma.teachingAssignment.findMany({ where: { schoolId, teacherId: String(teacherId), isActive: true }, select: { classId: true } }),
+  ]);
+  return [...new Set([...ct, ...ta].map((r) => r.classId))];
+}
+
 // --------------------
 // STUDENTS
 // Base path: /api/students
@@ -159,16 +174,7 @@ router.get("/lookup", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res
       const teacherId = req.user?.teacherId;
       if (!teacherId) return res.status(403).json({ message: "Forbidden" });
 
-      const isAssigned = await prisma.classTeacher.findFirst({
-        where: {
-          teacherId: String(teacherId),
-          isActive: true,
-          classId: student.classId ?? "__none__",
-          class: { schoolId },
-          teacher: { schoolId },
-        },
-        select: { id: true },
-      });
+      const isAssigned = (await teacherClassIds(schoolId, teacherId)).includes(student.classId);
 
       if (!isAssigned)
         return res
@@ -221,17 +227,7 @@ router.get("/", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
       const teacherId = req.user?.teacherId;
       if (!teacherId) return res.json([]);
 
-      const assigned = await prisma.classTeacher.findMany({
-        where: {
-          teacherId: String(teacherId),
-          isActive: true,
-          class: { schoolId },
-          teacher: { schoolId },
-        },
-        select: { classId: true },
-      });
-
-      const allowedClassIds = assigned.map((x) => x.classId);
+      const allowedClassIds = await teacherClassIds(schoolId, teacherId);
       if (allowedClassIds.length === 0) return res.json([]);
 
       if (where.classId && !allowedClassIds.includes(where.classId)) {
@@ -316,16 +312,7 @@ router.get("/:id", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) =
       const teacherId = req.user?.teacherId;
       if (!teacherId) return res.status(403).json({ message: "Forbidden" });
 
-      const isAssigned = await prisma.classTeacher.findFirst({
-        where: {
-          teacherId: String(teacherId),
-          isActive: true,
-          classId: student.classId ?? "__none__",
-          class: { schoolId },
-          teacher: { schoolId },
-        },
-        select: { id: true },
-      });
+      const isAssigned = (await teacherClassIds(schoolId, teacherId)).includes(student.classId);
 
       if (!isAssigned) return res.status(403).json({ message: "Forbidden" });
     }

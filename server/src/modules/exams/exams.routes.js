@@ -111,6 +111,14 @@ router.post(
   ctrl.publishResults
 );
 
+// Take published results back to draft to correct them (ADMIN, reason required)
+router.post(
+  "/sessions/:id/unpublish",
+  requireRole("ADMIN"),
+  requireEntitlement("EXAMS_WRITE"),
+  ctrl.unpublishResults
+);
+
 // ------------------------
 // Results read
 // ------------------------

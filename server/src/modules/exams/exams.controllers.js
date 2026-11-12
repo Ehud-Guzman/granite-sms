@@ -25,5 +25,6 @@ export const submitMarkSheet = (req, res) => wrap(req, res, svc.submitMarkSheet)
 export const unlockMarkSheet = (req, res) => wrap(req, res, svc.unlockMarkSheet);
 
 export const publishResults = (req, res) => wrap(req, res, svc.publishResults);
+export const unpublishResults = (req, res) => wrap(req, res, svc.unpublishResults);
 export const getClassResults = (req, res) => wrap(req, res, svc.getClassResults);
 export const getStudentResults = (req, res) => wrap(req, res, svc.getStudentResults);

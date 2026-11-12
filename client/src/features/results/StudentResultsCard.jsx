@@ -11,7 +11,7 @@ import { fmtStudentName } from "./utils/format";
 export default function StudentResultsCard({ payload, classLabel, showGrades = true }) {
   if (!payload) return null;
 
-  const { student, subjectScores = [], total, average, overallGrade, missingCount } = payload;
+  const { student, subjectScores = [], total, average, overallGrade, missingCount, position, outOf } = payload;
 
   return (
     <div className="border rounded-lg overflow-hidden print:border-0 print:shadow-none print:m-0">
@@ -56,6 +56,15 @@ export default function StudentResultsCard({ payload, classLabel, showGrades = t
               <td className="p-2">Average</td>
               <td className="p-2 text-right">{Number(average ?? 0).toFixed(2)}</td>
             </tr>
+            {position != null && (
+              <tr>
+                <td className="p-2">Position</td>
+                <td className="p-2 text-right">
+                  {position}
+                  {outOf ? ` of ${outOf}` : ""}
+                </td>
+              </tr>
+            )}
             {showGrades && (
               <tr>
                 <td className="p-2">Overall Grade</td>

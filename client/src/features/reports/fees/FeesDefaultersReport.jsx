@@ -200,7 +200,7 @@ export default function FeesDefaultersReport() {
       )}
 
       {report && (
-        <PrintDocument
+        <PrintDocument screen
           id="print-fees-defaulters"
           className="space-y-3 bg-white"
         >

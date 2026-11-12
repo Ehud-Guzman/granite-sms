@@ -158,7 +158,7 @@ export default function AttendanceSummaryReport() {
         </div>
       )}
 
-      <PrintDocument id="print-attendance-summary" className="space-y-3 bg-white">
+      <PrintDocument screen id="print-attendance-summary" className="space-y-3 bg-white">
         <ReportPrintTitle title="Attendance Summary Report" subtitle={printSubtitle} />
 
         {!report ? (

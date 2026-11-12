@@ -78,12 +78,23 @@ export default function AttendancePage() {
     [classes, classId]
   );
 
+  // The list shows the 30 days up to the chosen date (newest first), not just
+  // that one day: the date box picks which register to open, and on its own
+  // it used to hide every earlier register.
+  const listFrom = useMemo(() => {
+    const d = new Date(`${date}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return undefined;
+    d.setUTCDate(d.getUTCDate() - 30);
+    return d.toISOString().slice(0, 10);
+  }, [date]);
+
   const sessionsQ = useQuery({
-    queryKey: ["attendanceSessions", { classId, date, status: status || null }],
+    queryKey: ["attendanceSessions", { classId, from: listFrom, to: date, status: status || null }],
     queryFn: () =>
       listAttendanceSessions({
         classId,
-        date,
+        from: listFrom,
+        to: date,
         status: status || undefined,
       }),
     enabled: !!classId,
@@ -239,7 +250,7 @@ export default function AttendancePage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center justify-between">
-            <span>Sessions</span>
+            <span>Sessions (last 30 days)</span>
             {!!classId && (
               <span className="text-xs text-muted-foreground">
                 {sessionsQ.isLoading ? "Loading…" : `${sessions.length} found`}

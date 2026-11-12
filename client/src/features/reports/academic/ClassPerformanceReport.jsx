@@ -265,7 +265,7 @@ export default function ClassPerformanceReport() {
 
       {/* Report */}
       {report && (
-        <PrintDocument id="print-class-performance" className="space-y-3 bg-white">
+        <PrintDocument screen id="print-class-performance" className="space-y-3 bg-white">
           <ReportPrintTitle title="Class Performance Report" subtitle={printSubtitle} />
 
           <Card>

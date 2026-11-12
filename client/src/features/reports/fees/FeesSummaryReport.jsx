@@ -201,7 +201,7 @@ export default function FeesSummaryReport() {
       )}
 
       {/* PRINT BLOCK — always mounted so print works right after load */}
-      <PrintDocument id="print-fees-summary" className="space-y-3 bg-white">
+      <PrintDocument screen id="print-fees-summary" className="space-y-3 bg-white">
         <ReportPrintTitle title="Fees Summary Report" subtitle={printSubtitle} />
 
         {!report ? (

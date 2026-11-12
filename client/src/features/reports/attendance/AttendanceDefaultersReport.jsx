@@ -156,7 +156,7 @@ export default function AttendanceDefaultersReport() {
       )}
 
       {report && (
-        <PrintDocument id="print-attendance-defaulters" className="space-y-3 bg-white">
+        <PrintDocument screen id="print-attendance-defaulters" className="space-y-3 bg-white">
           <ReportPrintTitle title="Attendance Defaulters Report" subtitle={printSubtitle} />
 
           <Card>

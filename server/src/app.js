@@ -105,6 +105,8 @@ app.use(
       return cb(new Error("Not allowed by CORS"));
     },
     credentials: true,
+    // Let the app read download file names and the request id cross-origin.
+    exposedHeaders: ["Content-Disposition", "X-Request-Id"],
   })
 );
 

@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import TermDatesCard from "./TermDatesCard";
+import { downloadFromApi } from "@/lib/download";
 
 function isSysAdmin(me) {
   const role = String(me?.role || me?.me?.role || "").toUpperCase();
@@ -509,6 +510,33 @@ export default function GeneralSettingsTab() {
       </Card>
 
       <TermDatesCard scopeParams={scopeParams} labels={academicsForm} />
+
+      {!sys && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Your school&apos;s data</CardTitle>
+            <CardDescription>
+              Everything about your school in one Excel file: learners, parents, classes, staff, invoices, payments,
+              results, marks and attendance. Keep it safe: it contains personal information.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  toast.info("Preparing the file…");
+                  await downloadFromApi("/api/settings/export", "school-data.xlsx");
+                } catch {
+                  toast.error("Export failed");
+                }
+              }}
+            >
+              Download all school data
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Features */}
       {!sys && (

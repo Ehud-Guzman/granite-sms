@@ -15,6 +15,7 @@ import { confirmAction } from "@/lib/confirm-store";
 import GuardiansCard from "./GuardiansCard";
 import RecordLeavingDialog from "./RecordLeavingDialog";
 import { EXIT_LABELS } from "./exitLabels";
+import { downloadFromApi } from "@/lib/download";
 
 const fullName = (s) => `${s?.firstName || ""} ${s?.lastName || ""}`.trim();
 
@@ -132,6 +133,21 @@ export default function StudentProfilePage() {
           <Button variant="outline" asChild size="sm">
             <Link to="/app/students">Back to List</Link>
           </Button>
+
+          {role === "ADMIN" && (
+            <Button
+              variant="outline"
+              size="sm"
+              title="Everything held about this learner (for a parent's data request)"
+              onClick={() =>
+                downloadFromApi(`/api/settings/export/student/${s.id}`, `learner-${s.admissionNo}.json`).catch(() =>
+                  toast.error("Export failed")
+                )
+              }
+            >
+              Export data
+            </Button>
+          )}
 
           {role === "ADMIN" && s?.isActive && (
             <>

@@ -21,6 +21,7 @@ import { Separator } from "@/components/ui/separator";
 import QueryBlock from "../components/QueryBlock";
 import SimpleModal from "../components/SimpleModal";
 import { money } from "../components/FeeMoney";
+import { useCurrentTermState, useCurrentYearState } from "@/lib/schoolCalendar";
 
 const norm = (v) => String(v || "").trim().toUpperCase();
 
@@ -33,8 +34,8 @@ export default function InvoicesTab() {
 
   const [studentId, setStudentId] = useState("");
   const [classId, setClassId] = useState("");
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [term, setTerm] = useState("TERM1");
+  const [year, setYear] = useCurrentYearState();
+  const [term, setTerm] = useCurrentTermState();
   const [status, setStatus] = useState("");
 
   const classesQ = useQuery({ queryKey: ["classes"], queryFn: () => listClasses({}) });

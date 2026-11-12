@@ -23,9 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { todayIn } from "@/lib/schoolCalendar";
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  // Today in Nairobi (school time), not the UTC date.
+  return todayIn();
 }
 
 function firstOfMonthStr() {

@@ -150,6 +150,10 @@ model SchoolSettings {
   enableSubjectAssignments Boolean @default(true)
 
   currentAcademicYear String?
+  // The term the school is in now: every screen defaults its term filter to it.
+  currentTerm         Term?
+  // IANA zone used for "today", day boundaries in reports and receipt dates.
+  timezone            String  @default("Africa/Nairobi")
   term1Label          String  @default("Term 1")
   term2Label          String  @default("Term 2")
   term3Label          String  @default("Term 3")
@@ -320,9 +324,28 @@ model School {
   feeInvoices         FeeInvoice[]
   feePayments         FeePayment[]
   feeReversalRequests FeeReversalRequest[]
+  termDates           TermDate[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
+}
+
+// Opening and closing dates of each term. Used to work out which term a date
+// belongs to (attendance) and to stop registers being taken outside term.
+model TermDate {
+  id       String   @id @default(cuid())
+  schoolId String
+  year     Int
+  term     Term
+  startsOn DateTime @db.Date
+  endsOn   DateTime @db.Date
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, year, term])
 }
 
 model Subscription {

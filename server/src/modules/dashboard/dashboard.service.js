@@ -1,6 +1,7 @@
 // src/modules/dashboard/dashboard.service.js
 import { prisma } from "../../lib/prisma.js";
 import { AttendanceSessionStatus, InvoiceStatus } from "@prisma/client";
+import { getSchoolCalendar, localDayRange } from "../../utils/schoolTime.js";
 
 /* =========================
    Time helpers (UTC-day window)
@@ -88,9 +89,9 @@ function mapAttendanceStatus(st) {
 export async function getSummary(req) {
   const schoolId = requireSchoolOrThrow(req);
 
-  const now = new Date();
-  const from = startOfDayUTC(now);
-  const to = endOfDayUTC(now);
+  // "Today" is the school's local day (Nairobi by default), not the UTC day.
+  const calendar = await getSchoolCalendar(schoolId);
+  const { from, to } = localDayRange(calendar.today, calendar.today, calendar.timezone);
 
   // --- Core counts ---
   const [studentsActive, classesCount, teachersCount] = await Promise.all([

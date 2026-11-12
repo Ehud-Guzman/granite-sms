@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useCurrentTermState, useCurrentYearState } from "@/lib/schoolCalendar";
 
 const TERMS = ["TERM1", "TERM2", "TERM3"];
 
@@ -37,8 +38,8 @@ function Metric({ label, value }) {
 
 export default function FeesSummaryReport() {
   const [classId, setClassId] = useState("");
-  const [year, setYear] = useState(String(new Date().getFullYear()));
-  const [term, setTerm] = useState("TERM1");
+  const [year, setYear] = useCurrentYearState(true);
+  const [term, setTerm] = useCurrentTermState();
 
   const { data: classesRaw, isLoading: classesLoading } = useQuery({
     queryKey: ["classes", "active"],

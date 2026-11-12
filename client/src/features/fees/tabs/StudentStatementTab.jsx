@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input";
 import StudentLookupByAdmission from "../components/StudentLookupByAdmission";
 import QueryBlock from "../components/QueryBlock";
 import { money } from "../components/FeeMoney";
+import { useCurrentTermState, useCurrentYearState, dateIn, useSchoolCalendar } from "@/lib/schoolCalendar";
 
 export default function StudentStatementTab() {
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [term, setTerm] = useState("TERM1");
+  const { timezone } = useSchoolCalendar();
+  const [year, setYear] = useCurrentYearState();
+  const [term, setTerm] = useCurrentTermState();
 
   // Store student object once selected by admissionNo
   const [student, setStudent] = useState(null);
@@ -147,7 +149,7 @@ export default function StudentStatementTab() {
                       <div className="font-medium">{t.type}</div>
 
                       <div className="text-xs text-muted-foreground">
-                        {t.at ? new Date(t.at).toISOString().slice(0, 10) : "—"} •{" "}
+                        {t.at ? dateIn(t.at, timezone) : "—"} •{" "}
                         {t.type === "PAYMENT"
                           ? `Receipt ${t.receiptNo || "—"}`
                           : `Invoice ${t.ref ? String(t.ref).slice(0, 8) + "…" : "—"}`}

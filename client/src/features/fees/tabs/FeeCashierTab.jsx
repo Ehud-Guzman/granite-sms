@@ -25,6 +25,7 @@ import StudentLookupByAdmission from "../components/StudentLookupByAdmission";
 import QueryBlock from "../components/QueryBlock";
 import SimpleModal from "../components/SimpleModal";
 import { money, toNumberOrZero } from "../components/FeeMoney";
+import { useCurrentTermState, useCurrentYearState } from "@/lib/schoolCalendar";
 
 const PAYMENT_METHODS = ["CASH", "MPESA", "BANK", "CHEQUE", "OTHER"];
 const TERMS = ["TERM1", "TERM2", "TERM3"];
@@ -50,8 +51,8 @@ export default function FeeCashierTab({ onReceiptReady }) {
   const qc = useQueryClient();
 
   // filters (cashier context)
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [term, setTerm] = useState("TERM1");
+  const [year, setYear] = useCurrentYearState();
+  const [term, setTerm] = useCurrentTermState();
 
   // student selection
   const [selectedStudent, setSelectedStudent] = useState(null);

@@ -9,6 +9,7 @@ import helmet from "helmet";
 import { fileURLToPath } from "url";
 
 import { prisma } from "./lib/prisma.js";
+import { getSchoolCalendar } from "./utils/schoolTime.js";
 
 import authRoutes from "./routes/auth.js";
 
@@ -190,7 +191,26 @@ app.get("/api/me", async (req, res) => {
       });
     }
 
+    // The school calendar, so every screen can default to the current term
+    // and to "today" in the school's time zone.
+    let calendar = null;
+    if (req.schoolId) {
+      const c = await getSchoolCalendar(req.schoolId);
+      const current = c.termDates.find((t) => t.year === c.currentYear && t.term === c.currentTerm);
+      calendar = {
+        timezone: c.timezone,
+        today: c.today,
+        currentYear: c.currentYear,
+        currentTerm: c.currentTerm,
+        termLabels: c.termLabels,
+        currentTermDates: current
+          ? { startsOn: current.startsOn.toISOString().slice(0, 10), endsOn: current.endsOn.toISOString().slice(0, 10) }
+          : null,
+      };
+    }
+
     return res.json({
+      calendar,
       user: {
         ...base,
         role: req.role,

@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingState, ErrorState, EmptyState, PageSkeleton } from "@/components/ui/state-blocks";
+import { useCurrentYearState } from "@/lib/schoolCalendar";
 
 export default function ClassesListPage() {
   const { data: meData, isLoading: meLoading } = useMe();
@@ -41,7 +42,7 @@ export default function ClassesListPage() {
   const role = String(meData?.user?.role || meData?.role || "").toUpperCase();
   const tenantId = String(meData?.user?.schoolId || meData?.schoolId || "").trim();
 
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useCurrentYearState(true);
   const [q, setQ] = useState("");
 
   const yearNum = year ? Number(year) : undefined;

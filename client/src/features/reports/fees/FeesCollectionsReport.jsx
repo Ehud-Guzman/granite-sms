@@ -15,6 +15,7 @@ import FinanceNav from "./FinanceNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
 
 function PaymentsTable({ payments, sticky }) {
   return (
@@ -47,13 +48,9 @@ function PaymentsTable({ payments, sticky }) {
 }
 
 export default function FeesCollectionsReport() {
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const dd = String(today.getDate()).padStart(2, "0");
-
-  const [from, setFrom] = useState(`${yyyy}-${mm}-01`);
-  const [to, setTo] = useState(`${yyyy}-${mm}-${dd}`);
+  const { today } = useSchoolCalendar();
+  const [from, setFrom] = useState(`${today.slice(0, 7)}-01`);
+  const [to, setTo] = useState(today);
 
   const params = useMemo(() => {
     if (!from || !to) return null;

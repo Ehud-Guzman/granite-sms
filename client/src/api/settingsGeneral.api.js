@@ -20,6 +20,17 @@ export async function patchAcademics(payload, params = {}) {
   return data.academics;
 }
 
+export async function getTermDates(params = {}) {
+  const { data } = await api.get("/api/settings/academics", { params });
+  return data.termDates || [];
+}
+
+/** Replaces one year's term dates: terms = [{ term, startsOn, endsOn }] */
+export async function putTermDates(year, terms, params = {}) {
+  const { data } = await api.put("/api/settings/academics/term-dates", { year, terms }, { params });
+  return data.termDates;
+}
+
 export async function getFeatureFlags() {
   const { data } = await api.get("/api/settings");
   return data;

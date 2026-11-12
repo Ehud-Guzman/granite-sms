@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import TermDatesCard from "./TermDatesCard";
 
 function isSysAdmin(me) {
   const role = String(me?.role || me?.me?.role || "").toUpperCase();
@@ -139,7 +140,7 @@ export default function GeneralSettingsTab() {
 
   const academicsDirty = useMemo(() => {
     if (!academicsQ.data || !academicsForm) return false;
-    const keys = ["currentAcademicYear", "term1Label", "term2Label", "term3Label"];
+    const keys = ["currentAcademicYear", "currentTerm", "timezone", "term1Label", "term2Label", "term3Label"];
     return keys.some((k) => (academicsForm?.[k] ?? null) !== (academicsQ.data?.[k] ?? null));
   }, [academicsForm, academicsQ.data]);
 
@@ -148,6 +149,8 @@ export default function GeneralSettingsTab() {
     onSuccess: (data) => {
       qc.setQueryData(["settings", "academics", scopeParams?.schoolId || "tenant"], data);
       setAcademicsForm(data);
+      // Every screen reads the current term and time zone from /api/me.
+      qc.invalidateQueries({ queryKey: ["me"] });
       toast.success("Academic defaults saved");
     },
     onError: (err) => {
@@ -161,7 +164,7 @@ export default function GeneralSettingsTab() {
     const patch = buildPatch(
       academicsQ.data,
       academicsForm,
-      ["currentAcademicYear", "term1Label", "term2Label", "term3Label"]
+      ["currentAcademicYear", "currentTerm", "timezone", "term1Label", "term2Label", "term3Label"]
     );
 
     if (Object.keys(patch).length === 0) return;
@@ -438,6 +441,31 @@ export default function GeneralSettingsTab() {
               <p className="text-xs text-muted-foreground">Format: 2026 or 2025/2026</p>
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="current-term">Current term</Label>
+              <select
+                id="current-term"
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                value={academicsForm?.currentTerm || ""}
+                onChange={(e) => setAcademicsForm({ ...academicsForm, currentTerm: e.target.value || null })}
+              >
+                <option value="">Work it out from the term dates</option>
+                <option value="TERM1">{academicsForm?.term1Label || "Term 1"}</option>
+                <option value="TERM2">{academicsForm?.term2Label || "Term 2"}</option>
+                <option value="TERM3">{academicsForm?.term3Label || "Term 3"}</option>
+              </select>
+              <p className="text-xs text-muted-foreground">Fees, attendance and reports open on this term.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="school-timezone">Time zone</Label>
+              <Input
+                id="school-timezone"
+                value={academicsForm?.timezone || ""}
+                onChange={(e) => setAcademicsForm({ ...academicsForm, timezone: e.target.value })}
+                placeholder="Africa/Nairobi"
+              />
+              <p className="text-xs text-muted-foreground">Decides what &quot;today&quot; means for registers and daily collections.</p>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="term1-label">Term 1 Label</Label>
               <Input
                 id="term1-label"
@@ -479,6 +507,8 @@ export default function GeneralSettingsTab() {
           </div>
         </CardContent>
       </Card>
+
+      <TermDatesCard scopeParams={scopeParams} labels={academicsForm} />
 
       {/* Features */}
       {!sys && (

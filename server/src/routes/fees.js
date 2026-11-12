@@ -11,6 +11,7 @@ import { loadSubscription, requireEntitlement, requireEntitlementRead } from "..
 import { logAudit, actorCtx } from "../utils/audit.js";
 import { exportCSV, exportXLSX } from "../utils/export.js";
 import { toInt, toNumber } from "../utils/validate.js";
+import { getSchoolCalendar, localDayRange, localDateString, isDateString } from "../utils/schoolTime.js";
 
 
 const router = Router();
@@ -161,12 +162,10 @@ function makeInvoiceNo() {
   return `INV-${y}-${randToken(3)}`;
 }
 
-function makeReceiptNo() {
-  const d = new Date();
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `RCPT-${y}${m}${day}-${randToken(4)}`;
+function makeReceiptNo(tz) {
+  // Dated by the school's local day, so it matches the day on the receipt.
+  const ymd = localDateString(new Date(), tz).replace(/-/g, "");
+  return `RCPT-${ymd}-${randToken(4)}`;
 }
 
 function normalizeExportType(v) {
@@ -192,6 +191,18 @@ async function feesAudit(req, { schoolId, action, targetType, targetId, metadata
 /* --------------------------------------
  * Strong date-range parsing for reports
  * -------------------------------------- */
+/** Like parseDateRange, but the days are the school's local days (audit M3). */
+async function parseSchoolDateRange(schoolId, from, to) {
+  if (!from || !to) throw Object.assign(new Error("from and to are required (YYYY-MM-DD)."), { status: 400 });
+  if (!isDateString(from) || !isDateString(to)) {
+    throw Object.assign(new Error("Invalid date format. Use YYYY-MM-DD."), { status: 400 });
+  }
+  if (from > to) throw Object.assign(new Error("from must be less than or equal to to."), { status: 400 });
+  const { timezone } = await getSchoolCalendar(schoolId);
+  const { from: fromDate, to: toDate } = localDayRange(from, to, timezone);
+  return { fromDate, toDate };
+}
+
 function parseDateRange(from, to) {
   if (!from || !to) {
     const e = new Error("from and to are required (YYYY-MM-DD).");
@@ -1306,7 +1317,7 @@ router.post(
             method: normalizedMethod,
             reference: reference ? String(reference) : null,
             receivedBy: req.user?.id || null,
-            receiptNo: makeReceiptNo(),
+            receiptNo: makeReceiptNo((await getSchoolCalendar(req.schoolId)).timezone),
             // keep both for compatibility
             receivedAt: new Date(),
             receiptIssuedAt: new Date(),
@@ -2029,7 +2040,7 @@ router.get(
   async (req, res) => {
     try {
       const { from, to, export: exportType } = req.query;
-      const { fromDate, toDate } = parseDateRange(from, to);
+      const { fromDate, toDate } = await parseSchoolDateRange(req.schoolId, from, to);
 
       const payments = await prisma.feePayment.findMany({
         where: {

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { confirmAction } from "@/lib/confirm-store";
+import GuardiansCard from "./GuardiansCard";
 
 const fullName = (s) => `${s?.firstName || ""} ${s?.lastName || ""}`.trim();
 
@@ -191,6 +192,8 @@ export default function StudentProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <GuardiansCard studentId={s.id} canEdit={role === "ADMIN"} />
 
       {/* Status & Additional Info */}
       <Card>

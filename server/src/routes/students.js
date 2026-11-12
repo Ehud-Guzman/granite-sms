@@ -5,6 +5,7 @@ import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
 import { loadSubscription, requireLimit, effectiveCap, capHit } from "../middleware/subscription.js";
 import { logAudit, actorCtx } from "../utils/audit.js";
+import { teacherClassIds } from "../utils/teacherScope.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -80,19 +81,6 @@ const pickStudentUpdate = (body) => {
 };
 
 
-/**
- * Classes a teacher may see: class teacher of, or teaches a subject in.
- * The same rule attendance and exams use (audit M7: this list used only
- * class-teacher links, so subject teachers saw an empty "My Students").
- */
-async function teacherClassIds(schoolId, teacherId) {
-  if (!teacherId) return [];
-  const [ct, ta] = await Promise.all([
-    prisma.classTeacher.findMany({ where: { schoolId, teacherId: String(teacherId), isActive: true }, select: { classId: true } }),
-    prisma.teachingAssignment.findMany({ where: { schoolId, teacherId: String(teacherId), isActive: true }, select: { classId: true } }),
-  ]);
-  return [...new Set([...ct, ...ta].map((r) => r.classId))];
-}
 
 // --------------------
 // STUDENTS

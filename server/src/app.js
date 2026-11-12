@@ -21,6 +21,7 @@ import settingsRoutes from "./routes/settings.js";
 import subjectRoutes from "./routes/subjects.js";
 import assignmentRoutes from "./routes/assignments.js";
 import classTeacherRoutes from "./routes/classTeachers.js";
+import guardianRoutes from "./routes/guardians.js";
 
 // Feature modules
 import attendanceRoutes from "./modules/attendance/attendance.routes.js";
@@ -218,6 +219,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/subjects", subjectRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/class-teachers", classTeacherRoutes);
+app.use("/api/guardians", guardianRoutes);
 
 // Features
 app.use("/api/attendance", attendanceRoutes);

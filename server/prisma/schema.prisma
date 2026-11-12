@@ -133,6 +133,7 @@ model Student {
 
   feeInvoices       FeeInvoice[]
   attendanceRecords AttendanceRecord[]
+  guardianLinks     StudentGuardian[]
 
   @@unique([schoolId, admissionNo])
   @@index([schoolId, classId])
@@ -327,9 +328,56 @@ model School {
   termDates           TermDate[]
   documentCounters    DocumentCounter[]
   logo                SchoolLogo?
+  guardians           Guardian[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
+}
+
+// A parent or guardian. One record per person per school (keyed by phone),
+// linked to each of their children through StudentGuardian, so siblings
+// share it. Feature 1 of the audit's missing-features list.
+model Guardian {
+  id         String  @id @default(cuid())
+  schoolId   String
+  firstName  String
+  lastName   String
+  // Stored as +2547XXXXXXXX (see utils/phone.js).
+  phone      String
+  email      String?
+  nationalId String? @db.VarChar(20)
+  occupation String?
+
+  school   School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  students StudentGuardian[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, phone])
+  @@index([schoolId, lastName])
+}
+
+model StudentGuardian {
+  id         String @id @default(cuid())
+  schoolId   String
+  studentId  String
+  guardianId String
+
+  // MOTHER | FATHER | GUARDIAN | SPONSOR | OTHER
+  relationship String  @db.VarChar(20)
+  // The first person to call; one per student.
+  isPrimary    Boolean @default(false)
+  // Gets fee, attendance and results messages once SMS is added.
+  receivesSms  Boolean @default(true)
+
+  student  Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, guardianId])
+  @@index([schoolId, guardianId])
 }
 
 // The school's logo, stored in the database so it survives redeploys (the

@@ -6,7 +6,12 @@ const Table = React.forwardRef(({ className, ...props }, ref) => (
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
+      // whitespace-nowrap: without it, a cell like "Grade 4" wraps onto two
+      // lines on a narrow screen instead of the table growing past its
+      // container, so the overflow-x-auto scroll wrapper above never
+      // triggers and every data table looks cramped on mobile. A cell that
+      // genuinely wants wrapping can override with its own whitespace-normal.
+      className={cn("w-full caption-bottom text-sm whitespace-nowrap", className)}
       {...props} />
   </div>
 ))

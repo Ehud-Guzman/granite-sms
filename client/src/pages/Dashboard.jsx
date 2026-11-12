@@ -5,16 +5,32 @@ import { useQuery } from "@tanstack/react-query";
 import { me } from "../api/auth.api";
 import { getDashboardSummary, getDashboardActivity } from "@/api/dashboard.api";
 import { api } from "@/api/axios";
-import CurrentPlanPanel from "@/components/subscription/CurrentPlanPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { LoadingState, ErrorState, EmptyState, PageSkeleton } from "@/components/ui/state-blocks";
 
+// Roles with no name profile of their own (no Teacher/Student row), so there
+// is nowhere to read a real name from. Shown instead of the raw email, which
+// used to be the fallback and read like unfinished debug text on the
+// dashboard's own welcome headline.
+const ROLE_LABELS = {
+  SYSTEM_ADMIN: "Platform Owner",
+  ADMIN: "Admin",
+  BURSAR: "Bursar",
+  TEACHER: "Teacher",
+  STUDENT: "Student",
+};
+
 function fmtName(user) {
   const full = `${user?.firstName || ""} ${user?.lastName || ""}`.trim();
-  return full || user?.email || user?.id || "—";
+  if (full) return full;
+  // /api/me already joins the Teacher/Student profile's real name onto the
+  // user object (see server/src/app.js) — this just wasn't being read here.
+  if (user?.teacher?.name) return user.teacher.name;
+  if (user?.student?.name) return user.student.name;
+  return ROLE_LABELS[String(user?.role || "").toUpperCase()] || user?.email || user?.id || "—";
 }
 
 function money(n) {
@@ -213,10 +229,11 @@ export default function Dashboard() {
     enabled: !!user,
   });
 
-  // ✅ Current Plan panel (backend already exists)
-  // Works for tenant users. For SYSTEM_ADMIN it only works if a school context is selected.
+  // Current Plan panel. Billing is an Admin/Platform-Owner concern — the server
+  // 403s this for Teacher/Bursar/Student, so only fetch it for roles that can
+  // actually read it. For SYSTEM_ADMIN it only works once a school context is selected.
   const hasTenantHeader = !!localStorage.getItem("schoolId");
-  const canLoadPlan = !!user && (!isGovOnly || hasTenantHeader);
+  const canLoadPlan = !!user && (roleUpper === "ADMIN" || (isGovOnly && hasTenantHeader));
 
   const planQ = useQuery({
     queryKey: ["subscriptionOverview", isGovOnly ? localStorage.getItem("schoolId") || "NO_SCOPE" : "TENANT"],
@@ -362,12 +379,19 @@ export default function Dashboard() {
                 </div>
                 <Separator className="my-3" />
                 <div className="text-xs text-muted-foreground">
-                  {isGovOnly ? "Keep tenants clean. Keep logs tighter." : "You're basically running a SaaS now. Keep it tight."}
+                  {isGovOnly
+                    ? "Every school's data stays isolated, with a full audit trail across the platform."
+                    : "Attendance, fees and results stay in sync automatically — nothing to reconcile by hand."}
                 </div>
               </div>
 
-              {/* Current Plan card - Simplified but kept all info */}
-              {isGovOnly || !sub ? (
+              {/* Current Plan card: billing is an Admin/Platform-Owner concern.
+                  The server already 403s this query for Teacher/Bursar/Student
+                  (their `sub` never loads), so gating on `!sub` instead of role
+                  used to show them a confusing "couldn't load subscription"
+                  card, while a normal Admin whose plan DID load saw nothing at
+                  all — the one role this card is for never saw it. */}
+              {isGovOnly || roleUpper === "ADMIN" ? (
                 <div className="rounded-lg border bg-background p-4">
                   <div className="flex items-start justify-between mb-2">
                     <div>
@@ -462,9 +486,6 @@ export default function Dashboard() {
             </Card>
             )}
           </div>
-
-          {/* Current Plan Panel for tenant users */}
-          {!isGovOnly && <CurrentPlanPanel compact />}
 
           {/* Quick Actions - Only for non-Gov */}
           {!isGovOnly && (

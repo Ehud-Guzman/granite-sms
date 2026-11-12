@@ -88,6 +88,10 @@ model Class {
 
   isActive Boolean @default(true) // ✅ add this
 
+  // Grading used for this class's results; null = the school default.
+  gradeScaleId String?
+  gradeScale   GradeScale? @relation(fields: [gradeScaleId], references: [id], onDelete: SetNull)
+
   students Student[]
 
   classTeacherOf     ClassTeacher[]
@@ -165,6 +169,8 @@ model SchoolSettings {
   currentAcademicYear String?
   // The term the school is in now: every screen defaults its term filter to it.
   currentTerm         Term?
+  // Grading for classes that don't name their own (null = built-in A-E).
+  defaultGradeScaleId String?
   // IANA zone used for "today", day boundaries in reports and receipt dates.
   timezone            String  @default("Africa/Nairobi")
   term1Label          String  @default("Term 1")
@@ -924,14 +930,18 @@ model GradeScale {
   id       String @id @default(cuid())
   schoolId String
 
-  name   String
-  status GradeScaleStatus @default(ACTIVE)
+  name      String
+  status    GradeScaleStatus @default(ACTIVE)
+  // How the overall grade is found: "AVERAGE" = band of the average mark;
+  // "POINTS" = band of the mean subject points (KCSE practice).
+  overallBy String           @default("AVERAGE")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  school School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  bands  GradeBand[]
+  school  School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  bands   GradeBand[]
+  classes Class[]
 
   @@unique([schoolId, name])
   @@index([schoolId, status])

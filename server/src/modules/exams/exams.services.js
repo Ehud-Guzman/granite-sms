@@ -9,7 +9,7 @@ import {
 } from "./exams.validators.js";
 import { buildAuditPayload } from "./exams.utils.js";
 import { examTypeSelect, examSessionSelect, markSheetSelect } from "./exams.selectors.js";
-import { gradeFromScore, DEFAULT_GRADE_BANDS } from "./exams.grades.js";
+import { makeGrader, graderForClass } from "./exams.grades.js";
 import { prisma } from "../../lib/prisma.js";
 import { cleanStr } from "../../utils/validate.js";
 
@@ -73,15 +73,18 @@ async function getTeacherAssignedClassIds({ schoolId, teacherId }) {
 
 // Shared by getClassResults and getStudentResults so total/average/grade
 // math is computed in exactly one place.
-function summarizeSubjectScores(subjectScores) {
+// Uses the class's grading scale (audit H8); the built-in A-E when none is set.
+function summarizeSubjectScores(subjectScores, grader = makeGrader(null)) {
   const validScores = subjectScores.filter((s) => s.score != null).map((s) => Number(s.score));
   const total = validScores.reduce((a, b) => a + b, 0);
   const average = validScores.length ? total / validScores.length : 0;
+  const overall = grader.overall(validScores);
 
   return {
     total,
     average: Number(average.toFixed(2)),
-    overallGrade: validScores.length ? gradeFromScore(Math.round(average)) : null,
+    overallGrade: overall.grade,
+    meanPoints: overall.meanPoints,
     missingCount: subjectScores.filter((s) => s.score == null).length,
   };
 }
@@ -857,6 +860,7 @@ function rankResults(results) {
  * Shape: { subjects: [{id,name}], results: [{ student, subjectScores, total, average, overallGrade, missingCount, position }] }
  */
 async function computeLiveResults(db, { schoolId, session }) {
+  const grader = await graderForClass(db, { schoolId, classId: session.classId });
   const [sheets, classStudents, marks] = await Promise.all([
     db.markSheet.findMany({
       where: { schoolId, examSessionId: session.id },
@@ -895,15 +899,14 @@ async function computeLiveResults(db, { schoolId, session }) {
   }
 
   const results = [...students.values()].map((student) => {
-    const subjectScores = subjects.map((sub) => ({
-      subjectId: sub.id,
-      subjectName: sub.name,
-      score: scoreOf.get(`${student.id}:${sub.id}`) ?? null,
-    }));
-    return { student, subjectScores, ...summarizeSubjectScores(subjectScores) };
+    const subjectScores = subjects.map((sub) => {
+      const score = scoreOf.get(`${student.id}:${sub.id}`) ?? null;
+      return { subjectId: sub.id, subjectName: sub.name, score, grade: grader.grade(score)?.label ?? null };
+    });
+    return { student, subjectScores, ...summarizeSubjectScores(subjectScores, grader) };
   });
 
-  return { subjects, results: rankResults(results) };
+  return { subjects, results: rankResults(results), grader, gradeScale: grader.scale };
 }
 
 /** The frozen copy of a published session, in the same shape as live results; null if none. */
@@ -925,7 +928,7 @@ async function readFrozenResults({ schoolId, sessionId, studentId = null }) {
           missingCount: true,
           studentName: true,
           admissionNo: true,
-          subjectResults: { select: { subjectId: true, subjectName: true, score: true } },
+          subjectResults: { select: { subjectId: true, subjectName: true, score: true, grade: true } },
         },
       },
     },
@@ -945,7 +948,7 @@ async function readFrozenResults({ schoolId, sessionId, studentId = null }) {
     return {
       student: { id: r.studentId, admissionNo: r.admissionNo, firstName: firstName || "", lastName: rest.join(" ") },
       subjectScores: r.subjectResults
-        .map((sr) => ({ subjectId: sr.subjectId, subjectName: sr.subjectName || "NO_SUBJECT_NAME", score: sr.score }))
+        .map((sr) => ({ subjectId: sr.subjectId, subjectName: sr.subjectName || "NO_SUBJECT_NAME", score: sr.score, grade: sr.grade }))
         .sort((a, b) => a.subjectName.localeCompare(b.subjectName)),
       total: r.totalScore,
       average: r.averageScore,
@@ -980,7 +983,7 @@ export async function getClassResults(req) {
   }
 
   const live = await computeLiveResults(prisma, { schoolId, session });
-  return { session, subjects: live.subjects, results: live.results, frozen: false };
+  return { session, subjects: live.subjects, results: live.results, gradeScale: live.gradeScale, frozen: false };
 }
 
 /**
@@ -1042,12 +1045,13 @@ export async function getStudentResults(req) {
   const mine = live.results.find((x) => x.student.id === studentId);
   const subjectScores = mine
     ? mine.subjectScores
-    : live.subjects.map((s) => ({ subjectId: s.id, subjectName: s.name, score: null }));
+    : live.subjects.map((s) => ({ subjectId: s.id, subjectName: s.name, score: null, grade: null }));
   return {
     session,
     student: studentOut,
     subjectScores,
-    ...summarizeSubjectScores(subjectScores),
+    ...summarizeSubjectScores(subjectScores, live.grader),
+    gradeScale: live.gradeScale,
     position: mine?.position ?? null,
     outOf: live.results.length,
     frozen: false,
@@ -1063,7 +1067,13 @@ export async function writeResultSnapshot(tx, { schoolId, session, publishedById
   const live = await computeLiveResults(tx, { schoolId, session });
   await tx.resultPublish.deleteMany({ where: { schoolId, examSessionId: session.id } });
   const publish = await tx.resultPublish.create({
-    data: { schoolId, examSessionId: session.id, publishedById, ...(publishedAt ? { publishedAt } : {}) },
+    data: {
+      schoolId,
+      examSessionId: session.id,
+      publishedById,
+      gradeScaleId: live.grader.scale.id,
+      ...(publishedAt ? { publishedAt } : {}),
+    },
   });
   for (const r of live.results) {
     await tx.studentResult.create({
@@ -1084,7 +1094,7 @@ export async function writeResultSnapshot(tx, { schoolId, session, publishedById
             subjectId: sc.subjectId,
             subjectName: sc.subjectName,
             score: sc.score,
-            grade: sc.score == null ? null : gradeFromScore(Math.round(Number(sc.score))),
+            grade: sc.grade,
           })),
         },
       },

@@ -10,6 +10,7 @@ import {
 import { buildAuditPayload } from "./exams.utils.js";
 import { examTypeSelect, examSessionSelect, markSheetSelect } from "./exams.selectors.js";
 import { makeGrader, graderForClass } from "./exams.grades.js";
+import { notifyResults } from "../sms/notify.js";
 import { prisma } from "../../lib/prisma.js";
 import { cleanStr } from "../../utils/validate.js";
 
@@ -1145,6 +1146,9 @@ export async function publishResults(req) {
     actorUserId,
     after: { status: updated.status },
   }));
+
+  // "Results are out" to parents, if the school has it on (never blocks publishing).
+  notifyResults({ schoolId, sessionId, actorId: actorUserId });
 
   return updated;
 }

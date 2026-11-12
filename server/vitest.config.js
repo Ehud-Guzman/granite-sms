@@ -27,6 +27,7 @@ export default defineConfig({
       ALLOW_IMPERSONATION: "false",
       ALLOW_BOOTSTRAP: "false",
       ALLOWED_ORIGINS: "",
+      SMS_PROVIDER: "",
     },
   },
 });

@@ -21,6 +21,7 @@ import {
   accountSummary,
   reversePayment,
 } from "../modules/fees/ledger.js";
+import { notifyPayment } from "../modules/sms/notify.js";
 
 
 const router = Router();
@@ -1477,6 +1478,8 @@ router.post(
           creditAfter: result.account.credit,
         },
       });
+      // Receipt SMS to the parent, if the school has it on (never blocks the payment).
+      if (!result.idempotent) notifyPayment({ schoolId: req.schoolId, paymentId: result.payment.id, actorId: req.user?.id });
 
       return res.status(201).json(result);
     } catch (err) {

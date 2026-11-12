@@ -43,6 +43,10 @@ function shutdown(signal) {
     process.exit(0);
   });
 }
+// Retry queued / failed SMS every minute (messages are normally sent at once).
+const { flushOutbox } = await import("./src/modules/sms/sms.js");
+setInterval(() => flushOutbox().catch(() => {}), 60_000).unref();
+
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("unhandledRejection", (reason) => console.error("UNHANDLED REJECTION:", reason));

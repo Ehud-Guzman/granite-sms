@@ -23,6 +23,7 @@ import assignmentRoutes from "./routes/assignments.js";
 import classTeacherRoutes from "./routes/classTeachers.js";
 import guardianRoutes from "./routes/guardians.js";
 import gradeScaleRoutes from "./routes/gradeScales.js";
+import smsRoutes from "./routes/sms.js";
 import studentImportRoutes from "./routes/studentImport.js";
 
 // Feature modules
@@ -226,6 +227,7 @@ app.use("/api/assignments", assignmentRoutes);
 app.use("/api/class-teachers", classTeacherRoutes);
 app.use("/api/guardians", guardianRoutes);
 app.use("/api/grade-scales", gradeScaleRoutes);
+app.use("/api/sms", smsRoutes);
 
 // Features
 app.use("/api/attendance", attendanceRoutes);

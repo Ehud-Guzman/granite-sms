@@ -24,6 +24,7 @@ import {
   assertMinAbsences,
 } from "./attendance.validators.js";
 import { getSchoolCalendar, termForDate } from "../../utils/schoolTime.js";
+import { notifyAbsences } from "../sms/notify.js";
 
 // Teachers can fill in a missed register for up to this many days back;
 // older ones need an admin (audit M2).
@@ -191,6 +192,8 @@ export async function submit(req, res) {
     if (!editorUserId) return res.status(401).json({ message: "Missing user id in token" });
 
     const updated = await submitSession({ schoolId, sessionId, editorUserId, role });
+    // Absence alerts to parents, if the school has them on (never blocks the submit).
+    notifyAbsences({ schoolId, sessionId, actorId: editorUserId });
     return res.json(updated);
   } catch (err) {
     return res.status(err.statusCode || 400).json({ message: err.message });

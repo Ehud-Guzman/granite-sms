@@ -173,11 +173,20 @@ model SchoolSettings {
   currentTerm         Term?
   // Grading for classes that don't name their own (null = built-in A-E).
   defaultGradeScaleId String?
+
+  // SMS to parents (missing feature 2). Everything is off until the school
+  // turns it on, and nothing is sent until a provider is configured.
+  smsEnabled             Boolean @default(false)
+  smsOnPayment           Boolean @default(true)
+  smsOnAbsence           Boolean @default(false)
+  smsOnResults           Boolean @default(true)
+  // Appended to fee reminders, e.g. "Pay via M-Pesa Paybill 123456, account = admission no."
+  smsPaymentInstructions String?
   // IANA zone used for "today", day boundaries in reports and receipt dates.
-  timezone            String  @default("Africa/Nairobi")
-  term1Label          String  @default("Term 1")
-  term2Label          String  @default("Term 2")
-  term3Label          String  @default("Term 3")
+  timezone               String  @default("Africa/Nairobi")
+  term1Label             String  @default("Term 1")
+  term2Label             String  @default("Term 2")
+  term3Label             String  @default("Term 3")
 
   // Branding
   brandLogoUrl        String?
@@ -350,6 +359,7 @@ model School {
   logo                SchoolLogo?
   guardians           Guardian[]
   reportComments      ReportCardComment[]
+  smsMessages         SmsMessage[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
@@ -399,6 +409,38 @@ model StudentGuardian {
 
   @@unique([studentId, guardianId])
   @@index([schoolId, guardianId])
+}
+
+enum SmsStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// Every SMS the system sends or would send: the outbox and its history.
+model SmsMessage {
+  id          String    @id @default(cuid())
+  schoolId    String
+  to          String // +2547XXXXXXXX
+  body        String
+  // PAYMENT | ABSENCE | RESULTS | FEE_REMINDER | BROADCAST
+  kind        String    @db.VarChar(20)
+  status      SmsStatus @default(QUEUED)
+  attempts    Int       @default(0)
+  error       String?
+  providerId  String?
+  studentId   String?
+  guardianId  String?
+  createdById String?
+
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, createdAt])
+  @@index([status, createdAt])
 }
 
 // The school's logo, stored in the database so it survives redeploys (the

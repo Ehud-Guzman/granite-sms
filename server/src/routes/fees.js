@@ -1,6 +1,5 @@
 // src/routes/fees.js
 import { Router } from "express";
-import crypto from "crypto";
 import PDFDocument from "pdfkit";
 import { Term, InvoiceStatus } from "@prisma/client";
 
@@ -140,7 +139,7 @@ async function createInvoiceForStudent(client, { schoolId, studentId, classId, y
       classId: String(classId),
       year: Number(year),
       term: String(term),
-      invoiceNo: makeInvoiceNo(),
+      invoiceNo: await nextDocumentNo(client, { schoolId, kind: "INVOICE", year: Number(year), prefix: "INV" }),
       status: "ISSUED",
       total,
       paid: 0,
@@ -156,20 +155,36 @@ async function createInvoiceForStudent(client, { schoolId, studentId, classId, y
   });
 }
 
-function randToken(bytes) {
-  // Uppercase base36-ish token from CSPRNG bytes (collisions still guarded by a unique index).
-  return crypto.randomBytes(bytes).toString("hex").toUpperCase();
+
+/**
+ * Next number in a per-school, per-year sequence, e.g. RCPT-2026-000123.
+ * One atomic statement (INSERT ... ON CONFLICT ... RETURNING), and it runs
+ * inside the caller's transaction, so a document that fails to save gives
+ * its number back and the sequence has no gaps (audit M6).
+ */
+async function nextDocumentNo(tx, { schoolId, kind, year, prefix }) {
+  const rows = await tx.$queryRaw`
+    INSERT INTO "DocumentCounter" ("schoolId", kind, year, next)
+    VALUES (${String(schoolId)}, ${kind}, ${Number(year)}, 1)
+    ON CONFLICT ("schoolId", kind, year) DO UPDATE SET next = "DocumentCounter".next + 1
+    RETURNING next`;
+  return `${prefix}-${year}-${String(rows[0].next).padStart(6, "0")}`;
 }
 
-function makeInvoiceNo() {
-  const y = new Date().getFullYear();
-  return `INV-${y}-${randToken(3)}`;
+/** One invoice and its number, in one transaction (a failed save frees the number). */
+function createInvoice(args) {
+  return prisma.$transaction((tx) => createInvoiceForStudent(tx, args));
 }
 
-function makeReceiptNo(tz) {
-  // Dated by the school's local day, so it matches the day on the receipt.
-  const ymd = localDateString(new Date(), tz).replace(/-/g, "");
-  return `RCPT-${ymd}-${randToken(4)}`;
+/** Display names for staff user ids: teacher name, else email. */
+async function staffNames(schoolId, ids) {
+  const list = [...new Set(ids.filter(Boolean).map(String))];
+  if (!list.length) return new Map();
+  const users = await prisma.user.findMany({
+    where: { id: { in: list }, schoolId },
+    select: { id: true, email: true, teacher: { select: { firstName: true, lastName: true } } },
+  });
+  return new Map(users.map((u) => [u.id, u.teacher ? `${u.teacher.firstName} ${u.teacher.lastName}`.trim() : u.email]));
 }
 
 function normalizeExportType(v) {
@@ -824,7 +839,7 @@ router.post(
     }
 
     try {
-      const invoice = await createInvoiceForStudent(prisma, {
+      const invoice = await createInvoice({
         schoolId: req.schoolId,
         studentId,
         classId: plan.classId,
@@ -922,7 +937,7 @@ router.post(
         }
 
         try {
-          const invoice = await createInvoiceForStudent(prisma, {
+          const invoice = await createInvoice({
             schoolId: req.schoolId,
             studentId: student.id,
             classId,
@@ -1169,13 +1184,6 @@ router.get(
       { total: 0, discount: 0, paid: 0, balance: 0, count: 0 }
     );
 
-    await feesAudit(req, {
-      action: "FEES_SUMMARY_VIEWED",
-      targetType: "STUDENT",
-      targetId: studentId,
-      metadata: { year: year ?? null, term: term || null },
-    });
-
     return res.json({
       studentId: String(studentId),
       year: year ?? null,
@@ -1287,13 +1295,6 @@ router.get(
         { totalBilled: 0, totalDiscount: 0, totalPaid: 0, totalBalance: 0, invoiceCount: 0 }
       );
 
-      await feesAudit(req, {
-        action: "FEES_STATEMENT_VIEWED",
-        targetType: "STUDENT",
-        targetId: studentId,
-        metadata: { year: year ?? null, term: term || null },
-      });
-
       return res.json({
         student,
         filters: { year: year ?? null, term: term || null },
@@ -1391,7 +1392,12 @@ router.post(
             method: normalizedMethod,
             reference: reference ? String(reference) : null,
             receivedBy: req.user?.id || null,
-            receiptNo: makeReceiptNo(timezone),
+            receiptNo: await nextDocumentNo(tx, {
+              schoolId: req.schoolId,
+              kind: "RECEIPT",
+              year: Number(localDateString(new Date(), timezone).slice(0, 4)),
+              prefix: "RCPT",
+            }),
             // keep both for compatibility
             receivedAt: new Date(),
             receiptIssuedAt: new Date(),
@@ -1723,6 +1729,7 @@ router.get("/payments/:id/receipt", requireRole("ADMIN", "BURSAR"), async (req, 
       targetType: "FEE_PAYMENT",
       targetId: id,
     });
+    const names = await staffNames(req.schoolId, [payment.receivedBy]);
 
     return res.json({
       receiptNo: payment.receiptNo,
@@ -1737,6 +1744,7 @@ router.get("/payments/:id/receipt", requireRole("ADMIN", "BURSAR"), async (req, 
         reference: payment.reference,
         receivedAt: payment.receivedAt,
         receivedBy: payment.receivedBy,
+        receivedByName: names.get(String(payment.receivedBy)) || null,
       },
       invoice: {
         id: payment.invoice.id,
@@ -1778,6 +1786,7 @@ router.get("/payments/:id/receipt.pdf", requireRole("ADMIN", "BURSAR"), async (r
       targetType: "FEE_PAYMENT",
       targetId: id,
     });
+    const pdfNames = await staffNames(req.schoolId, [payment.receivedBy]);
 
     const doc = new PDFDocument({ margin: 50 });
     res.setHeader("Content-Type", "application/pdf");
@@ -1821,7 +1830,7 @@ router.get("/payments/:id/receipt.pdf", requireRole("ADMIN", "BURSAR"), async (r
     doc.text(`Amount Paid: ${payment.amount}`);
     doc.text(`Payment Method: ${payment.method}`);
     if (payment.reference) doc.text(`Reference: ${payment.reference}`);
-    doc.text(`Received By: ${payment.receivedBy || "—"}`);
+    doc.text(`Received By: ${pdfNames.get(String(payment.receivedBy)) || "—"}`);
     doc.moveDown();
 
     doc.text(`Invoice Total: ${payment.invoice.total}`);

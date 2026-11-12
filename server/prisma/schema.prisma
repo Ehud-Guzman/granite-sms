@@ -325,6 +325,7 @@ model School {
   feePayments         FeePayment[]
   feeReversalRequests FeeReversalRequest[]
   termDates           TermDate[]
+  documentCounters    DocumentCounter[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
@@ -560,6 +561,20 @@ model FeePayment {
 // =====================
 // ATTENDANCE MODULE
 // =====================
+
+// Next sequential number per school, document kind and year (receipts and
+// invoices: RCPT-2026-000123). Taken inside the same transaction as the
+// document, so a failed payment doesn't leave a gap (audit M6).
+model DocumentCounter {
+  schoolId String
+  kind     String // "RECEIPT" | "INVOICE"
+  year     Int
+  next     Int    @default(0)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@id([schoolId, kind, year])
+}
 
 enum ReversalRequestStatus {
   PENDING

@@ -48,6 +48,7 @@ async function getUserDb(userId) {
       mustChangePassword: true,
       teacher: { select: { id: true, schoolId: true } },
       student: { select: { id: true, schoolId: true } },
+      guardian: { select: { id: true, schoolId: true } },
     },
   });
 
@@ -106,6 +107,7 @@ export async function tenantContext(req, res, next) {
       schoolId: userDb.schoolId ?? null,
       teacherId: userDb.teacher?.id ?? null,
       studentId: userDb.student?.id ?? null,
+      guardianId: userDb.guardian?.id ?? null,
       mustChangePassword: !!userDb.mustChangePassword,
     };
 
@@ -164,6 +166,9 @@ export async function tenantContext(req, res, next) {
     }
     if (userDb.student && userDb.student.schoolId !== school.id) {
       return res.status(403).json({ message: "Student profile mismatch (wrong school)" });
+    }
+    if (userDb.guardian && userDb.guardian.schoolId !== school.id) {
+      return res.status(403).json({ message: "Parent profile mismatch (wrong school)" });
     }
 
     req.schoolId = school.id;

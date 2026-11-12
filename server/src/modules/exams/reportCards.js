@@ -10,6 +10,7 @@ import { prisma } from "../../lib/prisma.js";
 import { graderForClass } from "./exams.grades.js";
 import { assertCuid, assertInt, assertTerm } from "./exams.validators.js";
 import { teacherClassIds } from "../../utils/teacherScope.js";
+import { isSelfService, canSeeOwnLearner } from "../../utils/learnerAccess.js";
 
 const httpError = (status, message) => Object.assign(new Error(message), { statusCode: status });
 
@@ -178,8 +179,8 @@ export async function getStudentReportCard(req) {
   const year = assertInt("year", req.query?.year);
   const term = String(req.query?.term || "");
   assertTerm(term);
-  if (req.user.role === "STUDENT" && req.user.studentId !== studentId) {
-    throw httpError(403, "Students can only view their own report card.");
+  if (isSelfService(req) && !(await canSeeOwnLearner(req, studentId))) {
+    throw httpError(403, "You can only view your own report card.");
   }
 
   const any = await prisma.studentResult.findFirst({

@@ -27,6 +27,8 @@ export const NAV_BY_ROLE = {
     { label: "My Students", to: "/app/students" },
   ],
 
+  PARENT: [{ label: "Home", to: "/app/dashboard" }],
+
   STUDENT: [
     { label: "Dashboard", to: "/app/dashboard" },
     { label: "Results", to: "/app/results" },

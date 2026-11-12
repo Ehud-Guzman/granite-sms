@@ -14,6 +14,8 @@ enum Role {
   TEACHER
   BURSAR
   STUDENT
+  // A parent or guardian's own login (Guardian.userId): sees only their children.
+  PARENT
 }
 
 model User {
@@ -28,8 +30,9 @@ model User {
   school   School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
 
   // Relations
-  teacher Teacher?
-  student Student?
+  teacher  Teacher?
+  student  Student?
+  guardian Guardian?
 
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -381,6 +384,10 @@ model Guardian {
   email      String?
   nationalId String? @db.VarChar(20)
   occupation String?
+
+  // Their parent-portal login, if the school gave them one.
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   school   School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   students StudentGuardian[]

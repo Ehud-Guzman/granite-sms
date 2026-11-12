@@ -11,6 +11,7 @@ import { buildAuditPayload } from "./exams.utils.js";
 import { examTypeSelect, examSessionSelect, markSheetSelect } from "./exams.selectors.js";
 import { makeGrader, graderForClass } from "./exams.grades.js";
 import { notifyResults } from "../sms/notify.js";
+import { isSelfService, canSeeOwnLearner } from "../../utils/learnerAccess.js";
 import { prisma } from "../../lib/prisma.js";
 import { cleanStr } from "../../utils/validate.js";
 
@@ -997,14 +998,14 @@ export async function getStudentResults(req) {
   const sessionId = assertCuid("sessionId", req.params?.id);
   const studentId = assertCuid("studentId", req.params?.studentId);
 
-  if (req.user.role === "STUDENT" && req.user.studentId !== studentId) {
+  if (isSelfService(req) && !(await canSeeOwnLearner(req, studentId))) {
     throw Object.assign(new Error("Students can only view their own results."), { statusCode: 403 });
   }
 
   const session = await prisma.examSession.findFirst({ where: { id: sessionId, schoolId }, select: sessionSummarySelect });
   if (!session) throw Object.assign(new Error("Exam session not found."), { statusCode: 404 });
 
-  if (req.user.role === "STUDENT" && session.status !== ExamSessionStatus.PUBLISHED) {
+  if (isSelfService(req) && session.status !== ExamSessionStatus.PUBLISHED) {
     throw Object.assign(new Error("These results have not been published yet."), { statusCode: 403 });
   }
 

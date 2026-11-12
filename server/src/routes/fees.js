@@ -23,6 +23,7 @@ import {
   nextDocumentNo,
 } from "../modules/fees/ledger.js";
 import { notifyPayment } from "../modules/sms/notify.js";
+import { isSelfService, canSeeOwnLearner } from "../utils/learnerAccess.js";
 
 
 const router = Router();
@@ -1155,20 +1156,15 @@ router.post(
 
 router.get(
   "/students/:studentId/summary",
-  requireRole("ADMIN", "BURSAR", "STUDENT"),
+  requireRole("ADMIN", "BURSAR", "STUDENT", "PARENT"),
   async (req, res) => {
     const { studentId } = req.params;
     const year = toInt(req.query?.year, null);
     const term = req.query?.term ? String(req.query.term) : null;
 
-    if (req.role === "STUDENT") {
-      const me = await prisma.student.findFirst({
-        where: { userId: req.user.id, schoolId: req.schoolId },
-        select: { id: true },
-      });
-      if (!me || me.id !== String(studentId)) {
-        return res.status(403).json({ message: "Students can only view their own fee summary." });
-      }
+    // Learners see themselves; parents see their own children.
+    if (isSelfService(req) && !(await canSeeOwnLearner(req, studentId))) {
+      return res.status(403).json({ message: "You can only view your own fee summary." });
     }
 
     const student = await prisma.student.findFirst({
@@ -1213,22 +1209,15 @@ router.get(
 
 router.get(
   "/students/:studentId/statement",
-  requireRole("ADMIN", "BURSAR", "STUDENT"),
+  requireRole("ADMIN", "BURSAR", "STUDENT", "PARENT"),
   async (req, res) => {
     try {
       const { studentId } = req.params;
       const year = toInt(req.query?.year, null);
       const term = req.query?.term ? String(req.query.term) : null;
 
-      if (req.role === "STUDENT") {
-        const me = await prisma.student.findFirst({
-          where: { userId: req.user.id, schoolId: req.schoolId },
-          select: { id: true },
-        });
-
-        if (!me || me.id !== String(studentId)) {
-          return res.status(403).json({ message: "Students can only view their own statement." });
-        }
+      if (isSelfService(req) && !(await canSeeOwnLearner(req, studentId))) {
+        return res.status(403).json({ message: "You can only view your own statement." });
       }
 
       const student = await prisma.student.findFirst({

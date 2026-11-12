@@ -125,7 +125,7 @@ router.post(
 router.get("/report-cards", requireRole("ADMIN", "TEACHER"), requireEntitlement("EXAMS_READ"), ctrl.getClassReportCards);
 router.get(
   "/report-cards/students/:studentId",
-  requireRole("ADMIN", "TEACHER", "STUDENT"),
+  requireRole("ADMIN", "TEACHER", "STUDENT", "PARENT"),
   requireEntitlement("EXAMS_READ"),
   ctrl.getStudentReportCard
 );
@@ -143,7 +143,7 @@ router.get(
 
 router.get(
   "/sessions/:id/results/students/:studentId",
-  requireRole("ADMIN", "TEACHER", "STUDENT"),
+  requireRole("ADMIN", "TEACHER", "STUDENT", "PARENT"),
   requireEntitlement("EXAMS_READ"),
   ctrl.getStudentResults
 );

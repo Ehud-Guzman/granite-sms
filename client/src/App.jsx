@@ -10,7 +10,8 @@ import RoleGuard from "./guards/RoleGuard.jsx";
 import SubscriptionBlockerProvider from "@/components/subscription/SubscriptionBlockerProvider";
 
 const Login = lazy(() => import("./pages/Login.jsx"));
-const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const HomeRoute = lazy(() => import("./features/portal/HomeRoute.jsx"));
+const PortalStatementPage = lazy(() => import("./features/portal/PortalStatementPage.jsx"));
 const Placeholder = lazy(() => import("./pages/Placeholder.jsx"));
 
 // Students
@@ -73,6 +74,7 @@ const ROLE = {
   TEACHER: "TEACHER",
   BURSAR: "BURSAR",
   STUDENT: "STUDENT",
+  PARENT: "PARENT",
 };
 
 const R = ROLE;
@@ -134,7 +136,23 @@ export default function App() {
         >
           <Route index element={<Navigate to="dashboard" replace />} />
 
-          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="dashboard" element={<HomeRoute />} />
+          <Route
+            path="portal/:studentId/statement"
+            element={
+              <RoleGuard allow={[R.STUDENT, R.PARENT]}>
+                <PortalStatementPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="portal/:studentId/report-card"
+            element={
+              <RoleGuard allow={[R.STUDENT, R.PARENT]}>
+                <ReportCardsPage />
+              </RoleGuard>
+            }
+          />
 
           {/* Students */}
           <Route

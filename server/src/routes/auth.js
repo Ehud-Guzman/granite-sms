@@ -9,6 +9,7 @@ import { sessionProblem } from "../middleware/session.js";
 import { logAudit } from "../utils/audit.js";
 import { upper } from "../utils/validate.js";
 import { isDemo, DEMO_ACCOUNTS } from "../config/demo.js";
+import { normalizePhone } from "../utils/phone.js";
 
 const router = Router();
 
@@ -160,7 +161,10 @@ router.post("/login", async (req, res) => {
     const MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS || 10);
     const LOCK_MINUTES = Number(process.env.AUTH_LOCK_MINUTES || 15);
 
-    const email = cleanEmail(req.body?.email);
+    // Parents may sign in with their phone number: their login id is the
+    // number in +2547... form (see POST /api/guardians/:id/login).
+    const rawLogin = String(req.body?.email || "").trim();
+    const email = rawLogin.includes("@") ? cleanEmail(rawLogin) : normalizePhone(rawLogin) || cleanEmail(rawLogin);
     const password = String(req.body?.password || "");
     const schoolKey = normalizeId(req.body?.schoolId); // may be id or code (optional)
 

@@ -61,6 +61,17 @@ export default function GuardiansCard({ studentId, canEdit }) {
     onError: fail,
   });
 
+  // A parent portal login: shown once here (and texted if the school has SMS on).
+  const [issued, setIssued] = useState(null);
+  const loginMut = useMutation({
+    mutationFn: ({ guardianId, sendSms }) => api.post(`/api/guardians/${guardianId}/login`, { sendSms }).then((r) => r.data),
+    onSuccess: (d) => {
+      setIssued(d);
+      qc.invalidateQueries({ queryKey: key });
+    },
+    onError: fail,
+  });
+
   const guardians = q.data || [];
 
   return (
@@ -107,6 +118,23 @@ export default function GuardiansCard({ studentId, canEdit }) {
               </div>
               {canEdit && (
                 <div className="flex gap-2 shrink-0">
+                  {!g.guardian.userId && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={loginMut.isPending}
+                      onClick={async () => {
+                        const sendSms = await confirmAction({
+                          title: "Create a parent login?",
+                          description: `${g.guardian.firstName} will sign in with ${g.guardian.email || g.guardian.phone} and a temporary password. Text the password to ${g.guardian.phone}? (Choose Cancel to only show it here.)`,
+                          confirmLabel: "Create and text it",
+                        });
+                        loginMut.mutate({ guardianId: g.guardian.id, sendSms });
+                      }}
+                    >
+                      Create parent login
+                    </Button>
+                  )}
                   {!g.isPrimary && (
                     <Button size="sm" variant="outline" disabled={primaryMut.isPending} onClick={() => primaryMut.mutate(g.linkId)}>
                       <Star className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
@@ -134,6 +162,24 @@ export default function GuardiansCard({ studentId, canEdit }) {
               )}
             </div>
           ))
+        )}
+
+        {issued && (
+          <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-sm space-y-1">
+            <div className="font-medium">Parent login created</div>
+            <div>
+              Sign in with: <b>{issued.loginId}</b>
+            </div>
+            <div>
+              Temporary password: <code className="bg-muted px-1 rounded">{issued.tempPassword}</code>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {issued.smsQueued ? "Also sent by SMS. " : ""}It is shown only once; they will be asked to change it.
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setIssued(null)}>
+              Done
+            </Button>
+          </div>
         )}
 
         {adding && (

@@ -3,6 +3,7 @@
 // Staff pick a class; learners see their own card.
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { api } from "@/api/axios";
@@ -138,8 +139,10 @@ export default function ReportCardsPage() {
   const qc = useQueryClient();
   const meQ = useMe();
   const role = meQ.data?.user?.role;
-  const myStudentId = meQ.data?.user?.studentId;
-  const isStudent = role === "STUDENT";
+  // Learners see their own card; parents the child in the URL (/app/portal/:studentId/report-card).
+  const { studentId: paramStudentId } = useParams();
+  const myStudentId = paramStudentId || meQ.data?.user?.studentId;
+  const isStudent = role === "STUDENT" || role === "PARENT";
   const { termLabels } = useSchoolCalendar();
   const [year, setYear] = useCurrentYearState();
   const [term, setTerm] = useCurrentTermState();

@@ -15,6 +15,9 @@ import { requireTenant } from "../middleware/tenant.js";
 import { logAudit, actorCtx } from "../utils/audit.js";
 import { normalizePhone } from "../utils/phone.js";
 import { teacherClassIds } from "../utils/teacherScope.js";
+import crypto from "crypto";
+import bcrypt from "bcryptjs";
+import { queueSms, smsSettings, flushSoon } from "../modules/sms/sms.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -59,6 +62,7 @@ function parseRelationship(v) {
 
 const guardianSelect = {
   id: true,
+  userId: true,
   firstName: true,
   lastName: true,
   phone: true,
@@ -273,6 +277,47 @@ router.delete("/links/:linkId", requireRole("ADMIN"), async (req, res) => {
     metadata: { guardianId: link.guardianId },
   });
   return res.json({ guardians: await listForStudent(req.schoolId, link.studentId) });
+});
+
+/**
+ * POST /api/guardians/:id/login  (ADMIN)
+ * Gives a parent their own portal login (role PARENT). They sign in with
+ * their email if they have one, otherwise their phone number. A temporary
+ * password is returned once (and sent by SMS if the school has SMS on);
+ * they must change it at first sign-in. { sendSms?: boolean }
+ */
+router.post("/:id/login", requireRole("ADMIN"), async (req, res) => {
+  const g = await prisma.guardian.findFirst({ where: { id: String(req.params.id), schoolId: req.schoolId } });
+  if (!g) return res.status(404).json({ message: "Guardian not found" });
+  if (g.userId) return res.status(409).json({ message: "This parent already has a login. Reset its password from Settings > Users." });
+
+  const loginId = g.email || g.phone;
+  if (await prisma.user.findUnique({ where: { email: loginId } })) {
+    return res.status(409).json({ message: `${loginId} is already used by another login.` });
+  }
+  const temp = crypto.randomBytes(9).toString("base64url").slice(0, 10) + "7a";
+  const user = await prisma.$transaction(async (tx) => {
+    const u = await tx.user.create({
+      data: { email: loginId, password: await bcrypt.hash(temp, 10), role: "PARENT", schoolId: req.schoolId, isActive: true, mustChangePassword: true },
+    });
+    await tx.guardian.update({ where: { id: g.id }, data: { userId: u.id } });
+    return u;
+  });
+
+  let smsQueued = false;
+  if (req.body?.sendSms && (await smsSettings(prisma, req.schoolId))) {
+    const school = await prisma.school.findUnique({ where: { id: req.schoolId }, select: { name: true, shortName: true } });
+    await queueSms(prisma, {
+      schoolId: req.schoolId,
+      createdById: req.user.id,
+      messages: [{ to: g.phone, guardianId: g.id, kind: "PARENT_LOGIN", body: `${school?.shortName || school?.name}: your parent login is ${loginId}, temporary password ${temp}. You will be asked to change it.` }],
+    });
+    flushSoon();
+    smsQueued = true;
+  }
+
+  await logAudit({ req, ...actorCtx(req), schoolId: req.schoolId, action: "PARENT_LOGIN_CREATED", targetType: "USER", targetId: user.id, metadata: { guardianId: g.id, smsQueued } });
+  return res.status(201).json({ loginId, tempPassword: temp, smsQueued });
 });
 
 router.patch("/:id", requireRole("ADMIN"), async (req, res) => {

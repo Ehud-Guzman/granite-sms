@@ -56,7 +56,9 @@ const validatePassword = (password) => {
 };
 
 // Never allow SYSTEM_ADMIN creation/modification via this UI API
-const UI_ALLOWED_ROLES = ["ADMIN", "TEACHER", "BURSAR", "STUDENT"];
+// PARENT logins are created from a guardian (POST /api/guardians/:id/login);
+// here they can be listed, suspended and have their password reset.
+const UI_ALLOWED_ROLES = ["ADMIN", "TEACHER", "BURSAR", "STUDENT", "PARENT"];
 
 function assertUiRole(role) {
   const r = String(role || "").toUpperCase();

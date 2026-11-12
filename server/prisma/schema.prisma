@@ -107,6 +107,12 @@ model Class {
   @@index([schoolId, isActive]) // ✅ optional but recommended
 }
 
+enum StudentExit {
+  GRADUATED
+  TRANSFERRED
+  LEFT
+}
+
 model Student {
   id       String @id @default(cuid())
   schoolId String
@@ -124,6 +130,12 @@ model Student {
   class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
 
   isActive Boolean @default(true)
+
+  // Why and when a learner left (they are then inactive). Cleared if they
+  // are reactivated.
+  exitStatus StudentExit?
+  exitDate   DateTime?    @db.Date
+  exitNote   String?
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 

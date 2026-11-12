@@ -276,6 +276,9 @@ router.get("/", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
       dob: true,
       classId: true,
       isActive: true,
+      exitStatus: true,
+      exitDate: true,
+      exitNote: true,
       createdAt: true,
       updatedAt: true,
       class: { select: { id: true, name: true, stream: true, year: true } },
@@ -411,6 +414,11 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
       }
     }
 
+    // Coming back clears the record of why they left.
+    if (data.isActive === true && before.isActive === false) {
+      Object.assign(data, { exitStatus: null, exitDate: null, exitNote: null });
+    }
+
     await prisma.student.updateMany({
       where: { id: String(req.params.id), schoolId },
       data,
@@ -441,6 +449,42 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
     console.error("UPDATE STUDENT ERROR:", err);
     return res.status(500).json({ message: "Server error" });
   }
+});
+
+// ADMIN: record that a learner has left: graduated, transferred or left.
+// They become inactive (frees a plan slot); their records are kept.
+// Body: { status: "GRADUATED"|"TRANSFERRED"|"LEFT", date?: "YYYY-MM-DD", note? }
+router.patch("/:id/exit", requireRole("ADMIN"), async (req, res) => {
+  const schoolId = req.schoolId;
+  const status = String(req.body?.status || "").toUpperCase();
+  if (!["GRADUATED", "TRANSFERRED", "LEFT"].includes(status)) {
+    return res.status(400).json({ message: "status must be GRADUATED, TRANSFERRED or LEFT" });
+  }
+  const date = req.body?.date ? new Date(`${req.body.date}T00:00:00Z`) : new Date();
+  if (Number.isNaN(date.getTime()) || date > new Date(Date.now() + 86400000)) {
+    return res.status(400).json({ message: "date must be a past or current date (YYYY-MM-DD)" });
+  }
+  const note = req.body?.note ? String(req.body.note).trim().slice(0, 300) : null;
+
+  const before = await prisma.student.findFirst({ where: { id: String(req.params.id), schoolId } });
+  if (!before) return res.status(404).json({ message: "Student not found" });
+
+  await prisma.student.updateMany({
+    where: { id: before.id, schoolId },
+    data: { isActive: false, exitStatus: status, exitDate: date, exitNote: note },
+  });
+  const updated = await prisma.student.findFirst({ where: { id: before.id, schoolId }, include: { class: true } });
+
+  await logAudit({
+    req,
+    ...actorCtx(req),
+    schoolId,
+    action: "STUDENT_EXITED",
+    targetType: "STUDENT",
+    targetId: before.id,
+    metadata: { status, date: date.toISOString().slice(0, 10), note },
+  });
+  return res.json({ student: updated });
 });
 
 // ADMIN: Deactivate student (frees slot)

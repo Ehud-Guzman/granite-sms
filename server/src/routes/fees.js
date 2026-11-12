@@ -11,6 +11,16 @@ import { logAudit, actorCtx } from "../utils/audit.js";
 import { exportCSV, exportXLSX } from "../utils/export.js";
 import { toInt, toNumber } from "../utils/validate.js";
 import { getSchoolCalendar, localDayRange, localDateString, isDateString } from "../utils/schoolTime.js";
+import {
+  computeInvoiceStatus,
+  lockInvoice,
+  lockStudent,
+  recomputeInvoice,
+  allocatePayment,
+  applyCredit,
+  accountSummary,
+  reversePayment,
+} from "../modules/fees/ledger.js";
 
 
 const router = Router();
@@ -61,55 +71,9 @@ function normalizePaymentMethod(method) {
 }
 
 
-function computeInvoiceStatus(total, paid, discount = 0) {
-  const t = Math.max(Number(total) || 0, 0);
-  const d = Math.max(Number(discount) || 0, 0);
-  const payable = Math.max(t - d, 0);
-  const p = Math.max(Number(paid) || 0, 0);
-  const balance = Math.max(payable - p, 0);
-  const status = balance === 0 ? "PAID" : p > 0 ? "PARTIALLY_PAID" : "ISSUED";
-  return { balance, status };
-}
-
 // Payments on one invoice queue behind its row lock, so allow time to wait
 // for a connection and to finish (Prisma's defaults are 2s and 5s).
 const MONEY_TX_OPTIONS = { maxWait: 10_000, timeout: 20_000 };
-
-/**
- * Locks one invoice row for the rest of the transaction (SELECT ... FOR UPDATE).
- * Every write that changes an invoice's money (payment, reversal, discount,
- * void) takes this lock first, so two of them on the same invoice run one
- * after the other instead of both reading the same old balance.
- * Returns the locked invoice, or null if it isn't in this school.
- */
-async function lockInvoice(tx, schoolId, invoiceId) {
-  const rows = await tx.$queryRaw`
-    SELECT id FROM "FeeInvoice"
-    WHERE id = ${String(invoiceId)} AND "schoolId" = ${String(schoolId)}
-    FOR UPDATE`;
-  if (!rows.length) return null;
-  return tx.feeInvoice.findUnique({ where: { id: rows[0].id } });
-}
-
-/**
- * Sets paid/balance/status from the invoice's non-reversed payment rows, which
- * are the source of truth. Call inside the transaction, after lockInvoice.
- */
-async function recomputeInvoiceTotals(tx, invoice) {
-  const agg = await tx.feePayment.aggregate({
-    where: { invoiceId: invoice.id, isReversed: false },
-    _sum: { amount: true },
-  });
-  const paid = Number(agg._sum.amount || 0);
-  if (invoice.status === "VOID") {
-    return tx.feeInvoice.update({ where: { id: invoice.id }, data: { paid, balance: 0 } });
-  }
-  const { balance, status } = computeInvoiceStatus(invoice.total, paid, invoice.discount);
-  return tx.feeInvoice.update({
-    where: { id: invoice.id },
-    data: { paid, balance, status },
-  });
-}
 
 /**
  * An invoice takes its class, year and term from its fee plan. If the request
@@ -132,7 +96,8 @@ function planMismatch(plan, { classId, year, term }) {
 async function createInvoiceForStudent(client, { schoolId, studentId, classId, year, term, plan }) {
   const total = (plan.items || []).reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
 
-  return client.feeInvoice.create({
+  await lockStudent(client, schoolId, studentId);
+  const invoice = await client.feeInvoice.create({
     data: {
       schoolId,
       studentId: String(studentId),
@@ -151,8 +116,10 @@ async function createInvoiceForStudent(client, { schoolId, studentId, classId, y
         })),
       },
     },
-    include: { lines: true },
   });
+  // Money the learner already paid ahead (credit) goes on the new invoice.
+  await applyCredit(client, { schoolId, studentId: String(studentId) });
+  return client.feeInvoice.findUnique({ where: { id: invoice.id }, include: { lines: true } });
 }
 
 
@@ -173,7 +140,7 @@ async function nextDocumentNo(tx, { schoolId, kind, year, prefix }) {
 
 /** One invoice and its number, in one transaction (a failed save frees the number). */
 function createInvoice(args) {
-  return prisma.$transaction((tx) => createInvoiceForStudent(tx, args));
+  return prisma.$transaction((tx) => createInvoiceForStudent(tx, args), MONEY_TX_OPTIONS);
 }
 
 /** Display names for staff user ids: teacher name, else email. */
@@ -774,7 +741,7 @@ router.get("/invoices/:id", requireRole("ADMIN", "BURSAR"), async (req, res) => 
   const invoice = await prisma.feeInvoice.findFirst({
     where: { id: String(id), schoolId: req.schoolId },
     include: {
-      lines: true,
+      lines: { include: { feeItem: { select: { name: true } } } },
       payments: {
         orderBy: { receivedAt: "desc" },
         select: {
@@ -794,7 +761,25 @@ router.get("/invoices/:id", requireRole("ADMIN", "BURSAR"), async (req, res) => 
   });
 
   if (!invoice) return res.status(404).json({ message: "Invoice not found." });
-  return res.json(invoice);
+
+  // Every payment that paid this invoice (a payment may have been taken
+  // against another invoice and overflowed here, or come from credit).
+  const allocations = await prisma.feePaymentAllocation.findMany({
+    where: { invoiceId: invoice.id },
+    orderBy: { createdAt: "asc" },
+    select: {
+      amount: true,
+      createdAt: true,
+      payment: { select: { id: true, receiptNo: true, method: true, receivedAt: true, isReversed: true } },
+    },
+  });
+  // Unpaid balances from this learner's other (earlier or later) invoices.
+  const others = await prisma.feeInvoice.aggregate({
+    where: { schoolId: req.schoolId, studentId: invoice.studentId, id: { not: invoice.id }, status: { not: "VOID" } },
+    _sum: { balance: true },
+  });
+  const account = await accountSummary(prisma, { schoolId: req.schoolId, studentId: invoice.studentId });
+  return res.json({ ...invoice, allocations, arrears: Number(others._sum.balance || 0), account });
 });
 
 router.post(
@@ -1002,50 +987,93 @@ router.post(
 
       if (!reason) return res.status(400).json({ message: "Void reason is required." });
 
+      let released = 0;
       const result = await prisma.$transaction(async (tx) => {
-        const locked = await lockInvoice(tx, req.schoolId, id);
-        const invoice = locked
-          ? await tx.feeInvoice.findUnique({ where: { id: locked.id }, include: { payments: true } })
-          : null;
+        const invoice = await lockInvoice(tx, req.schoolId, id);
+        if (!invoice) throw Object.assign(new Error("Invoice not found."), { status: 404 });
+        if (invoice.status === "VOID") throw Object.assign(new Error("Invoice is already void."), { status: 400 });
 
-        if (!invoice) {
-          const e = new Error("Invoice not found.");
-          e.status = 404;
-          throw e;
-        }
-
-        const activePayments = (invoice.payments || []).filter((p) => !p.isReversed);
-        if (activePayments.length > 0) {
-          const e = new Error("Cannot void invoice with active payments. Reverse payments first.");
-          e.status = 400;
-          throw e;
-        }
+        // Money paid on it goes back to the learner's credit (and from there
+        // to their other unpaid invoices) instead of blocking the void.
+        const live = await tx.feePaymentAllocation.findMany({
+          where: { invoiceId: invoice.id, payment: { isReversed: false } },
+          select: { id: true, amount: true },
+        });
+        released = live.reduce((sum, x) => sum + x.amount, 0);
+        if (live.length) await tx.feePaymentAllocation.deleteMany({ where: { id: { in: live.map((x) => x.id) } } });
 
         const updated = await tx.feeInvoice.update({
           where: { id: invoice.id },
-          data: {
-            status: "VOID",
-            voidedAt: new Date(),
-            voidedBy: req.user?.id || null,
-            voidReason: reason,
-            balance: 0,
-          },
+          data: { status: "VOID", voidedAt: new Date(), voidedBy: req.user?.id || null, voidReason: reason, paid: 0, balance: 0 },
         });
-
+        await applyCredit(tx, { schoolId: req.schoolId, studentId: invoice.studentId });
         return updated;
-      });
+      }, MONEY_TX_OPTIONS);
 
       await feesAudit(req, {
         action: "FEES_INVOICE_VOIDED",
         targetType: "FEE_INVOICE",
         targetId: id,
-        metadata: { reason },
+        metadata: { reason, releasedToCredit: released },
       });
 
       return res.json({ message: "Invoice voided successfully.", invoice: result });
     } catch (err) {
       console.error("VOID INVOICE ERROR:", err);
       return res.status(err?.status || 500).json({ message: err?.message || "Server error" });
+    }
+  }
+);
+
+/**
+ * POST /api/fees/invoices/:id/lines  (ADMIN)
+ * Adds a charge to an existing invoice mid-term (trip, uniform, exam fee):
+ * { feeItemId, amount, note? }. The same fee item again adds to its line.
+ * Credit on the account is used on the new amount.
+ */
+router.post(
+  "/invoices/:id/lines",
+  requireRole("ADMIN"),
+  requireEntitlement("FEES_WRITE"),
+  async (req, res) => {
+    try {
+      const amt = toNumber(req.body?.amount, null);
+      if (!Number.isInteger(amt) || amt <= 0) return res.status(400).json({ message: "amount must be a whole number above 0." });
+      const feeItemId = String(req.body?.feeItemId || "");
+      const note = req.body?.note ? String(req.body.note).trim().slice(0, 120) : null;
+
+      const result = await prisma.$transaction(async (tx) => {
+        const invoice = await lockInvoice(tx, req.schoolId, req.params.id);
+        if (!invoice) throw Object.assign(new Error("Invoice not found."), { status: 404 });
+        if (invoice.status === "VOID") throw Object.assign(new Error("Cannot add to a VOID invoice."), { status: 400 });
+        const item = await tx.feeItem.findFirst({ where: { id: feeItemId, schoolId: req.schoolId, isActive: true } });
+        if (!item) throw Object.assign(new Error("Unknown or inactive fee item."), { status: 400 });
+
+        const existing = await tx.feeInvoiceLine.findUnique({ where: { invoiceId_feeItemId: { invoiceId: invoice.id, feeItemId } } });
+        if (existing) {
+          await tx.feeInvoiceLine.update({
+            where: { id: existing.id },
+            data: { amount: existing.amount + amt, note: [existing.note, note].filter(Boolean).join("; ") || null },
+          });
+        } else {
+          await tx.feeInvoiceLine.create({ data: { invoiceId: invoice.id, feeItemId, amount: amt, note } });
+        }
+        await tx.feeInvoice.update({ where: { id: invoice.id }, data: { total: invoice.total + amt } });
+        await recomputeInvoice(tx, invoice.id);
+        await applyCredit(tx, { schoolId: req.schoolId, studentId: invoice.studentId });
+        return tx.feeInvoice.findUnique({ where: { id: invoice.id }, include: { lines: true } });
+      }, MONEY_TX_OPTIONS);
+
+      await feesAudit(req, {
+        action: "FEES_INVOICE_CHARGE_ADDED",
+        targetType: "FEE_INVOICE",
+        targetId: req.params.id,
+        metadata: { feeItemId, amount: amt, note, newTotal: result.total },
+      });
+      return res.status(201).json({ invoice: result });
+    } catch (err) {
+      if (!err?.status) console.error("ADD CHARGE ERROR:", err);
+      return res.status(err?.status || 500).json({ message: err?.status ? err.message : "Server error" });
     }
   }
 );
@@ -1189,6 +1217,7 @@ router.get(
       year: year ?? null,
       term: term || null,
       ...summary,
+      account: await accountSummary(prisma, { schoolId: req.schoolId, studentId: String(studentId) }),
       latestInvoice: invoices[0] || null,
     });
   }
@@ -1268,20 +1297,39 @@ router.get(
           status: inv.status,
         });
 
-        for (const p of (inv.payments || []).filter((x) => !x.isReversed)) {
-          timeline.push({
-            type: "PAYMENT",
-            at: p.receivedAt,
-            ref: p.id,
-            receiptNo: p.receiptNo,
-            method: p.method,
-            reference: p.reference,
-            amount: p.amount,
-          });
-        }
+      }
+
+      // Payments come from the learner's account, not each invoice: one payment
+      // can cover several invoices, or none yet (credit). With a year/term
+      // filter, only payments that paid that period's invoices are listed.
+      const filtered = year != null || term;
+      const payments = await prisma.feePayment.findMany({
+        where: {
+          schoolId: req.schoolId,
+          studentId: String(studentId),
+          isReversed: false,
+          ...(filtered ? { allocations: { some: { invoice: { year: year ?? undefined, term: term || undefined } } } } : {}),
+        },
+        include: { allocations: { select: { invoiceId: true, amount: true, invoice: { select: { invoiceNo: true } } } } },
+        orderBy: { receivedAt: "asc" },
+      });
+      for (const p of payments) {
+        const allocated = p.allocations.reduce((sum, a) => sum + a.amount, 0);
+        timeline.push({
+          type: "PAYMENT",
+          at: p.receivedAt,
+          ref: p.id,
+          receiptNo: p.receiptNo,
+          method: p.method,
+          reference: p.reference,
+          amount: p.amount,
+          appliedTo: p.allocations.map((a) => ({ invoiceNo: a.invoice?.invoiceNo || null, amount: a.amount })),
+          toCredit: p.amount - allocated,
+        });
       }
 
       timeline.sort((a, b) => new Date(a.at) - new Date(b.at));
+      const account = await accountSummary(prisma, { schoolId: req.schoolId, studentId: String(studentId) });
 
       const totals = invoices.reduce(
         (acc, inv) => {
@@ -1299,6 +1347,8 @@ router.get(
         student,
         filters: { year: year ?? null, term: term || null },
         totals,
+        // Whole account, all terms: what is owed, and money held as credit.
+        account,
         invoices,
         timeline,
       });
@@ -1322,18 +1372,18 @@ router.post(
   requireEntitlement("FEES_WRITE"),
   async (req, res) => {
     try {
-      const { invoiceId, amount, method = "CASH", reference, clientTxnId } = req.body || {};
+      const { invoiceId, studentId: bodyStudentId, amount, method = "CASH", reference, clientTxnId } = req.body || {};
 
-      if (!invoiceId || amount === undefined || amount === null) {
-        return res.status(400).json({ message: "invoiceId and amount are required." });
+      // Pay against an invoice, or straight onto a learner's account (e.g.
+      // fees paid before the term's invoices exist).
+      if ((!invoiceId && !bodyStudentId) || amount === undefined || amount === null) {
+        return res.status(400).json({ message: "amount and either invoiceId or studentId are required." });
       }
 
       const amt = toNumber(amount, null);
       if (!Number.isFinite(amt) || amt <= 0) {
         return res.status(400).json({ message: "amount must be > 0." });
       }
-      // FeePayment.amount is an integer column — reject fractional input up front
-      // instead of letting Prisma throw a 500 downstream.
       if (!Number.isInteger(amt)) {
         return res.status(400).json({ message: "amount must be a whole number." });
       }
@@ -1352,13 +1402,19 @@ router.post(
       const result = await prisma.$transaction(async (tx) => {
         const txnId = clientTxnId ? String(clientTxnId) : null;
 
-        // Lock first: everything below sees the invoice as it is after any
-        // payment/reversal already in flight on it has committed.
-        const invoice = await lockInvoice(tx, req.schoolId, invoiceId);
-        if (!invoice) {
-          const e = new Error("Invoice not found.");
-          e.status = 404;
-          throw e;
+        // Lock the learner's account first: everything below sees it after
+        // any payment/reversal already in flight has committed.
+        let invoice = null;
+        let studentId = bodyStudentId ? String(bodyStudentId) : null;
+        if (invoiceId) {
+          invoice = await lockInvoice(tx, req.schoolId, invoiceId);
+          if (!invoice) throw Object.assign(new Error("Invoice not found."), { status: 404 });
+          if (studentId && studentId !== invoice.studentId) {
+            throw Object.assign(new Error("That invoice belongs to a different learner."), { status: 400 });
+          }
+          studentId = invoice.studentId;
+        } else if (!(await lockStudent(tx, req.schoolId, studentId))) {
+          throw Object.assign(new Error("Student not found."), { status: 404 });
         }
 
         // Idempotency (checked under the lock, so a double-submit waits for
@@ -1368,25 +1424,21 @@ router.post(
             where: { schoolId: req.schoolId, clientTxnId: txnId },
             include: { invoice: true },
           });
-          if (existing) return { payment: existing, invoice: existing.invoice, idempotent: true };
+          if (existing) {
+            const account = await accountSummary(tx, { schoolId: req.schoolId, studentId: existing.studentId });
+            return { payment: existing, invoice: existing.invoice, allocations: [], account, idempotent: true };
+          }
         }
 
-        if (invoice.status === "VOID") {
-          const e = new Error("Cannot pay a VOID invoice.");
-          e.status = 400;
-          throw e;
-        }
-
-        if (amt > Number(invoice.balance || 0)) {
-          const e = new Error(`Overpayment not allowed. Balance is ${invoice.balance}.`);
-          e.status = 400;
-          throw e;
+        if (invoice?.status === "VOID") {
+          throw Object.assign(new Error("Cannot pay a VOID invoice."), { status: 400 });
         }
 
         const payment = await tx.feePayment.create({
           data: {
             schoolId: req.schoolId,
-            invoiceId: invoice.id,
+            studentId,
+            invoiceId: invoice?.id || null,
             clientTxnId: txnId,
             amount: amt,
             method: normalizedMethod,
@@ -1398,15 +1450,18 @@ router.post(
               year: Number(localDateString(new Date(), timezone).slice(0, 4)),
               prefix: "RCPT",
             }),
-            // keep both for compatibility
             receivedAt: new Date(),
             receiptIssuedAt: new Date(),
           },
         });
 
-        const updatedInvoice = await recomputeInvoiceTotals(tx, invoice);
+        // The chosen invoice first, then the oldest unpaid ones; any excess
+        // stays on the account as credit (audit M5: overpayment used to be refused).
+        const allocations = await allocatePayment(tx, { schoolId: req.schoolId, payment, preferInvoiceId: invoice?.id || null });
+        const updatedInvoice = invoice ? await tx.feeInvoice.findUnique({ where: { id: invoice.id } }) : null;
+        const account = await accountSummary(tx, { schoolId: req.schoolId, studentId });
 
-        return { payment, invoice: updatedInvoice, idempotent: false };
+        return { payment, invoice: updatedInvoice, allocations, account, idempotent: false };
       }, MONEY_TX_OPTIONS);
 
       await feesAudit(req, {
@@ -1417,6 +1472,9 @@ router.post(
           amount: result.payment.amount,
           method: result.payment.method,
           invoiceId: result.payment.invoiceId,
+          studentId: result.payment.studentId,
+          allocations: result.allocations,
+          creditAfter: result.account.credit,
         },
       });
 
@@ -1446,37 +1504,14 @@ function httpError(status, message) {
   return Object.assign(new Error(message), { status });
 }
 
-/**
- * Reverses one payment inside a transaction: locks its invoice, re-reads the
- * payment under the lock, marks it reversed and recomputes the invoice.
- */
+/** Reverses a payment (ledger.reversePayment) and settles any open requests for it. */
 async function reversePaymentTx(tx, { schoolId, paymentId, actorId, reason }) {
-  const found = await tx.feePayment.findFirst({
-    where: { id: String(paymentId), schoolId },
-    select: { invoiceId: true },
-  });
-  if (!found) throw httpError(404, "Payment not found.");
-
-  // Lock the invoice, then re-read the payment: a concurrent reversal of
-  // the same payment will have committed by now and is seen here.
-  const invoice = await lockInvoice(tx, schoolId, found.invoiceId);
-  if (!invoice) throw httpError(404, "Invoice not found for payment.");
-  const payment = await tx.feePayment.findUnique({ where: { id: String(paymentId) } });
-  if (payment.isReversed) throw httpError(400, "Payment already reversed.");
-
-  const reversedPayment = await tx.feePayment.update({
-    where: { id: payment.id },
-    data: { isReversed: true, reversedAt: new Date(), reversedBy: actorId || null, reversalReason: reason },
-  });
-  const updatedInvoice = await recomputeInvoiceTotals(tx, invoice);
-
-  // Any other open request for this payment is now settled.
+  const result = await reversePayment(tx, { schoolId, paymentId, actorId, reason });
   await tx.feeReversalRequest.updateMany({
-    where: { paymentId: payment.id, status: "PENDING" },
+    where: { paymentId: String(paymentId), status: "PENDING" },
     data: { status: "APPROVED", decidedBy: actorId || null, decidedAt: new Date(), decisionNote: "Reversed directly" },
   });
-
-  return { payment: reversedPayment, invoice: updatedInvoice };
+  return result;
 }
 
 function sendFeesError(res, err, label) {
@@ -1550,11 +1585,11 @@ router.post(
       const request = await prisma.$transaction(async (tx) => {
         const found = await tx.feePayment.findFirst({
           where: { id: String(id), schoolId: req.schoolId },
-          select: { invoiceId: true },
+          select: { studentId: true },
         });
         if (!found) throw httpError(404, "Payment not found.");
         // Same lock as payments/reversals: serialises duplicate requests.
-        await lockInvoice(tx, req.schoolId, found.invoiceId);
+        await lockStudent(tx, req.schoolId, found.studentId);
 
         const payment = await tx.feePayment.findUnique({ where: { id: String(id) } });
         if (payment.isReversed) throw httpError(400, "Payment already reversed.");
@@ -1644,9 +1679,9 @@ async function decideReversalRequest(req, res, decision) {
 
       const payment = await tx.feePayment.findUnique({
         where: { id: request.paymentId },
-        select: { invoiceId: true },
+        select: { studentId: true },
       });
-      await lockInvoice(tx, req.schoolId, payment.invoiceId);
+      await lockStudent(tx, req.schoolId, payment.studentId);
 
       // Re-read under the lock so two admins can't both decide it.
       const current = await tx.feeReversalRequest.findUnique({ where: { id: request.id } });
@@ -1720,7 +1755,7 @@ router.get("/payments/:id/receipt", requireRole("ADMIN", "BURSAR"), async (req, 
     if (!payment) return res.status(404).json({ message: "Payment not found." });
 
     const student = await prisma.student.findFirst({
-      where: { id: payment.invoice.studentId, schoolId: req.schoolId },
+      where: { id: payment.studentId, schoolId: req.schoolId },
       select: { id: true, admissionNo: true, firstName: true, lastName: true, classId: true },
     });
 
@@ -1730,9 +1765,11 @@ router.get("/payments/:id/receipt", requireRole("ADMIN", "BURSAR"), async (req, 
       targetId: id,
     });
     const names = await staffNames(req.schoolId, [payment.receivedBy]);
+    const account = await accountSummary(prisma, { schoolId: req.schoolId, studentId: payment.studentId });
 
     return res.json({
       receiptNo: payment.receiptNo,
+      account,
       receiptIssuedAt: payment.receiptIssuedAt,
       isReversed: payment.isReversed,
       reversedAt: payment.reversedAt,
@@ -1746,7 +1783,8 @@ router.get("/payments/:id/receipt", requireRole("ADMIN", "BURSAR"), async (req, 
         receivedBy: payment.receivedBy,
         receivedByName: names.get(String(payment.receivedBy)) || null,
       },
-      invoice: {
+      // null when the money went straight onto the account.
+      invoice: payment.invoice && {
         id: payment.invoice.id,
         year: payment.invoice.year,
         term: payment.invoice.term,
@@ -1777,7 +1815,7 @@ router.get("/payments/:id/receipt.pdf", requireRole("ADMIN", "BURSAR"), async (r
     if (!payment) return res.status(404).json({ message: "Payment not found." });
 
     const student = await prisma.student.findFirst({
-      where: { id: payment.invoice.studentId, schoolId: req.schoolId },
+      where: { id: payment.studentId, schoolId: req.schoolId },
       select: { admissionNo: true, firstName: true, lastName: true },
     });
 
@@ -1833,10 +1871,16 @@ router.get("/payments/:id/receipt.pdf", requireRole("ADMIN", "BURSAR"), async (r
     doc.text(`Received By: ${pdfNames.get(String(payment.receivedBy)) || "—"}`);
     doc.moveDown();
 
-    doc.text(`Invoice Total: ${payment.invoice.total}`);
-    if (payment.invoice.discount) doc.text(`Discount: ${payment.invoice.discount}`);
-    doc.text(`Total Paid: ${payment.invoice.paid}`);
-    doc.text(`Balance: ${payment.invoice.balance}`);
+    if (payment.invoice) {
+      doc.text(`Invoice Total: ${payment.invoice.total}`);
+      if (payment.invoice.discount) doc.text(`Discount: ${payment.invoice.discount}`);
+      doc.text(`Total Paid: ${payment.invoice.paid}`);
+      doc.text(`Balance: ${payment.invoice.balance}`);
+    } else {
+      doc.text("Paid onto the learner's account (credit).");
+    }
+    const acct = await accountSummary(prisma, { schoolId: req.schoolId, studentId: payment.studentId });
+    doc.text(acct.net > 0 ? `Account balance due: ${acct.net}` : `Account credit: ${-acct.net}`);
     doc.moveDown();
 
     doc.text("Thank you.", { align: "center" });

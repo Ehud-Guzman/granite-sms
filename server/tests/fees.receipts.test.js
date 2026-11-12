@@ -22,7 +22,10 @@ describe("receipt numbers", () => {
   it("a refused payment doesn't use up a number", async () => {
     const year = localDateString(new Date(), "Africa/Nairobi").slice(0, 4);
     expect((await pay(1000)).body.payment.receiptNo).toBe(`RCPT-${year}-000001`);
-    expect((await pay(999999)).status).toBe(400); // overpayment, rolled back
+    const voided = await prisma.feeInvoice.create({
+      data: { schoolId: s.school.id, studentId: s.students[1].id, classId: s.klass.id, year: 2026, term: "TERM2", invoiceNo: `V-${s.school.id}`, status: "VOID", total: 5 },
+    });
+    expect((await as(s.bursar).post("/api/fees/payments").send({ invoiceId: voided.id, amount: 5 })).status).toBe(400);
     expect((await pay(1000)).body.payment.receiptNo).toBe(`RCPT-${year}-000002`);
   });
 

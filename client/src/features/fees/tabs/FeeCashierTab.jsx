@@ -26,6 +26,7 @@ import QueryBlock from "../components/QueryBlock";
 import SimpleModal from "../components/SimpleModal";
 import { money, toNumberOrZero } from "../components/FeeMoney";
 import { useCurrentTermState, useCurrentYearState } from "@/lib/schoolCalendar";
+import { confirmAction } from "@/lib/confirm-store";
 
 const PAYMENT_METHODS = ["CASH", "MPESA", "BANK", "CHEQUE", "OTHER"];
 const TERMS = ["TERM1", "TERM2", "TERM3"];
@@ -287,7 +288,8 @@ export default function FeeCashierTab({ onReceiptReady }) {
         createdAt: payment.createdAt || null,
       });
 
-      toast.success("Payment posted");
+      const credit = toNumberOrZero(res?.account?.credit);
+      toast.success(credit > 0 ? `Payment posted. Account credit now ${money(credit)}` : "Payment posted");
 
       // print
       await printPaymentId(payment.id);
@@ -362,7 +364,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
     setTimeout(() => amountRef.current?.focus(), 50);
   };
 
-  const submitPayment = () => {
+  const submitPayment = async () => {
     // Guard against double-submit: the "Post Payment" button already disables
     // itself while payMut.isPending, but the Enter-key shortcut below calls
     // this function directly and isn't gated by that disabled attribute, so
@@ -376,7 +378,16 @@ export default function FeeCashierTab({ onReceiptReady }) {
     const amt = toNumberOrZero(amount);
     if (amt <= 0) return toast.error("Enter a valid amount");
     if (!Number.isInteger(amt)) return toast.error("Amount must be a whole number");
-    if (amt > activeInvoiceBalance) return toast.error("Overpayment is not allowed");
+    // More than this invoice owes is allowed: the rest pays the learner's
+    // other unpaid invoices (oldest first), then stays on the account as credit.
+    if (amt > activeInvoiceBalance) {
+      const ok = await confirmAction({
+        title: "More than this invoice owes",
+        description: `This invoice owes ${money(activeInvoiceBalance)}. The extra ${money(amt - activeInvoiceBalance)} will pay the learner's other unpaid invoices first, and anything left stays as credit for next term. Continue?`,
+        confirmLabel: "Post payment",
+      });
+      if (!ok) return;
+    }
 
     payMut.mutate({
       invoiceId: activeInvoiceId,

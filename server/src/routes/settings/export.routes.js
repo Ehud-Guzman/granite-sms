@@ -117,8 +117,8 @@ router.get("/", requireAuth, async (req, res) => {
     "Payments",
     [["Receipt no", "no", 20], ["Invoice no", "inv", 18], ["Learner adm. no", "adm"], ["Amount", "amount", 10], ["Method", "method", 10], ["Reference", "ref", 18], ["Received", "at", 20], ["Reversed", "rev", 8], ["Reversal reason", "why", 24]],
     prisma.feePayment,
-    { where, include: { invoice: { select: { invoiceNo: true, student: { select: { admissionNo: true } } } } } },
-    (p) => ({ no: p.receiptNo || "", inv: p.invoice?.invoiceNo || "", adm: p.invoice?.student?.admissionNo || "", amount: p.amount, method: p.method, ref: p.reference || "", at: ts(p.receivedAt), rev: p.isReversed ? "yes" : "", why: p.reversalReason || "" })
+    { where, include: { invoice: { select: { invoiceNo: true } }, student: { select: { admissionNo: true } } } },
+    (p) => ({ no: p.receiptNo || "", inv: p.invoice?.invoiceNo || "", adm: p.student?.admissionNo || "", amount: p.amount, method: p.method, ref: p.reference || "", at: ts(p.receivedAt), rev: p.isReversed ? "yes" : "", why: p.reversalReason || "" })
   );
   await sheet(
     wb,

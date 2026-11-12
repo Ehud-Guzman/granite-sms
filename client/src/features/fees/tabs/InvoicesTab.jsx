@@ -22,6 +22,7 @@ import QueryBlock from "../components/QueryBlock";
 import SimpleModal from "../components/SimpleModal";
 import { money } from "../components/FeeMoney";
 import { useCurrentTermState, useCurrentYearState } from "@/lib/schoolCalendar";
+import AddChargeForm from "../components/AddChargeForm";
 
 const norm = (v) => String(v || "").trim().toUpperCase();
 
@@ -353,18 +354,33 @@ export default function InvoicesTab() {
 
                 <Separator />
 
-                <div className="font-medium">Payments</div>
+                {isAdmin && !detailIsVoid && (
+                  <AddChargeForm invoiceId={detail.id} onAdded={() => { invoiceDetailsMut.mutate(detail.id); refreshList(); }} />
+                )}
+
+                <Separator />
+
+                {/* Payments applied to this invoice: taken on it, overflowing from
+                    another invoice, or from the learner's credit. */}
+                <div className="font-medium">Payments applied</div>
                 <div className="grid gap-1">
-                  {(detail.payments || []).map((p) => (
-                    <div key={p.id} className="flex items-center justify-between text-xs">
-                      <span>{p.method} • {p.receiptNo || "—"}</span>
-                      <span className="font-medium">{money(p.amount)}</span>
+                  {(detail.allocations || []).map((a, i) => (
+                    <div key={i} className={`flex items-center justify-between text-xs ${a.payment?.isReversed ? "line-through opacity-60" : ""}`}>
+                      <span>{a.payment?.method} • {a.payment?.receiptNo || "—"}</span>
+                      <span className="font-medium">{money(a.amount)}</span>
                     </div>
                   ))}
-                  {(detail.payments || []).length === 0 && (
+                  {(detail.allocations || []).length === 0 && (
                     <div className="text-xs text-muted-foreground">No payments yet.</div>
                   )}
                 </div>
+
+                {(detail.arrears > 0 || detail.account?.credit > 0) && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {detail.arrears > 0 && <Badge variant="destructive">Other unpaid invoices {money(detail.arrears)}</Badge>}
+                    {detail.account?.credit > 0 && <Badge variant="secondary">Account credit {money(detail.account.credit)}</Badge>}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

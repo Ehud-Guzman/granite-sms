@@ -151,6 +151,7 @@ model Student {
   attendanceRecords AttendanceRecord[]
   guardianLinks     StudentGuardian[]
   reportComments    ReportCardComment[]
+  feePayments       FeePayment[]
 
   @@unique([schoolId, admissionNo])
   @@index([schoolId, classId])
@@ -578,11 +579,12 @@ model FeeInvoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  school   School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  student  Student          @relation(fields: [studentId], references: [id], onDelete: Restrict)
-  class    Class            @relation(fields: [classId], references: [id], onDelete: Restrict)
-  lines    FeeInvoiceLine[]
-  payments FeePayment[]
+  school      School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student     Student                @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  class       Class                  @relation(fields: [classId], references: [id], onDelete: Restrict)
+  lines       FeeInvoiceLine[]
+  payments    FeePayment[]
+  allocations FeePaymentAllocation[]
 
   @@unique([schoolId, studentId, year, term])
   @@unique([schoolId, invoiceNo]) // ✅ IMPORTANT
@@ -607,9 +609,13 @@ model FeeInvoiceLine {
 }
 
 model FeePayment {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   schoolId  String
-  invoiceId String
+  // Whose money this is. A payment can be spread over several invoices
+  // (FeePaymentAllocation); what isn't allocated is the learner's credit.
+  studentId String
+  // The invoice the cashier took it against, if any (shown on the receipt).
+  invoiceId String?
 
   // ✅ idempotency key from client
   clientTxnId String?
@@ -630,15 +636,35 @@ model FeePayment {
 
   createdAt DateTime @default(now())
 
-  school  School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  invoice FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  school  School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  invoice FeeInvoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   reversalRequests FeeReversalRequest[]
+  allocations      FeePaymentAllocation[]
 
   @@unique([schoolId, receiptNo])
   @@unique([schoolId, clientTxnId])
   @@index([schoolId, invoiceId])
   @@index([schoolId, receivedAt])
+  @@index([schoolId, studentId])
+}
+
+// How much of a payment went to which invoice (audit M5). An invoice's paid
+// amount = its allocations from payments that aren't reversed.
+model FeePaymentAllocation {
+  id        String   @id @default(cuid())
+  schoolId  String
+  paymentId String
+  invoiceId String
+  amount    Int
+  createdAt DateTime @default(now())
+
+  payment FeePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([schoolId, invoiceId])
 }
 
 // =====================

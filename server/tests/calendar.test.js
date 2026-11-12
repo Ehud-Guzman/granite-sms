@@ -23,6 +23,7 @@ describe("collections use the school's day", () => {
     await prisma.feePayment.create({
       data: {
         schoolId: s.school.id,
+        studentId: s.students[0].id,
         invoiceId: s.invoice.id,
         amount: 500,
         method: "MPESA",

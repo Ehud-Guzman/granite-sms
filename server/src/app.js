@@ -123,6 +123,26 @@ app.get("/health", (req, res) => {
 
 app.get("/favicon.ico", (req, res) => res.status(204).end());
 
+// ---- Public: school logos (stored in the database, see SchoolLogo) ----
+// No sign-in: logos appear on login pages, printouts and <img> tags.
+// The last path segment is a content hash, so responses can be cached forever.
+app.get("/api/public/schools/:schoolId/logo/:version", async (req, res) => {
+  try {
+    const logo = await prisma.schoolLogo.findUnique({
+      where: { schoolId: String(req.params.schoolId) },
+      select: { mime: true, data: true, sha256: true },
+    });
+    if (!logo) return res.status(404).json({ message: "No logo" });
+    const current = logo.sha256.startsWith(String(req.params.version));
+    res.setHeader("Content-Type", logo.mime);
+    res.setHeader("Cache-Control", current ? "public, max-age=31536000, immutable" : "public, max-age=300");
+    return res.send(Buffer.from(logo.data));
+  } catch (err) {
+    console.error("LOGO ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 app.disable("etag");
 
 // ===============================

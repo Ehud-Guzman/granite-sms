@@ -326,9 +326,24 @@ model School {
   feeReversalRequests FeeReversalRequest[]
   termDates           TermDate[]
   documentCounters    DocumentCounter[]
+  logo                SchoolLogo?
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
+}
+
+// The school's logo, stored in the database so it survives redeploys (the
+// server's disk on Render is wiped each deploy) and is in the backups
+// (audit M16). Served at /api/public/schools/:schoolId/logo/:version.
+model SchoolLogo {
+  schoolId  String   @id
+  mime      String
+  data      Bytes
+  size      Int
+  sha256    String
+  updatedAt DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 }
 
 // Opening and closing dates of each term. Used to work out which term a date

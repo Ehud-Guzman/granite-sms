@@ -20,16 +20,6 @@ function safeUpper(v) {
   return String(v || "").trim().toUpperCase();
 }
 
-function getStoredUserRole() {
-  try {
-    const raw = localStorage.getItem("user");
-    if (!raw) return "";
-    const u = JSON.parse(raw);
-    return safeUpper(u?.role);
-  } catch {
-    return "";
-  }
-}
 
 // Single source of truth for tenant selection on client
 function getStoredSchoolId() {
@@ -44,7 +34,6 @@ function getStoredSchoolId() {
 // ---------------------------
 api.interceptors.request.use((config) => {
   const token = String(localStorage.getItem("token") || "").trim();
-  const role = getStoredUserRole(); // kept for logging/diagnostics if you need it
   const schoolId = getStoredSchoolId();
 
   config.headers = config.headers ?? {};
@@ -66,8 +55,7 @@ api.interceptors.request.use((config) => {
   else delete config.headers["x-school-id"];
 
   // Optional: useful for debugging server logs (harmless)
-  if (role) config.headers["x-role"] = role;
-  else delete config.headers["x-role"];
+  // (The role is never sent as a header: the server reads it from the database.)
 
   return config;
 });

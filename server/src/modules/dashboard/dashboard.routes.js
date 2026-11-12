@@ -1,14 +1,13 @@
 import { Router } from "express";
-import { requireAuth, requireRole } from "../../middleware/auth.js";
-import { tenantContext, requireTenant } from "../../middleware/tenant.js";
-import { loadSubscription } from "../../middleware/subscription.js"; // only if you use it globally
+import { requireRole } from "../../middleware/auth.js";
+import { requireTenant } from "../../middleware/tenant.js";
 
 import { getSummary, getActivity } from "./dashboard.controller.js";
 
 const router = Router();
 
-router.use(requireAuth, tenantContext, requireTenant);
-// router.use(loadSubscription); // optional, only if your app expects subscription context
+// requireAuth + tenantContext already run for every /api route (app.js).
+router.use(requireTenant);
 
 // BURSAR is included so the bursar's dashboard shows fees figures instead of
 // failing; the activity feed already limits what each role sees.

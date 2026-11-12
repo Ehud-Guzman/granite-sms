@@ -107,7 +107,7 @@ async function assertMarkSheetAccess(req, markSheet, { allowClaim = false } = {}
     allowClaim &&
     markSheet.teacherId === null &&
     (await teachesSubject({
-      schoolId: req.user.schoolId,
+      schoolId: req.schoolId,
       teacherId,
       classId: markSheet.examSession?.classId,
       subjectId: markSheet.subjectId,
@@ -185,7 +185,7 @@ async function cleanupDeactivatedMarks({ schoolId, markSheetId }) {
 // ────────────────────────────────────────────────
 
 export async function listExamSessions(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const { year, term: termRaw, classId, status } = req.query;
 
   const where = { schoolId };
@@ -268,7 +268,7 @@ export async function listExamSessions(req) {
 }
 
 export async function listExamTypes(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   return prisma.examType.findMany({
     where: { schoolId, isActive: true },
     orderBy: { createdAt: "desc" },
@@ -277,7 +277,7 @@ export async function listExamTypes(req) {
 }
 
 export async function createExamType(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const actorUserId = req.user.id;
 
   const name = cleanStr(req.body?.name);
@@ -317,7 +317,7 @@ export async function createExamType(req) {
 // Exam Sessions
 // ────────────────────────────────────────────────
 export async function createExamSession(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const actorUserId = req.user.id;
 
   const year = assertInt("year", req.body?.year);
@@ -435,7 +435,7 @@ export async function createExamSession(req) {
 // MarkSheets
 // ────────────────────────────────────────────────
 export async function getMarkSheet(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const id = assertCuid("markSheetId", req.params?.id);
 
   const ms = await prisma.markSheet.findFirst({
@@ -507,7 +507,7 @@ export async function getMarkSheet(req) {
 }
 
 export async function upsertBulkMarks(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const actorUserId = req.user.id;
   const markSheetId = assertCuid("markSheetId", req.params?.id);
 
@@ -641,7 +641,7 @@ export async function upsertBulkMarks(req) {
 }
 
 export async function submitMarkSheet(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const actorUserId = req.user.id;
   const markSheetId = assertCuid("markSheetId", req.params?.id);
 
@@ -721,7 +721,7 @@ export async function submitMarkSheet(req) {
 }
 
 export async function unlockMarkSheet(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const actorUserId = req.user.id;
   const markSheetId = assertCuid("markSheetId", req.params?.id);
   const reason = cleanStr(req.body?.reason);
@@ -771,7 +771,7 @@ export async function unlockMarkSheet(req) {
 }
 
 export async function listSessionMarkSheets(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const sessionId = assertCuid("sessionId", req.params?.id);
 
   const session = await prisma.examSession.findFirst({
@@ -967,7 +967,7 @@ async function readFrozenResults({ schoolId, sessionId, studentId = null }) {
 const sessionSummarySelect = { id: true, classId: true, term: true, year: true, name: true, status: true };
 
 export async function getClassResults(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const sessionId = assertCuid("sessionId", req.params?.id);
 
   const session = await prisma.examSession.findFirst({ where: { id: sessionId, schoolId }, select: sessionSummarySelect });
@@ -994,7 +994,7 @@ export async function getClassResults(req) {
  * STUDENT callers may only fetch their own, and only once published.
  */
 export async function getStudentResults(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const sessionId = assertCuid("sessionId", req.params?.id);
   const studentId = assertCuid("studentId", req.params?.studentId);
 
@@ -1106,7 +1106,7 @@ export async function writeResultSnapshot(tx, { schoolId, session, publishedById
 }
 
 export async function publishResults(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const sessionId = assertCuid("sessionId", req.params?.id);
   const actorUserId = req.user.id;
 
@@ -1161,7 +1161,7 @@ export async function publishResults(req) {
  * corrects and resubmits, and the session is published again.
  */
 export async function unpublishResults(req) {
-  const schoolId = req.user.schoolId;
+  const schoolId = req.schoolId;
   const sessionId = assertCuid("sessionId", req.params?.id);
   const actorUserId = req.user.id;
   const reason = cleanStr(req.body?.reason);

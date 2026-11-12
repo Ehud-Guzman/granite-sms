@@ -74,6 +74,7 @@ export function requireEntitlement(key) {
       if (!schoolId) {
         return res.status(403).json({
           message: "Tenant required for this action (no school context selected)",
+          code: "TENANT_REQUIRED",
         });
       }
 
@@ -101,8 +102,11 @@ export function requireEntitlement(key) {
       }
 
       if (!sub) {
+        // Same shape as middleware/subscription.js so the app handles both alike (audit L1).
         return res.status(403).json({
           message: `Feature locked: missing entitlement ${key}`,
+          code: "ENTITLEMENT_MISSING",
+          entitlementKey: key,
         });
       }
 
@@ -118,15 +122,20 @@ export function requireEntitlement(key) {
       // of truth here, same as middleware/subscription.js's requireEntitlement.
       const statusOk = sub.status === "ACTIVE" || sub.status === "TRIAL";
       if (!statusOk || expired) {
-        return res.status(403).json({
-          message: `Feature locked: subscription not active`,
+        return res.status(402).json({
+          message: "Subscription not active or expired.",
+          code: "SUBSCRIPTION_INACTIVE",
+          mode: "READ_ONLY",
         });
       }
 
       const allowed = Boolean(ent?.[key]);
       if (!allowed) {
+        // Same shape as middleware/subscription.js so the app handles both alike (audit L1).
         return res.status(403).json({
           message: `Feature locked: missing entitlement ${key}`,
+          code: "ENTITLEMENT_MISSING",
+          entitlementKey: key,
         });
       }
 

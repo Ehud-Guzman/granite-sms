@@ -2,9 +2,9 @@
 import { Router } from "express";
 import * as ctrl from "./exams.controllers.js";
 
-import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { requireRole } from "../../middleware/auth.js";
 import { requireEntitlement } from "../../middleware/entitlements.js";
-import { tenantContext, requireTenant } from "../../middleware/tenant.js";
+import { requireTenant } from "../../middleware/tenant.js";
 
 const router = Router();
 
@@ -23,8 +23,7 @@ const router = Router();
  */
 
 
-router.use(requireAuth);
-router.use(tenantContext);
+// requireAuth + tenantContext already run for every /api route (app.js).
 router.use(requireTenant);
 
 // ------------------------

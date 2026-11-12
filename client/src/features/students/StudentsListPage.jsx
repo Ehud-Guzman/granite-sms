@@ -13,6 +13,7 @@ import {
   listStudents,
 } from "./students.api";
 import StudentFormDrawer from "./StudentFormDrawer.jsx";
+import ImportStudentsDialog from "./ImportStudentsDialog";
 import { listClasses } from "@/api/classes.api";
 
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,7 @@ export default function StudentsListPage() {
   const [active, setActive] = useState(true);
   const [classId, setClassId] = useState("");
   const [search, setSearch] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
 
   // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -323,14 +325,20 @@ const activateMut = useMutation({
 
         {role === "ADMIN" && (
           <div className="flex flex-col items-start sm:items-end gap-2">
-            <Button 
-              onClick={openCreate} 
-              disabled={!canCreateStudent}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Add Student
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!canCreateStudent}>
+                Import from Excel
+              </Button>
+              <Button 
+                onClick={openCreate} 
+                disabled={!canCreateStudent}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Student
+              </Button>
+            </div>
+            <ImportStudentsDialog open={importOpen} onOpenChange={setImportOpen} />
 
             {!canCreateStudent && (
               <div className="text-xs text-muted-foreground text-left sm:text-right max-w-xs">

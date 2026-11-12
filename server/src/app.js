@@ -22,6 +22,7 @@ import subjectRoutes from "./routes/subjects.js";
 import assignmentRoutes from "./routes/assignments.js";
 import classTeacherRoutes from "./routes/classTeachers.js";
 import guardianRoutes from "./routes/guardians.js";
+import studentImportRoutes from "./routes/studentImport.js";
 
 // Feature modules
 import attendanceRoutes from "./modules/attendance/attendance.routes.js";
@@ -213,6 +214,7 @@ app.use("/api/users", usersRoutes);
 app.use("/api", requireAuth, tenantContext, userLimiter);
 
 // Core
+app.use("/api/students/import", studentImportRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/classes", classRoutes);
 app.use("/api/settings", settingsRoutes);

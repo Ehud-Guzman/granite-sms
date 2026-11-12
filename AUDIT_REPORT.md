@@ -1,8 +1,8 @@
 # Granite SMS — System Audit
 
-**Date:** 11 Nov 2026 · **Scope:** whole repo (server, client, schema, migrations, infra, demo) · **Status:** findings only, nothing fixed yet
+**Date:** 11 Nov 2026 · **Scope:** whole repo (server, client, schema, migrations, infra, demo) · **Status:** Waves 1–3 fixed on branch `audit-wave-1` (see the table); the findings below are kept as written
 
-## Fix status (12 Nov 2026, branch `audit-wave-1`)
+## Fix status (12 Nov 2026, branch `audit-wave-1`, 154 tests passing)
 
 | Finding | Status | Commit |
 |---|---|---|
@@ -12,15 +12,16 @@
 | C4, H1, H2 accounts and sessions | Fixed | 657546a |
 | H3, H4 rate limits and lockout | Fixed | b5c329f |
 | H5, H6, H7 fee controls | Fixed | 105bc37 |
-| H8 CBC grading | **Open (Wave 3)** | |
+| H8 grading (CBE rubric levels, KCSE points, per-class scales) | Fixed | 258d5a1 |
 | H9 frozen results | Fixed | 7975ae9 |
 | H10 pagination | Fixed (8.8 MB / 4.6 s -> 18 KB / 35-143 ms) | 8e1e8a9 |
-| H11 tests and CI | 113 tests, CI on every push | bdf4f5e, 12189be |
-| H12 dependencies | Fixed except Prisma 7 / exceljs (see commit) | 11df972 |
+| H11 tests and CI | 154 tests, CI on every push | bdf4f5e, 12189be |
+| H12 dependencies | Fixed except Prisma 7 / exceljs. Prisma 7 deferred: it requires driver adapters, a `prisma.config` file and a new client location, touching every database call; do it as its own change with the full suite | 11df972 |
 | M1 | Fixed | 74bbeae |
 | M2 attendance rules | Fixed | 6b4b792 |
 | M3, M4 time zone, current term | Fixed | b013bb9 |
-| M5 fee ledger, M15 student home | **Open (Wave 3)** | |
+| M5 fee ledger (credit, arrears, extra charges, allocations) | Fixed | 04d82f5 |
+| M15 learner home | Fixed | 7745cb9 |
 | M6 receipts | Fixed | 79cb5fd |
 | M7, M8, M9 exams | Fixed | 7975ae9 |
 | M10, M11, M12, M14 | Fixed | 5390697 |
@@ -28,9 +29,15 @@
 | M16 logos, L7 | Fixed | 8464316 |
 | M17 ops | Fixed (Sentry not added: needs a DSN) | 48ca4ee |
 | L5 lint | Fixed | 12189be |
-| L1-L4, L6, L8, L9 | Open | |
+| L1-L4, L6 | Fixed | f741f50 |
+| L8 login timing | Fixed | 657546a |
+| L9 split `fees.js` | Fixed (8 files under `routes/fees/`) | 4111bd9 |
 | Features 1, 7, 8 (guardians, promotion, import) | Built | 045b4e4, 7315d18, a4c130b |
-| Features 2-6, 9-11 (SMS, M-Pesa, ledger, CBC, term report, parent portal...) | **Open (Wave 3)** | |
+| Feature 2 SMS (Africa's Talking) | Built; needs `SMS_PROVIDER` + `AT_*` keys, see docs/SMS.md | f35bac7 |
+| Feature 3 M-Pesa (paybill + STK push) | Built; needs `MPESA_ENC_KEY`, `PUBLIC_API_URL` and Daraja keys, see docs/MPESA.md | 4d46d91, 87f0e61 |
+| Features 4, 5, 6 (ledger, CBE grading, term report cards) | Built | 04d82f5, 258d5a1, 3a5b0e0 |
+| Feature 9 parent portal | Built | 7745cb9 |
+| Feature 10 notices, feature 11, privacy tooling (consent, retention) | **Open** | |
 
 ## How this was done
 
@@ -278,4 +285,5 @@ The system stores data about children: names, dates of birth, class, attendance,
 ## Test environment left behind
 
 - Docker container `granite_audit_db` (Postgres 16, port 55432) holds the seeded test school plus the junk the tests created. Remove it with `docker rm -f granite_audit_db`.
+- Run the tests with `TEST_DATABASE_URL=postgresql://audit:auditpass@127.0.0.1:55432/granite_test`. Use `127.0.0.1`, not `localhost`: on Windows `localhost` tries IPv6 first and each new connection waits about 2 seconds, which makes the SMS tests time out.
 - Test scripts (`r.sh`, `tokens.mjs`) are in the session scratchpad, not the repo.

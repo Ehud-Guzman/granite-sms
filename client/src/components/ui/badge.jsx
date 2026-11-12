@@ -35,4 +35,6 @@ function Badge({
   return (<div className={cn(badgeVariants({ variant }), className)} {...props} />);
 }
 
+// shadcn/ui pattern: the variants helper is shared with other components.
+// eslint-disable-next-line react-refresh/only-export-components
 export { Badge, badgeVariants }

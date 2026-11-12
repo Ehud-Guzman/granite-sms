@@ -45,4 +45,6 @@ const Button = React.forwardRef(({ className, variant, size, asChild = false, ..
 })
 Button.displayName = "Button"
 
+// shadcn/ui pattern: the variants helper is shared with other components.
+// eslint-disable-next-line react-refresh/only-export-components
 export { Button, buttonVariants }

@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { confirmAction } from "@/lib/confirm-store";
 import GradeScalesCard from "./GradeScalesCard";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function niceFromEmail(email) {
   const raw = String(email || "").split("@")[0] || "";
@@ -198,7 +199,7 @@ export default function CurriculumSettingsTab() {
           <Separator />
 
           {subjectsQ.isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading subjects…</div>
+            <RowsSkeleton />
           ) : subjectsQ.isError ? (
             <div className="text-sm text-destructive">
               {subjectsQ.error?.response?.data?.message || "Failed to load subjects."}
@@ -342,7 +343,7 @@ export default function CurriculumSettingsTab() {
           <Separator />
 
           {assignmentsQ.isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading assignments…</div>
+            <RowsSkeleton />
           ) : assignmentsQ.isError ? (
             <div className="text-sm text-destructive">
               {assignmentsQ.error?.response?.data?.message || "Failed to load assignments."}

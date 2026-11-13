@@ -1,4 +1,5 @@
 import { getErrorMessage } from "@/lib/errors";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 export default function QueryBlock({
   isLoading,
@@ -9,7 +10,7 @@ export default function QueryBlock({
   children,
 }) {
   if (isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading…</div>;
+    return <RowsSkeleton />;
   }
 
   if (isError) {

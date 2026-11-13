@@ -17,6 +17,7 @@ import PaymentsTab from "../fees/tabs/PaymentsTab";
 
 // Print target (mounted once)
 import ReceiptPrint from "./print/ReceiptPrint";
+import { PageSkeleton } from "@/components/ui/state-blocks";
 
 function setPrintTarget(key) {
   document.documentElement.dataset.printing = key;
@@ -138,7 +139,7 @@ export default function FeesPage() {
     };
   }, [receiptToPrint]);
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <PageSkeleton />;
   if (isError || !data?.user) return <Navigate to="/auth/login" replace />;
 
   // If FeesPage is mounted but no tabs are allowed, kick them out (defense-in-depth)

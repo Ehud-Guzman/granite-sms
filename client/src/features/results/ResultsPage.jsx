@@ -22,6 +22,7 @@ import { fmtClass } from "./utils/format";
 import { printSection } from "@/lib/print";
 import { getErrorMessage as errMsg } from "@/lib/errors";
 import { useCurrentTermState, useSchoolCalendar } from "@/lib/schoolCalendar";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function currentYear() {
   return new Date().getFullYear();
@@ -252,7 +253,7 @@ export default function ResultsPage() {
   return (
     <div className="space-y-4">
       {isLoadingProfile ? (
-        <div className="text-center py-12 opacity-70">Loading user profile...</div>
+        <RowsSkeleton />
       ) : (
         <>
           <Card className="no-print">
@@ -301,7 +302,7 @@ export default function ResultsPage() {
                 setShowGrades={setShowGrades}
               />
 
-              {sessionsQ.isLoading && <div className="opacity-70">Loading sessions…</div>}
+              {sessionsQ.isLoading && <RowsSkeleton />}
               {sessionsQ.isError && (
                 <div className="text-red-600">Failed to load sessions: {errMsg(sessionsQ.error)}</div>
               )}
@@ -350,7 +351,7 @@ export default function ResultsPage() {
                     />
                   )}
 
-                  {studentResultsQ.isLoading && <div className="opacity-70">Loading your results…</div>}
+                  {studentResultsQ.isLoading && <RowsSkeleton />}
                 </div> : null}
               />
             </CardContent>
@@ -389,7 +390,7 @@ export default function ResultsPage() {
               examType="End Term"
             >
               {classResultsQ.isLoading && (
-                <div className="opacity-70 py-8 text-center">Loading class results…</div>
+                <RowsSkeleton />
               )}
               {classResultsQ.isError && (
                 <div className="text-red-600 py-8 text-center">
@@ -461,7 +462,7 @@ export default function ResultsPage() {
                   )}
 
                   {activeStudentId && studentResultsQ.isLoading && (
-                    <div className="opacity-70">Loading student results…</div>
+                    <RowsSkeleton />
                   )}
 
                   {activeStudentId && studentResultsQ.isError && (

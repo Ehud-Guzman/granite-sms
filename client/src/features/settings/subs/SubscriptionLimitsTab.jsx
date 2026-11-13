@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function capLabel(cap) {
   return cap === null ? "Unlimited" : String(cap ?? "-");
@@ -459,7 +460,7 @@ export default function SubscriptionLimitsTab() {
 
   if (meQ?.isLoading) return (
     <div className="flex items-center justify-center min-h-[200px]">
-      <div className="text-muted-foreground">Loading...</div>
+      <RowsSkeleton />
     </div>
   );
 
@@ -505,7 +506,7 @@ export default function SubscriptionLimitsTab() {
 
   if (q.isLoading) return (
     <div className="flex items-center justify-center min-h-[200px]">
-      <div className="text-muted-foreground">Loading subscription data...</div>
+      <RowsSkeleton />
     </div>
   );
 

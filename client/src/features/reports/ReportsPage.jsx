@@ -2,6 +2,7 @@
 import { Link, Outlet, Navigate, useLocation } from "react-router-dom";
 import { useMe } from "@/hooks/useMe";
 import { PageHeader } from "@/components/insights/Insights";
+import { PageSkeleton } from "@/components/ui/state-blocks";
 
 const norm = (v) => String(v || "").trim().toUpperCase();
 
@@ -9,7 +10,7 @@ export default function ReportsPage() {
   const location = useLocation();
   const { data, isLoading, isError } = useMe();
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <PageSkeleton />;
   if (isError || !data?.user) return <Navigate to="/auth/login" replace />;
 
   const role = norm(data.user.role);

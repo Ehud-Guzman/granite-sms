@@ -13,6 +13,7 @@ import StudentLookupByAdmission from "../components/StudentLookupByAdmission";
 import { money } from "../components/FeeMoney";
 import Pager from "@/components/ui/pager";
 import usePageFor from "@/hooks/usePageFor";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const err = (e) => toast.error(e?.response?.data?.message || "Something went wrong");
 const when = (d) => (d ? new Date(d).toLocaleString("en-KE", { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -42,7 +43,7 @@ function Unmatched() {
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         {q.isLoading ? (
-          <div className="text-muted-foreground">Loading…</div>
+          <RowsSkeleton />
         ) : items.length === 0 ? (
           <div className="text-muted-foreground">Nothing waiting.</div>
         ) : (
@@ -121,7 +122,7 @@ function History() {
       </CardHeader>
       <CardContent className="p-0">
         {q.isLoading ? (
-          <div className="px-6 pb-6 text-sm text-muted-foreground">Loading…</div>
+          <RowsSkeleton className="px-6 pb-4" />
         ) : items.length === 0 ? (
           <div className="px-6 pb-6 text-sm text-muted-foreground">None here.</div>
         ) : (

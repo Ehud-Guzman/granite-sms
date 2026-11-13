@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useSchoolCalendar } from "@/lib/schoolCalendar";
+import { PageSkeleton, RowsSkeleton } from "@/components/ui/state-blocks";
 
 const STATUSES = [
   ["PRESENT", "Present", "bg-emerald-600 text-white shadow-sm"],
@@ -234,7 +235,7 @@ export default function AttendanceSessionPage() {
     ? new Intl.DateTimeFormat("en-KE", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(session.date))
     : "—";
 
-  if (meLoading) return <div className="p-6">Loading...</div>;
+  if (meLoading) return <PageSkeleton />;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -367,7 +368,7 @@ export default function AttendanceSessionPage() {
 
         <CardContent className="space-y-2">
           {(sessionQ.isLoading || studentsQ.isLoading) && (
-            <div className="text-sm text-muted-foreground">Loading session…</div>
+            <RowsSkeleton />
           )}
 
           {(sessionQ.isError || studentsQ.isError) && (

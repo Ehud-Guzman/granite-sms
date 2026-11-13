@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import NewUserDialog from "./components/NewUserDialog";
 import ManageUserDialog from "./components/ManageUserDialog";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function RoleBadge({ role }) {
   const r = String(role || "").toUpperCase();
@@ -70,7 +71,7 @@ export default function UsersSettingsTab() {
 
   if (meQ.isLoading) return (
     <div className="flex items-center justify-center min-h-[200px]">
-      <div className="text-muted-foreground">Loading...</div>
+      <RowsSkeleton />
     </div>
   );
 
@@ -155,7 +156,7 @@ export default function UsersSettingsTab() {
       ) : usersQ.isLoading ? (
         <Card>
           <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground">Loading users...</div>
+            <RowsSkeleton />
           </CardContent>
         </Card>
       ) : filtered.length === 0 ? (

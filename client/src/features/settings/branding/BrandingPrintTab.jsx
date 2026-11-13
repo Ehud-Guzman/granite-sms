@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 /* =========================
    Helpers
@@ -328,7 +329,7 @@ const logoSrc = form?.brandLogoUrl
   }
 
   if (brandingQ.isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading branding…</div>;
+    return <RowsSkeleton />;
   }
 
   if (brandingQ.isError) {

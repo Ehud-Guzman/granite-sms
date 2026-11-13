@@ -7,6 +7,7 @@ import { previewBackup } from "../backups.api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function shortId(id) {
   if (!id) return "—";
@@ -41,7 +42,7 @@ export default function BackupPreviewDialog({ backupId }) {
         </DialogHeader>
 
         {q.isLoading ? (
-          <div className="text-sm text-muted-foreground">Loading preview…</div>
+          <RowsSkeleton />
         ) : q.isError ? (
           <div className="text-sm text-destructive">Failed to load preview.</div>
         ) : !b ? (

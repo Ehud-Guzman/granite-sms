@@ -22,6 +22,7 @@ import {
   SheetDescription,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 // ---------------------------
 // helpers
@@ -343,7 +344,7 @@ export default function AssignClassTeacherDrawer({ classId, classLabel, children
 
             <div className="rounded-md border bg-background max-h-[340px] overflow-auto">
               {teachersQ.isLoading ? (
-                <div className="p-4 text-sm text-muted-foreground">Loading teachers…</div>
+                <RowsSkeleton />
               ) : teachersQ.isError ? (
                 <div className="p-4 text-sm">
                   <div className="font-medium">Failed to load teachers</div>

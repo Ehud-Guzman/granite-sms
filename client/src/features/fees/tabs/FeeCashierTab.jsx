@@ -30,6 +30,7 @@ import { money, toNumberOrZero } from "../components/FeeMoney";
 import { useCurrentTermState, useCurrentYearState, useSchoolCalendar } from "@/lib/schoolCalendar";
 import { StatTile } from "@/components/insights/Insights";
 import { confirmAction } from "@/lib/confirm-store";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const PAYMENT_METHODS = ["CASH", "MPESA", "BANK", "CHEQUE", "OTHER"];
 const TERMS = ["TERM1", "TERM2", "TERM3"];
@@ -469,7 +470,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
   // -------------------------
   // UI
   // -------------------------
-  if (meQ.isLoading) return <div className="p-6">Loading...</div>;
+  if (meQ.isLoading) return <RowsSkeleton />;
 
   if (!isCashierRole) {
     return (

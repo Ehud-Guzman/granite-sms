@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const label = (c) => `${c.name}${c.stream ? ` ${c.stream}` : ""} (${c.year})`;
 const KEEP = "__keep__";
@@ -101,7 +102,7 @@ export default function PromotionDialog({ open, onOpenChange, fromYear }) {
         </div>
 
         {fromQ.isLoading || toQ.isLoading ? (
-          <div className="text-sm text-muted-foreground">Loading classes…</div>
+          <RowsSkeleton />
         ) : fromClasses.length === 0 ? (
           <div className="text-sm text-muted-foreground">No classes in {sourceYear}.</div>
         ) : (

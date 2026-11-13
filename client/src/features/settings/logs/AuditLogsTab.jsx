@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function fmtDate(v) {
   try {
@@ -310,7 +311,7 @@ export default function AuditLogsTab() {
       {logsQ.isLoading ? (
         <Card>
           <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground">Loading audit logs...</div>
+            <RowsSkeleton />
           </CardContent>
         </Card>
       ) : logsQ.isError ? (

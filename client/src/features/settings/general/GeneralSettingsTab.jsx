@@ -21,6 +21,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import TermDatesCard from "./TermDatesCard";
 import { downloadFromApi } from "@/lib/download";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function isSysAdmin(me) {
   const role = String(me?.role || me?.me?.role || "").toUpperCase();
@@ -250,7 +251,7 @@ export default function GeneralSettingsTab() {
   if (schoolQ.isLoading || academicsQ.isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[200px]">
-        <div className="text-muted-foreground">Loading settings...</div>
+        <RowsSkeleton />
       </div>
     );
   }
@@ -550,7 +551,7 @@ export default function GeneralSettingsTab() {
 
           <CardContent>
             {flagsQ.isLoading ? (
-              <div className="text-sm text-muted-foreground">Loading features...</div>
+              <RowsSkeleton />
             ) : flagsQ.isError ? (
               <div className="text-sm text-destructive">
                 {flagsQ.error?.response?.data?.message || "Failed to load features"}

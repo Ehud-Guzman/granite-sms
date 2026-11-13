@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { getErrorMessage as errMsg } from "@/lib/errors";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function badgeVariant(status) {
   if (status === "PUBLISHED") return "default";
@@ -294,7 +295,7 @@ export default function SessionMarkSheetsPage() {
 
           <Separator />
 
-          {q.isLoading && <div className="opacity-70 text-center py-6">Loading marksheets…</div>}
+          {q.isLoading && <RowsSkeleton />}
 
           {q.isError && (
             <div className="text-red-600 text-center py-6">

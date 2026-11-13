@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 
 import BackupPreviewDialog from "./components/BackupPreviewDialog";
 import RestoreBackupDialog from "./components/RestoreBackupDialog";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function StatusBadge({ status }) {
   const s = String(status || "").toUpperCase();
@@ -77,7 +78,7 @@ export default function BackupsTab() {
     }
   }
 
-  if (meQ.isLoading) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  if (meQ.isLoading) return <RowsSkeleton />;
   if (meQ.isError) return <div className="p-4 text-sm text-destructive">Failed to load identity.</div>;
 
   if (!canUse) {
@@ -130,7 +131,7 @@ export default function BackupsTab() {
 
       <div className="divide-y rounded-lg border bg-background">
         {backupsQ.isLoading ? (
-          <div className="p-4 text-sm text-muted-foreground">Loading backups…</div>
+          <RowsSkeleton />
         ) : filtered.length === 0 ? (
           <div className="p-4 text-sm text-muted-foreground">No backups found.</div>
         ) : (

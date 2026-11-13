@@ -18,6 +18,7 @@ import PrivacyCard from "./PrivacyCard";
 import RecordLeavingDialog from "./RecordLeavingDialog";
 import { EXIT_LABELS } from "./exitLabels";
 import { downloadFromApi } from "@/lib/download";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const fullName = (s) => `${s?.firstName || ""} ${s?.lastName || ""}`.trim();
 
@@ -72,7 +73,7 @@ export default function StudentProfilePage() {
 
   if (meLoading) return (
     <div className="flex items-center justify-center min-h-[400px]">
-      <div className="text-muted-foreground">Loading...</div>
+      <RowsSkeleton />
     </div>
   );
   
@@ -84,7 +85,7 @@ export default function StudentProfilePage() {
 
   if (isLoading) return (
     <div className="flex items-center justify-center min-h-[400px]">
-      <div className="text-muted-foreground">Loading student information...</div>
+      <RowsSkeleton />
     </div>
   );
   

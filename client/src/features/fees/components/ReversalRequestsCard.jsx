@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import SimpleModal from "./SimpleModal";
 import { money } from "./FeeMoney";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function when(d) {
   return d ? new Date(d).toLocaleString("en-KE", { dateStyle: "medium", timeStyle: "short" }) : "—";
@@ -62,7 +63,7 @@ export default function ReversalRequestsCard({ isAdmin }) {
       </CardHeader>
       <CardContent className="text-sm">
         {q.isLoading ? (
-          <div className="text-muted-foreground">Loading…</div>
+          <RowsSkeleton />
         ) : q.isError ? (
           <div className="text-destructive">Failed to load reversal requests.</div>
         ) : requests.length === 0 ? (

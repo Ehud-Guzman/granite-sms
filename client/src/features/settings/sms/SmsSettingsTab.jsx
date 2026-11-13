@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const STATUS_VARIANT = { SENT: "default", QUEUED: "secondary", FAILED: "destructive", SKIPPED: "outline" };
 const KIND_LABEL = { PAYMENT: "Receipt", ABSENCE: "Absence", RESULTS: "Results", FEE_REMINDER: "Fee reminder", BROADCAST: "Message" };
@@ -180,7 +181,7 @@ export default function SmsSettingsTab() {
         </CardHeader>
         <CardContent className="space-y-2">
           {outboxQ.isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading…</div>
+            <RowsSkeleton />
           ) : !outbox?.items?.length ? (
             <div className="text-sm text-muted-foreground">No messages yet.</div>
           ) : (

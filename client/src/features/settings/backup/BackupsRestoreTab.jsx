@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -237,7 +238,7 @@ export default function BackupsRestoreTab() {
       {/* List */}
       <div className="divide-y rounded-lg border bg-background">
         {listQ.isLoading ? (
-          <div className="p-4 text-sm text-muted-foreground">Loading backups…</div>
+          <RowsSkeleton />
         ) : backups.length === 0 ? (
           <div className="p-4 text-sm text-muted-foreground">No backups yet.</div>
         ) : (
@@ -330,7 +331,7 @@ export default function BackupsRestoreTab() {
             </div>
 
             {previewM.isPending ? (
-              <div className="text-sm text-muted-foreground">Loading preview…</div>
+              <RowsSkeleton />
             ) : preview ? (
               <div className="text-sm space-y-1">
                 <div>ID: <span className="font-medium">{preview.id}</span></div>

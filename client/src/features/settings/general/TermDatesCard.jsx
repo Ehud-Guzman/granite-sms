@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const TERMS = ["TERM1", "TERM2", "TERM3"];
 
@@ -83,7 +84,7 @@ export default function TermDatesCard({ scopeParams, labels }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {q.isLoading ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
+          <RowsSkeleton />
         ) : (
           <>
             {rows.map((r) => (

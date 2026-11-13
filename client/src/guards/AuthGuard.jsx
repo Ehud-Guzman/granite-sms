@@ -2,6 +2,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useMe } from "@/hooks/useMe";
 import { getToken } from "@/api/auth.api";
+import { FullScreenLoader } from "@/components/ui/state-blocks";
 
 export default function AuthGuard({ children }) {
   const location = useLocation();
@@ -17,7 +18,7 @@ export default function AuthGuard({ children }) {
 
   // Waiting for /api/me
   if (isLoading) {
-    return <div className="p-6">Loading...</div>;
+    return <FullScreenLoader />;
   }
 
   // Token exists but invalid / expired

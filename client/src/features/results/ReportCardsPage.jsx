@@ -17,6 +17,7 @@ import PrintDocument from "@/components/print/PrintDocument";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const unwrap = (r) => r.data?.data;
 const classLabel = (c) => (c ? `${c.name}${c.stream ? ` ${c.stream}` : ""}` : "");
@@ -219,7 +220,7 @@ export default function ReportCardsPage() {
         </CardContent>
       </Card>
 
-      {reportQ.isLoading && (isStudent || classId) && <div className="text-sm text-muted-foreground">Loading…</div>}
+      {reportQ.isLoading && (isStudent || classId) && <RowsSkeleton />}
       {reportQ.isError && (
         <div className="text-sm text-muted-foreground">{reportQ.error?.response?.data?.message || "No report cards for this term yet."}</div>
       )}

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import NoticeItem from "@/features/notices/NoticeItem";
 import { useNotices } from "@/features/notices/notices.api";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const kes = (n) => `KES ${Math.round(Number(n) || 0).toLocaleString("en-KE")}`;
 
@@ -67,7 +68,7 @@ export default function PortalHome() {
         </Card>
       )}
 
-      {q.isLoading && <div className="text-sm text-muted-foreground">Loading…</div>}
+      {q.isLoading && <RowsSkeleton />}
       {q.isError && <div className="text-sm text-destructive">Couldn&apos;t load this page.</div>}
       {!q.isLoading && !q.isError && learners.length === 0 && (
         <div className="text-sm text-muted-foreground">

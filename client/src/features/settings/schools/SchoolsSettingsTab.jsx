@@ -21,6 +21,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 function StatusBadge({ active }) {
   return active ? (
@@ -358,7 +359,7 @@ export default function SchoolsSettingsTab() {
       ) : schoolsQ.isLoading ? (
         <Card>
           <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground">Loading schools...</div>
+            <RowsSkeleton />
           </CardContent>
         </Card>
       ) : filtered.length === 0 ? (

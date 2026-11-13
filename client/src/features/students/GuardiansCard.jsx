@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { confirmAction } from "@/lib/confirm-store";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const RELATIONSHIPS = [
   ["MOTHER", "Mother"],
@@ -89,7 +90,7 @@ export default function GuardiansCard({ studentId, canEdit }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {q.isLoading ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
+          <RowsSkeleton />
         ) : q.isError ? (
           <div className="text-sm text-destructive">Failed to load guardians.</div>
         ) : guardians.length === 0 && !adding ? (

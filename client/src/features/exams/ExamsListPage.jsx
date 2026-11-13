@@ -16,6 +16,7 @@ import { useCurrentTermState, useSchoolCalendar } from "@/lib/schoolCalendar";
 
 import ExamCreateDrawer from "./ExamCreateDrawer";
 import ExamGroups from "./components/ExamGroups";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const TERMS = ["ALL", "TERM1", "TERM2", "TERM3"];
 
@@ -178,7 +179,7 @@ const activeFiltersText = useMemo(() => {
             </div>
           )}
 
-          {sessionsQ.isLoading && <div className="opacity-70">Loading sessions…</div>}
+          {sessionsQ.isLoading && <RowsSkeleton />}
           {sessionsQ.isError && (
             <div className="text-red-600">
               Failed to load sessions: {errMsg(sessionsQ.error)}
@@ -186,7 +187,7 @@ const activeFiltersText = useMemo(() => {
           )}
 
           {classesQ.isLoading && yearNum && (
-            <div className="text-sm opacity-70">Loading classes…</div>
+            <RowsSkeleton />
           )}
           {classesQ.isError && (
             <div className="text-sm text-red-600">

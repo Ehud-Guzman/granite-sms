@@ -129,3 +129,29 @@ export function PageSkeleton({
     </div>
   );
 }
+
+/**
+ * Grey placeholder rows while a list or table loads, in place of a bare
+ * "Loading…" line. Screen readers hear `label`.
+ */
+export function RowsSkeleton({ rows = 4, label = "Loading", className }) {
+  const widths = ["w-full", "w-11/12", "w-10/12", "w-full", "w-9/12"];
+  return (
+    <div className={cn("space-y-2 py-2", className)} role="status" aria-live="polite">
+      <span className="sr-only">{label}</span>
+      {Array.from({ length: rows }).map((_, i) => (
+        <Skeleton key={i} className={cn("h-10 rounded-lg", widths[i % widths.length])} />
+      ))}
+    </div>
+  );
+}
+
+/** One centred spinner for the whole screen (before the app knows who you are). */
+export function FullScreenLoader({ label = "Loading" }) {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}

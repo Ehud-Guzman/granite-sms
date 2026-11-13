@@ -17,6 +17,7 @@ import { AUDIENCE_LABEL, useNoticesPage } from "./notices.api";
 import Pager from "@/components/ui/pager";
 import usePageFor from "@/hooks/usePageFor";
 import NoticeItem from "./NoticeItem";
+import { RowsSkeleton } from "@/components/ui/state-blocks";
 
 const classLabel = (c) => `${c.name}${c.stream ? ` ${c.stream}` : ""}`;
 const errMsg = (e, fallback) => e?.response?.data?.message || fallback;
@@ -251,7 +252,7 @@ export default function NoticesPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {q.isLoading && <div className="px-6 py-4 text-sm text-muted-foreground">Loading…</div>}
+          {q.isLoading && <RowsSkeleton className="px-6" />}
           {q.isError && <div className="px-6 py-4 text-sm text-destructive">Couldn&apos;t load notices.</div>}
           {!q.isLoading && !q.isError && notices.length === 0 && (
             <div className="px-6 py-8 text-center text-sm text-muted-foreground">{query ? `No notices matching "${query}".` : "No notices right now."}</div>

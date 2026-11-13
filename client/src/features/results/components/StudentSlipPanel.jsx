@@ -1,4 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Download } from "lucide-react";
+import { toast } from "sonner";
+import { downloadFromApi } from "@/lib/download";
 import { Button } from "@/components/ui/button";
 
 import PrintDocument from "@/components/print/PrintDocument";
@@ -20,6 +23,22 @@ export default function StudentSlipPanel({
 }) {
   const studentName = useMemo(() => fmtStudentName(payload?.student), [payload]);
   const printedAt = useMemo(() => fmtPrintedAt(new Date()), []);
+  const [downloading, setDownloading] = useState(false);
+
+  // A one-page PDF built by the server: same on every phone and printer.
+  const handleDownload = async () => {
+    const sessionId = payload?.session?.id;
+    const studentId = payload?.student?.id;
+    if (!sessionId || !studentId) return;
+    setDownloading(true);
+    try {
+      await downloadFromApi(`/api/exams/sessions/${sessionId}/results/students/${studentId}/pdf`, "result-slip.pdf");
+    } catch {
+      toast.error("Could not download the slip. Try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const handlePrint = () => {
     if (!payload) return alert("Open a student first.");
@@ -31,8 +50,12 @@ export default function StudentSlipPanel({
   // -------- Screen view (normal UI) --------
   const ScreenView = (
     <div className="space-y-3 no-print">
-      <div className="flex gap-2">
-        <Button variant="secondary" onClick={handlePrint} disabled={!canPrint}>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={handleDownload} disabled={downloading || !payload?.session?.id}>
+          <Download className="mr-1.5 h-4 w-4" />
+          {downloading ? "Preparing…" : "Download PDF"}
+        </Button>
+        <Button variant="outline" onClick={handlePrint} disabled={!canPrint}>
           {buttonLabel}
         </Button>
       </div>

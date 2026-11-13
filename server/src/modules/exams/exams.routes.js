@@ -128,6 +128,13 @@ router.get(
   requireEntitlement("EXAMS_READ"),
   ctrl.getStudentReportCard
 );
+// The same report card as a one-page PDF download.
+router.get(
+  "/report-cards/students/:studentId/pdf",
+  requireRole("ADMIN", "TEACHER", "STUDENT", "PARENT"),
+  requireEntitlement("EXAMS_READ"),
+  ctrl.getStudentReportCardPdf
+);
 router.put("/report-cards/comments", requireRole("ADMIN", "TEACHER"), requireEntitlement("EXAMS_WRITE"), ctrl.saveReportComment);
 
 // ------------------------
@@ -145,6 +152,13 @@ router.get(
   requireRole("ADMIN", "TEACHER", "STUDENT", "PARENT"),
   requireEntitlement("EXAMS_READ"),
   ctrl.getStudentResults
+);
+// The same result slip as a one-page PDF download.
+router.get(
+  "/sessions/:id/results/students/:studentId/pdf",
+  requireRole("ADMIN", "TEACHER", "STUDENT", "PARENT"),
+  requireEntitlement("EXAMS_READ"),
+  ctrl.getStudentSlipPdf
 );
 
 export default router;

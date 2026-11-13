@@ -11,6 +11,8 @@ import { listClasses } from "@/api/classes.api";
 import { useMe } from "@/hooks/useMe";
 import { useCurrentTermState, useCurrentYearState, useSchoolCalendar } from "@/lib/schoolCalendar";
 import { printSection } from "@/lib/print";
+import { downloadFromApi } from "@/lib/download";
+import { Download } from "lucide-react";
 import PrintDocument from "@/components/print/PrintDocument";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -281,7 +283,18 @@ export default function ReportCardsPage() {
                 onSaved={() => qc.invalidateQueries({ queryKey: ["reportCards"] })}
               />
             )}
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                onClick={() => {
+                  const row = isStudent ? report.students[0] : open;
+                  downloadFromApi(`/api/exams/report-cards/students/${row.student.id}/pdf`, "report-card.pdf", { year, term }).catch(() =>
+                    toast.error("Could not download the report card. Try again.")
+                  );
+                }}
+              >
+                <Download className="mr-1.5 h-4 w-4" />
+                Download PDF
+              </Button>
               <Button variant="outline" onClick={() => printSection("print-one-report-card")}>
                 Print this card
               </Button>

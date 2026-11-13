@@ -93,11 +93,22 @@ router.get("/transactions", requireRole("ADMIN", "BURSAR"), async (req, res) => 
   if (status && !["MATCHED", "UNMATCHED", "ASSIGNED", "IGNORED"].includes(status)) {
     return res.status(400).json({ message: "status must be MATCHED, UNMATCHED, ASSIGNED or IGNORED" });
   }
-  const items = await prisma.mpesaTransaction.findMany({
-    where: { schoolId: req.schoolId, ...(status ? { status } : {}) },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
+  const where = { schoolId: req.schoolId, ...(status ? { status } : {}) };
+
+  // ?page=N: one page plus how many there are in each state (for the tabs).
+  if (req.query.page !== undefined) {
+    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(Number.parseInt(req.query.pageSize, 10) || 25, 1), 100);
+    const [items, total, grouped] = await Promise.all([
+      prisma.mpesaTransaction.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.mpesaTransaction.count({ where }),
+      prisma.mpesaTransaction.groupBy({ by: ["status"], where: { schoolId: req.schoolId }, _count: true }),
+    ]);
+    const counts = Object.fromEntries(grouped.map((g) => [g.status, g._count]));
+    return res.json({ items, total, page, pageSize, counts });
+  }
+
+  const items = await prisma.mpesaTransaction.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 });
   return res.json({ items });
 });
 

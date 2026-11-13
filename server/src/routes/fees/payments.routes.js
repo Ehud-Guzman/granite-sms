@@ -4,13 +4,99 @@ import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { requireRole } from "../../middleware/auth.js";
 import { requireEntitlement } from "../../middleware/subscription.js";
-import { toNumber } from "../../utils/validate.js";
-import { getSchoolCalendar, localDateString } from "../../utils/schoolTime.js";
+import { toInt, toNumber } from "../../utils/validate.js";
+import { getSchoolCalendar, localDateString, localDayRange, isDateString } from "../../utils/schoolTime.js";
 import { notifyPayment } from "../../modules/sms/notify.js";
 import { lockInvoice, lockStudent, allocatePayment, accountSummary, nextDocumentNo } from "../../modules/fees/ledger.js";
-import { ALLOWED_PAYMENT_METHODS, normalizePaymentMethod, MONEY_TX_OPTIONS, feesAudit } from "./shared.js";
+import { ALLOWED_PAYMENT_METHODS, normalizePaymentMethod, MONEY_TX_OPTIONS, feesAudit, staffNames } from "./shared.js";
 
 const router = Router();
+
+/**
+ * GET /api/fees/payments?page=1&pageSize=25&from=YYYY-MM-DD&to=YYYY-MM-DD&method=MPESA&q=
+ * The payments ledger, newest first, a page at a time. `q` matches receipt
+ * number, reference, learner name or admission number; from/to are days in
+ * the school's time zone. Totals cover the whole filter (reversed payments
+ * are counted separately, not in the amount).
+ */
+router.get("/payments", requireRole("ADMIN", "BURSAR"), async (req, res) => {
+  const page = Math.max(toInt(req.query.page, 1) || 1, 1);
+  const pageSize = Math.min(Math.max(toInt(req.query.pageSize, 25) || 25, 1), 200);
+  const q = String(req.query.q || "").trim().slice(0, 80);
+  const from = req.query.from ? String(req.query.from) : null;
+  const to = req.query.to ? String(req.query.to) : null;
+  const method = req.query.method ? normalizePaymentMethod(req.query.method) : null;
+  if (req.query.method && !method) {
+    return res.status(400).json({ message: `method must be one of: ${ALLOWED_PAYMENT_METHODS.join(", ")}.` });
+  }
+  if ((from && !isDateString(from)) || (to && !isDateString(to))) {
+    return res.status(400).json({ message: "from and to must be dates (YYYY-MM-DD)." });
+  }
+
+  let receivedAt;
+  if (from || to) {
+    const { timezone } = await getSchoolCalendar(req.schoolId);
+    const range = localDayRange(from || "2000-01-01", to || "2100-12-31", timezone);
+    receivedAt = { gte: range.from, lte: range.to };
+  }
+
+  const where = {
+    schoolId: req.schoolId,
+    ...(receivedAt ? { receivedAt } : {}),
+    ...(method ? { method } : {}),
+    ...(q
+      ? {
+          OR: [
+            { receiptNo: { contains: q, mode: "insensitive" } },
+            { reference: { contains: q, mode: "insensitive" } },
+            { student: { admissionNo: { contains: q, mode: "insensitive" } } },
+            { student: { firstName: { contains: q, mode: "insensitive" } } },
+            { student: { lastName: { contains: q, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [items, total, live, byMethod, reversed] = await Promise.all([
+    prisma.feePayment.findMany({
+      where,
+      orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        receiptNo: true,
+        amount: true,
+        method: true,
+        reference: true,
+        receivedAt: true,
+        receivedBy: true,
+        isReversed: true,
+        student: { select: { id: true, admissionNo: true, firstName: true, lastName: true, class: { select: { name: true, stream: true } } } },
+      },
+    }),
+    prisma.feePayment.count({ where }),
+    prisma.feePayment.aggregate({ where: { ...where, isReversed: false }, _sum: { amount: true }, _count: true }),
+    prisma.feePayment.groupBy({ by: ["method"], where: { ...where, isReversed: false }, _sum: { amount: true }, _count: true }),
+    prisma.feePayment.count({ where: { ...where, isReversed: true } }),
+  ]);
+
+  const names = await staffNames(req.schoolId, items.map((p) => p.receivedBy));
+  return res.json({
+    items: items.map((p) => ({ ...p, receivedByName: names.get(String(p.receivedBy)) || null })),
+    total,
+    page,
+    pageSize,
+    totals: {
+      amount: live._sum.amount || 0,
+      count: live._count || 0,
+      reversed,
+      byMethod: byMethod
+        .map((m) => ({ method: m.method, amount: m._sum.amount || 0, count: m._count }))
+        .sort((a, b) => b.amount - a.amount),
+    },
+  });
+});
 
 /* --------------------
  * Payments

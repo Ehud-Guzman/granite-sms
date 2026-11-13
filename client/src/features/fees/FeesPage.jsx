@@ -13,6 +13,7 @@ import InvoicesTab from "../fees/tabs/InvoicesTab";
 import FeeCashierTab from "../fees/tabs/FeeCashierTab";
 import StudentStatementTab from "../fees/tabs/StudentStatementTab";
 import MpesaTab from "../fees/tabs/MpesaTab";
+import PaymentsTab from "../fees/tabs/PaymentsTab";
 
 // Print target (mounted once)
 import ReceiptPrint from "./print/ReceiptPrint";
@@ -37,6 +38,7 @@ const TAB = {
   INVOICES: "invoices",
   CASHIER: "cashier",
   STUDENT: "student",
+  PAYMENTS: "payments",
   MPESA: "mpesa",
 };
 
@@ -49,6 +51,7 @@ function getAllowedTabsByRole(role) {
       TAB.PLANS,
       TAB.INVOICES,
       TAB.CASHIER,
+      TAB.PAYMENTS,
       TAB.STUDENT,
       TAB.MPESA,
     ];
@@ -60,6 +63,7 @@ function getAllowedTabsByRole(role) {
       TAB.DASHBOARD,
       TAB.INVOICES,
       TAB.CASHIER,
+      TAB.PAYMENTS,
       TAB.STUDENT,
       TAB.MPESA,
     ];
@@ -160,6 +164,7 @@ export default function FeesPage() {
         <FeeCashierTab onReceiptReady={setReceiptToPrint} />
       )}
 
+      {tab === TAB.PAYMENTS && <PaymentsTab />}
       {tab === TAB.STUDENT && <StudentStatementTab />}
       {tab === TAB.MPESA && <MpesaTab isAdmin={norm(data?.user?.role) === "ADMIN"} />}
 

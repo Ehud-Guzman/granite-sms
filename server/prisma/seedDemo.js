@@ -149,7 +149,7 @@ const SURNAMES = [
 const rows = {
   school: [], schoolSettings: [], subscription: [], user: [], teacher: [], class: [], student: [],
   subject: [], classTeacher: [], teachingAssignment: [], feeItem: [], feePlan: [], feePlanItem: [],
-  feeInvoice: [], feeInvoiceLine: [], feePayment: [], feePaymentAllocation: [], attendanceSession: [], attendanceRecord: [],
+  feeInvoice: [], feeInvoiceLine: [], feePayment: [], feePaymentAllocation: [], mpesaTransaction: [], attendanceSession: [], attendanceRecord: [],
   attendanceEditLog: [], examType: [], examSession: [], markSheet: [], mark: [], examAuditLog: [],
   auditLog: [], guardian: [], studentGuardian: [], notice: [], termDate: [],
 };
@@ -235,7 +235,6 @@ function build() {
 
   const admin = addUser({ email: DEMO_ACCOUNTS.ADMIN, role: "ADMIN", schoolId: S, lastLoginAt: atNairobi(TODAY, 7, 42) });
   const bursar = addUser({ email: DEMO_ACCOUNTS.BURSAR, role: "BURSAR", schoolId: S, lastLoginAt: atNairobi(TODAY, 7, 55) });
-  const BURSAR_NAME = "Rose Nduta (Bursar)";
 
   // Teachers: name, subjects they can teach. Grace is the demo teacher.
   const TEACHERS = [
@@ -468,16 +467,37 @@ function build() {
   };
   const roundTo = (x, step) => Math.max(step, Math.round(x / step) * step);
 
+  // Who pays on the paybill for a learner: the first guardian, else a parent.
+  const guardianOf = new Map();
+  for (const sg of rows.studentGuardian) if (!guardianOf.has(sg.studentId)) guardianOf.set(sg.studentId, sg.guardianId);
+  function payerOf(studentId) {
+    const st = studentById.get(studentId);
+    const g = guardianById.get(guardianOf.get(studentId));
+    return {
+      admissionNo: st?.admissionNo || null,
+      msisdn: (g?.phone || `+2547${randInt(10000000, 99999999)}`).replace("+", ""),
+      name: g ? `${g.firstName} ${g.lastName}`.toUpperCase() : `${pick(GIRLS)} ${st?.lastName || "PARENT"}`.toUpperCase(),
+    };
+  }
+
   function addPayment(invoice, amount, at, extra = {}) {
     const r = rand();
     const method = r < 0.62 ? "MPESA" : r < 0.87 ? "BANK" : "CASH";
     const reference = method === "MPESA" ? randCode(10) : method === "BANK" ? `EQB-${randInt(100000, 999999)}` : null;
     const p = {
       id: newId(), schoolId: S, studentId: invoice.studentId, invoiceId: invoice.id, clientTxnId: null, amount, method, reference,
-      receivedAt: at, receivedBy: BURSAR_NAME, receiptNo: receiptNo(at), receiptIssuedAt: at, createdAt: at,
+      receivedAt: at, receivedBy: bursar.id, receiptNo: receiptNo(at), receiptIssuedAt: at, createdAt: at,
       isReversed: false, ...extra,
     };
     rows.feePayment.push(p);
+    if (method === "MPESA") {
+      const payer = payerOf(invoice.studentId);
+      rows.mpesaTransaction.push({
+        id: newId(), schoolId: S, transId: p.reference, amount, billRef: payer.admissionNo, msisdn: payer.msisdn, payerName: payer.name,
+        transTime: at, source: rand() < 0.15 ? "STK" : "C2B", status: "MATCHED", paymentId: p.isReversed ? null : p.id,
+        studentId: invoice.studentId, note: null, createdAt: at, updatedAt: at,
+      });
+    }
     // The whole payment goes to this invoice (see FeePaymentAllocation).
     rows.feePaymentAllocation.push({ id: newId(), schoolId: S, paymentId: p.id, invoiceId: invoice.id, amount, createdAt: at });
     if (!p.isReversed) {
@@ -579,10 +599,28 @@ function build() {
     const { invoice } = wrongPosting;
     const at = randomMomentBetween(addDays(TODAY, -6), addDays(TODAY, -2));
     addPayment(invoice, 3000, at, {
-      isReversed: true, reversedAt: addDays(at, 0.05), reversedBy: BURSAR_NAME,
+      isReversed: true, reversedAt: addDays(at, 0.05), reversedBy: bursar.id,
       reversalReason: "Posted to the wrong student; re-posted to the correct account.",
     });
   }
+
+  // Paybill payments the bursar still has to place: the parent typed a
+  // phone number or a name instead of the admission number. Two were ignored
+  // (a wrong-number payment refunded by the bank).
+  const UNPLACED = [
+    { billRef: "0722481930", amount: 4500 }, { billRef: "GRADE 5 FEES", amount: 3000 }, { billRef: "MWA1O77", amount: 6200 },
+    { billRef: "FEES", amount: 2500, status: "IGNORED", note: "Not a school payment; returned to the sender." },
+    { billRef: "OTIENO", amount: 5000 }, { billRef: "1234", amount: 150, status: "IGNORED", note: "Test payment from the bank." },
+  ];
+  UNPLACED.forEach((u, i) => {
+    const at = randomMomentBetween(addDays(TODAY, -(i + 1) * 2), addDays(TODAY, -i * 2));
+    rows.mpesaTransaction.push({
+      id: newId(), schoolId: S, transId: randCode(10), amount: u.amount, billRef: u.billRef,
+      msisdn: `2547${randInt(10000000, 99999999)}`, payerName: `${pick(GIRLS)} ${pick(SURNAMES)}`.toUpperCase(),
+      transTime: at, source: "C2B", status: u.status || "UNMATCHED", paymentId: null, studentId: null, note: u.note || null,
+      createdAt: at, updatedAt: at,
+    });
+  });
 
   /* ---------- Attendance (this term, last 4 weeks + today) ---------- */
   const days = [];
@@ -838,7 +876,7 @@ function build() {
 const ORDER = [
   "school", "schoolSettings", "termDate", "subscription", "user", "teacher", "class", "student", "guardian", "studentGuardian", "subject",
   "classTeacher", "teachingAssignment", "feeItem", "feePlan", "feePlanItem", "feeInvoice",
-  "feeInvoiceLine", "feePayment", "feePaymentAllocation", "attendanceSession", "attendanceRecord", "attendanceEditLog",
+  "feeInvoiceLine", "feePayment", "feePaymentAllocation", "mpesaTransaction", "attendanceSession", "attendanceRecord", "attendanceEditLog",
   "examType", "examSession", "markSheet", "mark", "examAuditLog", "auditLog", "notice",
 ];
 

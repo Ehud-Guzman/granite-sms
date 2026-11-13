@@ -96,6 +96,12 @@ export async function createFeePayment(payload) {
   return data; // { payment, invoice }
 }
 
+/** The payments ledger: { items, total, page, pageSize, totals: { amount, count, reversed, byMethod } }. */
+export async function listFeePayments(params = {}) {
+  const { data } = await api.get("/api/fees/payments", { params: { page: 1, pageSize: 25, ...params } });
+  return data;
+}
+
 export async function getPaymentReceiptJson(paymentId) {
   const { data } = await api.get(`/api/fees/payments/${paymentId}/receipt`);
   return data;

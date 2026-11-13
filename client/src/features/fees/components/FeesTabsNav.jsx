@@ -14,6 +14,7 @@ const ALL_TABS = [
   // Operations
   { key: "invoices", label: "Invoices" },
   { key: "cashier", label: "Receive payment" },
+  { key: "payments", label: "Payments" },
   { key: "student", label: "Statements" },
   { key: "mpesa", label: "M-Pesa" },
 ];

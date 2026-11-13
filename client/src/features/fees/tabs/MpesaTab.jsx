@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import StudentLookupByAdmission from "../components/StudentLookupByAdmission";
 import { money } from "../components/FeeMoney";
+import Pager from "@/components/ui/pager";
+import usePageFor from "@/hooks/usePageFor";
 
 const err = (e) => toast.error(e?.response?.data?.message || "Something went wrong");
 const when = (d) => (d ? new Date(d).toLocaleString("en-KE", { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -71,33 +73,83 @@ function Unmatched() {
   );
 }
 
-function Recent() {
-  const q = useQuery({ queryKey: ["mpesa", "recent"], queryFn: () => api.get("/api/mpesa/transactions").then((r) => r.data.items) });
-  const items = (q.data || []).slice(0, 30);
+const STATUS_TABS = [
+  { key: "", label: "All" },
+  { key: "MATCHED", label: "Matched" },
+  { key: "ASSIGNED", label: "Assigned by hand" },
+  { key: "UNMATCHED", label: "Needs a learner" },
+  { key: "IGNORED", label: "Ignored" },
+];
+const STATUS_TONE = {
+  MATCHED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+  ASSIGNED: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
+  UNMATCHED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  IGNORED: "bg-muted text-muted-foreground",
+};
+const HISTORY_PAGE = 20;
+
+function History() {
+  const [status, setStatus] = useState("");
+  const [page, goTo] = usePageFor(status);
+  const q = useQuery({
+    queryKey: ["mpesa", "history", status, page],
+    queryFn: () =>
+      api
+        .get("/api/mpesa/transactions", { params: { status: status || undefined, page, pageSize: HISTORY_PAGE } })
+        .then((r) => r.data),
+    placeholderData: (prev) => prev,
+  });
+  const items = q.data?.items || [];
+  const counts = q.data?.counts || {};
+  const all = Object.values(counts).reduce((a, b) => a + b, 0);
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">Recent M-Pesa payments</CardTitle>
+        <CardTitle className="text-base">M-Pesa payments</CardTitle>
+        <CardDescription>Everything that came in on the paybill, newest first.</CardDescription>
+        <div className="flex flex-wrap gap-1.5 pt-2">
+          {STATUS_TABS.map((t) => {
+            const n = t.key ? counts[t.key] || 0 : all;
+            return (
+              <Button key={t.key || "all"} size="sm" variant={status === t.key ? "default" : "outline"} onClick={() => setStatus(t.key)}>
+                {t.label}
+                <span className={`ml-1.5 rounded-full px-1.5 text-xs ${status === t.key ? "bg-white/20" : "bg-muted"}`}>{n}</span>
+              </Button>
+            );
+          })}
+        </div>
       </CardHeader>
-      <CardContent className="overflow-x-auto">
-        {items.length === 0 ? (
-          <div className="text-sm text-muted-foreground">None yet.</div>
+      <CardContent className="p-0">
+        {q.isLoading ? (
+          <div className="px-6 pb-6 text-sm text-muted-foreground">Loading…</div>
+        ) : items.length === 0 ? (
+          <div className="px-6 pb-6 text-sm text-muted-foreground">None here.</div>
         ) : (
-          <table className="w-full text-sm">
-            <tbody>
+          <>
+            <ul className="divide-y border-t">
               {items.map((t) => (
-                <tr key={t.id} className="border-t">
-                  <td className="p-2 whitespace-nowrap text-muted-foreground">{when(t.transTime)}</td>
-                  <td className="p-2">{t.transId}</td>
-                  <td className="p-2">{t.billRef || "—"}</td>
-                  <td className="p-2 text-right">{money(t.amount)}</td>
-                  <td className="p-2">
-                    <Badge variant={t.status === "UNMATCHED" ? "destructive" : "outline"}>{t.status}</Badge>
-                  </td>
-                </tr>
+                <li key={t.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-6 py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <div className="font-medium">
+                      {t.payerName || t.msisdn || "M-Pesa payer"}
+                      <span className="ml-2 font-mono text-xs text-muted-foreground">{t.transId}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {when(t.transTime || t.createdAt)} · account typed <b className="text-foreground">{t.billRef || "—"}</b>
+                      {t.source === "STK" ? " · payment prompt" : ""}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold tabular-nums">{money(t.amount)}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${STATUS_TONE[t.status] || ""}`}>
+                      {t.status.toLowerCase()}
+                    </span>
+                  </div>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+            <Pager page={page} pageSize={HISTORY_PAGE} total={q.data?.total || 0} busy={q.isFetching} onGo={goTo} />
+          </>
         )}
       </CardContent>
     </Card>
@@ -183,7 +235,7 @@ export default function MpesaTab({ isAdmin }) {
   return (
     <div className="grid gap-3">
       <Unmatched />
-      <Recent />
+      <History />
       {isAdmin && <Setup />}
     </div>
   );

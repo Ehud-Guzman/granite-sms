@@ -1,17 +1,51 @@
-import { useState } from "react";
+// The payments ledger: every receipt the school has issued, newest first, a
+// page at a time, with a period, method and search filter and the total
+// collected for whatever is showing. Any receipt can be reprinted from here.
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { FileText, Loader2, Search } from "lucide-react";
 
-import { openReceiptPdf } from "@/api/fees.api";
+import { listFeePayments, openReceiptPdf } from "@/api/fees.api";
 import { getErrorMessage } from "@/lib/errors";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
+import usePageFor from "@/hooks/usePageFor";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import Pager from "@/components/ui/pager";
+import { Panel } from "@/components/insights/Insights";
 
 import { money } from "../components/FeeMoney";
 
-function getInitialLastReceipt() {
+const PAGE_SIZE = 25;
+const METHOD_LABEL = { CASH: "Cash", MPESA: "M-Pesa", BANK: "Bank", CHEQUE: "Cheque", OTHER: "Other" };
+
+/** "YYYY-MM-DD" n days from a date string. */
+function addDays(day, n) {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/** "24 Aug 2026" from "2026-08-24". */
+const prettyDay = (day) =>
+  day ? new Date(`${day}T00:00:00Z`).toLocaleDateString("en-KE", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }) : "";
+
+/** The preset periods, worked out from today in the school's time zone. */
+function periods(today, termDates, termLabel) {
+  const dow = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7; // Monday = 0
+  const list = [
+    { key: "today", label: "Today", from: today, to: today },
+    { key: "week", label: "This week", from: addDays(today, -dow), to: today },
+    { key: "month", label: "This month", from: `${today.slice(0, 7)}-01`, to: today },
+  ];
+  if (termDates) list.push({ key: "term", label: termLabel || "This term", from: termDates.startsOn, to: termDates.endsOn });
+  list.push({ key: "all", label: "Any time", from: "", to: "" });
+  return list;
+}
+
+function getLastReceipt() {
   try {
     return JSON.parse(localStorage.getItem("fees:lastReceipt") || "null");
   } catch {
@@ -20,122 +54,249 @@ function getInitialLastReceipt() {
 }
 
 export default function PaymentsTab() {
-  // This is populated by Cashier tab after successful payment
-  const [lastReceipt, setLastReceipt] = useState(() => getInitialLastReceipt());
+  const { today, timezone, currentTermDates, currentTerm, termLabels } = useSchoolCalendar();
+  const presets = periods(today, currentTermDates, currentTerm ? termLabels[currentTerm] : null);
 
-  // Optional: allow searching by paymentId to reprint (admin/audit convenience)
-  const [paymentId, setPaymentId] = useState("");
-  const [printing, setPrinting] = useState(false);
+  const [periodKey, setPeriodKey] = useState(currentTermDates ? "term" : "month");
+  const [custom, setCustom] = useState({ from: "", to: "" });
+  const preset = presets.find((p) => p.key === periodKey);
+  const { from, to } = periodKey === "custom" ? custom : preset || presets[presets.length - 1];
 
-  const clearReceipt = () => {
-    setLastReceipt(null);
-    localStorage.removeItem("fees:lastReceipt");
-  };
+  const [method, setMethod] = useState("");
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  // openReceiptPdf() rejects on a bad/unknown paymentId (e.g. 404). It was
-  // previously called with no catch, so a failed lookup left an unhandled
-  // promise rejection and the user just saw nothing happen.
+  const [page, goTo] = usePageFor(`${from}|${to}|${method}|${query}`);
+
+  const q = useQuery({
+    queryKey: ["feePayments", { from, to, method, q: query, page }],
+    queryFn: () => listFeePayments({ from: from || undefined, to: to || undefined, method: method || undefined, q: query || undefined, page, pageSize: PAGE_SIZE }),
+    placeholderData: (prev) => prev,
+  });
+  const items = q.data?.items || [];
+  const total = q.data?.total || 0;
+  const totals = q.data?.totals;
+  // Imported or M-Pesa payments have no cashier; drop the column when none do.
+  const showBy = items.some((p) => p.receivedByName);
+
+  const [opening, setOpening] = useState(null);
   const printPdf = async (id) => {
-    if (!id || printing) return;
-    setPrinting(true);
+    if (!id || opening) return;
+    setOpening(id);
     try {
       await openReceiptPdf(id);
     } catch (err) {
-      toast.error(getErrorMessage(err, "Failed to open receipt PDF."));
+      toast.error(getErrorMessage(err, "Couldn't open that receipt."));
     } finally {
-      setPrinting(false);
+      setOpening(null);
     }
   };
 
-  const printById = () => {
-    const id = paymentId.trim();
-    if (!id) return;
-    printPdf(id);
-  };
+  const [last, setLast] = useState(getLastReceipt);
+  const when = (d) =>
+    new Date(d).toLocaleString("en-KE", { timeZone: timezone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const learner = (s) => (s ? `${s.firstName} ${s.lastName}`.trim() : "—");
+  const klass = (s) => (s?.class ? [s.class.name, s.class.stream].filter(Boolean).join(" ") : "");
 
   return (
     <div className="space-y-4">
-      {/* Info / guidance */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle>Payments</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
-          <div>
-            This tab is for <span className="font-medium text-foreground">viewing and reprinting receipts</span>.
-          </div>
-          <div>
-            To post a payment, use the <span className="font-medium text-foreground">Receive Payment</span> tab
-            (Cashier flow). That’s where invoices are selected and balances are updated correctly.
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick reprint by Payment ID (optional helper) */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Reprint receipt</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-6 items-end">
-          <div className="md:col-span-4">
-            <div className="text-xs text-muted-foreground mb-1">Payment ID</div>
-            <Input
-              value={paymentId}
-              onChange={(e) => setPaymentId(e.target.value)}
-              placeholder="Paste paymentId then print receipt"
-            />
-          </div>
-
-          <div className="md:col-span-2 flex gap-2 justify-end">
-            <Button variant="outline" onClick={printById} disabled={!paymentId.trim() || printing}>
-              {printing ? "Opening…" : "Print Receipt (PDF)"}
+      {last?.paymentId && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+          <span>
+            Last receipt you issued: <b>{last.receiptNo || "—"}</b> · {money(last.amount || 0)}
+          </span>
+          <span className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => printPdf(last.paymentId)} disabled={!!opening}>
+              Print again
             </Button>
-            <Button variant="ghost" onClick={() => setPaymentId("")} disabled={!paymentId.trim()}>
-              Clear
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                localStorage.removeItem("fees:lastReceipt");
+                setLast(null);
+              }}
+            >
+              Dismiss
             </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Last receipt (from cashier) */}
-      {lastReceipt?.paymentId ? (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center justify-between">
-              <span>Last receipt</span>
-              <Badge variant="secondary">{lastReceipt.method || "—"}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-sm">
-              Receipt: <span className="font-semibold">{lastReceipt.receiptNo || "—"}</span>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Amount: <span className="font-medium">{money(lastReceipt.amount || 0)}</span>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                onClick={() => printPdf(lastReceipt.paymentId)}
-                disabled={printing}
-              >
-                {printing ? "Opening…" : "Print Receipt (PDF)"}
-              </Button>
-              <Button variant="ghost" onClick={clearReceipt}>
-                Clear Receipt
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="py-4 text-sm text-muted-foreground">
-            No recent receipt saved. Post a payment in <span className="font-medium text-foreground">Receive Payment</span>{" "}
-            to generate one.
-          </CardContent>
-        </Card>
+          </span>
+        </div>
       )}
+
+      {/* Period, then the money for it */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {presets.map((p) => (
+          <Button key={p.key} size="sm" variant={periodKey === p.key ? "default" : "outline"} onClick={() => setPeriodKey(p.key)}>
+            {p.label}
+          </Button>
+        ))}
+        <Button size="sm" variant={periodKey === "custom" ? "default" : "outline"} onClick={() => {
+          setCustom({ from: from || addDays(today, -30), to: to || today });
+          setPeriodKey("custom");
+        }}>
+          Dates…
+        </Button>
+        {periodKey === "custom" && (
+          <span className="flex items-center gap-1.5">
+            <Input type="date" aria-label="From" className="h-9 w-auto" value={custom.from} max={custom.to || undefined} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} />
+            <span className="text-muted-foreground">to</span>
+            <Input type="date" aria-label="To" className="h-9 w-auto" value={custom.to} min={custom.from || undefined} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} />
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-2xl border bg-card p-4 shadow-sm sm:col-span-2 lg:col-span-1">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Collected</div>
+          <div className="mt-1 text-2xl font-bold tabular-nums">{totals ? money(totals.amount) : "—"}</div>
+          <div className="text-xs text-muted-foreground">
+            {totals ? `${totals.count.toLocaleString()} receipt${totals.count === 1 ? "" : "s"}` : " "}
+            {totals?.reversed ? ` · ${totals.reversed} reversed (not counted)` : ""}
+          </div>
+        </div>
+        <div className="rounded-2xl border bg-card p-4 shadow-sm sm:col-span-2 lg:col-span-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">By method</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(totals?.byMethod || []).length === 0 && <span className="text-sm text-muted-foreground">No payments in this period.</span>}
+            {(totals?.byMethod || []).map((m) => (
+              <button
+                key={m.method}
+                type="button"
+                onClick={() => setMethod(method === m.method ? "" : m.method)}
+                className={`rounded-xl border px-3 py-1.5 text-left text-sm transition hover:bg-muted ${method === m.method ? "border-primary ring-1 ring-primary" : ""}`}
+                title={method === m.method ? "Show every method" : `Only ${METHOD_LABEL[m.method] || m.method}`}
+              >
+                <div className="font-semibold tabular-nums">{money(m.amount)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {METHOD_LABEL[m.method] || m.method} · {m.count}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <Panel
+        title="Receipts"
+        subtitle={from || to ? `${prettyDay(from) || "The start"} to ${prettyDay(to) || "today"}` : "Every payment received"}
+        action={
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <select
+              aria-label="Method"
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+            >
+              <option value="">All methods</option>
+              {Object.entries(METHOD_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <div className="relative min-w-0 flex-1 sm:flex-none">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="h-9 w-full pl-8 sm:w-60"
+                placeholder="Receipt, learner or M-Pesa code"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+        }
+      >
+        {q.isLoading ? (
+          <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading payments…
+          </div>
+        ) : q.isError ? (
+          <div className="py-8 text-sm text-destructive">{getErrorMessage(q.error, "Couldn't load payments.")}</div>
+        ) : items.length === 0 ? (
+          <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+            No payments{query ? ` matching "${query}"` : ""} in this period.
+          </div>
+        ) : (
+          <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl">
+            {/* Laptop: a table */}
+            <table className="hidden w-full text-sm md:table">
+              <thead className="border-y bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Received</th>
+                  <th className="px-2 py-2 font-medium">Receipt</th>
+                  <th className="px-2 py-2 font-medium">Learner</th>
+                  <th className="px-2 py-2 font-medium">Method</th>
+                  {showBy && <th className="px-2 py-2 font-medium">Taken by</th>}
+                  <th className="px-2 py-2 text-right font-medium">Amount</th>
+                  <th className="px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((p) => (
+                  <tr key={p.id} className={`border-b last:border-0 ${p.isReversed ? "text-muted-foreground" : ""}`}>
+                    <td className="whitespace-nowrap px-4 py-2.5">{when(p.receivedAt)}</td>
+                    <td className="px-2 py-2.5 font-mono text-xs">{p.receiptNo || "—"}</td>
+                    <td className="px-2 py-2.5">
+                      <div className="font-medium">{learner(p.student)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {p.student?.admissionNo}
+                        {klass(p.student) ? ` · ${klass(p.student)}` : ""}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2.5">
+                      {METHOD_LABEL[p.method] || p.method}
+                      {p.reference && <div className="font-mono text-xs text-muted-foreground">{p.reference}</div>}
+                    </td>
+                    {showBy && <td className="px-2 py-2.5 text-muted-foreground">{p.receivedByName || "—"}</td>}
+                    <td className="whitespace-nowrap px-2 py-2.5 text-right font-semibold tabular-nums">
+                      <span className={p.isReversed ? "line-through" : ""}>{money(p.amount)}</span>
+                      {p.isReversed && (
+                        <Badge variant="destructive" className="ml-2">
+                          Reversed
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => printPdf(p.id)} disabled={opening === p.id}>
+                        {opening === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                        Receipt
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Phone: one line per payment */}
+            <ul className="divide-y border-t md:hidden">
+              {items.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{learner(p.student)}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {when(p.receivedAt)} · {METHOD_LABEL[p.method] || p.method}
+                      {p.isReversed ? " · reversed" : ""}
+                    </div>
+                    <div className="truncate font-mono text-[11px] text-muted-foreground">{p.receiptNo}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <span className={`font-semibold tabular-nums ${p.isReversed ? "text-muted-foreground line-through" : ""}`}>{money(p.amount)}</span>
+                    <Button size="icon" variant="ghost" aria-label="Receipt" onClick={() => printPdf(p.id)} disabled={opening === p.id}>
+                      <FileText className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <Pager page={page} pageSize={PAGE_SIZE} total={total} busy={q.isFetching} onGo={goTo} noun="payments" />
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }

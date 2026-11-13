@@ -1,5 +1,7 @@
 // client/src/features/students/StudentsListPage.jsx
 import { useEffect, useMemo, useState } from "react";
+import Pager from "@/components/ui/pager";
+import usePageFor from "@/hooks/usePageFor";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -179,9 +181,7 @@ export default function StudentsListPage() {
   // A page of learners at a time; changing a filter starts again at page 1.
   const PAGE_SIZE = 25;
   const filterKey = `${active}|${effectiveClassId || ""}|${query}`;
-  const [pageState, setPageState] = useState({ key: "", page: 1 });
-  const page = pageState.key === filterKey ? pageState.page : 1;
-  const goTo = (n) => setPageState({ key: filterKey, page: n });
+  const [page, goTo] = usePageFor(filterKey);
 
   const {
     data: pageData,
@@ -225,9 +225,6 @@ const activateMut = useMutation({
 
   const visibleStudents = pageData?.items || [];
   const total = pageData?.total || 0;
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const from = total ? (page - 1) * PAGE_SIZE + 1 : 0;
-  const to = Math.min(page * PAGE_SIZE, total);
 
   const openCreate = () => {
     if (role === "ADMIN" && !canCreateStudent) {
@@ -635,7 +632,7 @@ const activateMut = useMutation({
                   </TableBody>
                 </Table>
               </div>
-              <Pager page={page} pages={pages} from={from} to={to} total={total} busy={isFetching} onGo={goTo} />
+              <Pager page={page} pageSize={PAGE_SIZE} total={total} busy={isFetching} onGo={goTo} />
             </div>
           )}
         </CardContent>
@@ -649,37 +646,6 @@ const activateMut = useMutation({
           initialStudent={editingStudent}
           onClose={() => setDrawerOpen(false)}
         />
-      )}
-    </div>
-  );
-}
-/** "Showing 26–50 of 210" with previous/next and a few page numbers. */
-function Pager({ page, pages, from, to, total, busy, onGo }) {
-  if (total === 0) return null;
-  const nums = [];
-  for (let n = Math.max(1, page - 2); n <= Math.min(pages, page + 2); n++) nums.push(n);
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3 text-sm">
-      <div className="text-muted-foreground">
-        Showing <b className="text-foreground">{from}–{to}</b> of <b className="text-foreground">{total.toLocaleString()}</b>
-        {busy && <Loader2 className="ml-2 inline h-3.5 w-3.5 animate-spin" />}
-      </div>
-      {pages > 1 && (
-        <div className="flex items-center gap-1">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onGo(page - 1)}>
-            Previous
-          </Button>
-          {nums[0] > 1 && <span className="px-1 text-muted-foreground">…</span>}
-          {nums.map((n) => (
-            <Button key={n} variant={n === page ? "default" : "ghost"} size="sm" className="w-9 px-0" onClick={() => onGo(n)} aria-current={n === page ? "page" : undefined}>
-              {n}
-            </Button>
-          ))}
-          {nums[nums.length - 1] < pages && <span className="px-1 text-muted-foreground">…</span>}
-          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => onGo(page + 1)}>
-            Next
-          </Button>
-        </div>
       )}
     </div>
   );

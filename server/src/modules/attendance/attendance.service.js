@@ -490,15 +490,35 @@ export async function listSessions({ schoolId, classId, from, to, date, status, 
     }
   }
 
-  return prisma.attendanceSession.findMany({
+  const sessions = await prisma.attendanceSession.findMany({
     where: {
       schoolId,
       classId: classFilter,
       status: statusFilter,
       date: date ? date : { gte: from || undefined, lte: to || undefined },
     },
-    orderBy: { date: "desc" },
+    orderBy: [{ date: "desc" }, { classId: "asc" }],
+    take: 1000,
+    include: { class: { select: { id: true, name: true, stream: true, year: true } } },
   });
+
+  // How each register went (present / absent / late / excused / not marked),
+  // so the list can show it without opening every one.
+  const grouped = sessions.length
+    ? await prisma.attendanceRecord.groupBy({
+        by: ["sessionId", "status"],
+        where: { schoolId, sessionId: { in: sessions.map((s) => s.id) } },
+        _count: true,
+      })
+    : [];
+  const counts = new Map();
+  for (const g of grouped) {
+    const c = counts.get(g.sessionId) || { total: 0 };
+    c[g.status] = g._count;
+    c.total += g._count;
+    counts.set(g.sessionId, c);
+  }
+  return sessions.map((s) => ({ ...s, counts: counts.get(s.id) || { total: 0 } }));
 }
 
 export async function summaryStudent({ schoolId, studentId, from, to, role, userId }) {

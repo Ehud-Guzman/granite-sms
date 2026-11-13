@@ -120,6 +120,30 @@ router.get("/", async (req, res) => {
     where.audience = { in: ["EVERYONE", "STAFF"] };
   }
 
+  const q = String(req.query.q || "").trim().slice(0, 80);
+  if (q) {
+    (where.AND ||= []).push({
+      OR: [{ title: { contains: q, mode: "insensitive" } }, { body: { contains: q, mode: "insensitive" } }],
+    });
+  }
+
+  // ?page=N: one page (pinned first, then newest) and the total, for the board.
+  if (req.query.page !== undefined) {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 10, 1), 50);
+    const [notices, total] = await Promise.all([
+      prisma.notice.findMany({
+        where,
+        orderBy: [{ pinned: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select,
+      }),
+      prisma.notice.count({ where }),
+    ]);
+    return res.json({ notices, total, page, pageSize });
+  }
+
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
   const notices = await prisma.notice.findMany({
     where,

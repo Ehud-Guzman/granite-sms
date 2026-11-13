@@ -14,6 +14,9 @@ export default function StudentSlipPanel({
   sessionName,
   canPrint,
   buttonLabel = "Print Slip",
+  // "screen", "print" or both. The print copy must sit outside any no-print
+  // container, or the printed page comes out blank.
+  part = "both",
 }) {
   const studentName = useMemo(() => fmtStudentName(payload?.student), [payload]);
   const printedAt = useMemo(() => fmtPrintedAt(new Date()), []);
@@ -82,6 +85,8 @@ export default function StudentSlipPanel({
     </PrintDocument>
   );
 
+  if (part === "screen") return ScreenView;
+  if (part === "print") return PrintView;
   return (
     <div className="space-y-2">
       {ScreenView}

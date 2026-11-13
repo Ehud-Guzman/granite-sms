@@ -344,6 +344,7 @@ export default function ResultsPage() {
                       sessionName={sessionName}
                       canPrint={canPrintStudent}
                       buttonLabel="Print My Slip"
+                      part="screen"
                     />
                   )}
 
@@ -352,6 +353,18 @@ export default function ResultsPage() {
               />
             </CardContent>
           </Card>
+
+          {/* The learner's slip, print copy only (the screen copy opens under the exam above). */}
+          {isStudent && myStudentId && studentResultsQ.data?.data && (
+            <StudentSlipPanel
+              payload={studentResultsQ.data.data}
+              classLabel={activeClassLabel}
+              showGrades={showGrades}
+              schoolName={schoolName}
+              sessionName={sessionName}
+              part="print"
+            />
+          )}
 
           {/* Class results (Admin/Teacher); the page scrolls here when an exam opens */}
           <div ref={staffResultsRef} className="scroll-mt-4" />

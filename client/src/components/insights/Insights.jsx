@@ -102,7 +102,8 @@ export function Ring({ percent = 0, size = 120, stroke = 12, tone = "primary", t
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={label || `${Math.round(clamp(percent))}%`}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden="true">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
+        {/* On paper the white-on-dark ring would vanish, so it prints dark on light. */}
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} className="print:[stroke:#e5e7eb]" />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -111,6 +112,7 @@ export function Ring({ percent = 0, size = 120, stroke = 12, tone = "primary", t
           stroke={TONE_STROKE[tone] || tone}
           strokeWidth={stroke}
           strokeLinecap="round"
+          className="print:[stroke:#111827]"
           strokeDasharray={c}
           strokeDashoffset={c - (clamp(percent) / 100) * c}
           style={{ transition: "stroke-dashoffset 0.8s ease-out" }}

@@ -11,7 +11,7 @@ export function fmtStudentName(s) {
 
 export function fmtPrintedAt(d = new Date()) {
   try {
-    return new Date(d).toLocaleString();
+    return new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(d));
   } catch {
     return "";
   }

@@ -23,92 +23,102 @@ router.get(
   async (req, res) => {
     try {
       const { classId, year, term, export: exportType } = req.query;
-      
-
       const y = toInt(year, null);
-      if (!classId || !y || !term) {
-        return res.status(400).json({ message: "classId, year, and term are required." });
-      }
+      if (!y || !term) return res.status(400).json({ message: "year and term are required." });
 
-      const classRow = await prisma.class.findFirst({
-        where: { id: String(classId), schoolId: req.schoolId },
-        select: { id: true, name: true, stream: true, year: true },
-      });
-      if (!classRow) return res.status(400).json({ message: "Invalid classId" });
+      // One class, or the whole school (no classId) with a line per class.
+      let classRow = null;
+      if (classId) {
+        classRow = await prisma.class.findFirst({
+          where: { id: String(classId), schoolId: req.schoolId },
+          select: { id: true, name: true, stream: true, year: true },
+        });
+        if (!classRow) return res.status(400).json({ message: "Invalid classId" });
+      }
 
       const invoices = await prisma.feeInvoice.findMany({
         where: {
           schoolId: req.schoolId,
-          classId: String(classId),
+          ...(classRow ? { classId: classRow.id } : {}),
           year: y,
           term: String(term),
           status: { not: "VOID" },
         },
-        select: { total: true, paid: true, balance: true, status: true },
+        select: { classId: true, total: true, paid: true, balance: true, status: true },
       });
 
-      
-      
+      const empty = () => ({ totalBilled: 0, totalPaid: 0, totalBalance: 0, invoiceCount: 0, statusCounts: {} });
+      const add = (acc, inv) => {
+        acc.totalBilled += Number(inv.total || 0);
+        acc.totalPaid += Number(inv.paid || 0);
+        acc.totalBalance += Number(inv.balance || 0);
+        acc.invoiceCount += 1;
+        acc.statusCounts[inv.status] = (acc.statusCounts[inv.status] || 0) + 1;
+        return acc;
+      };
+      const summary = invoices.reduce(add, empty());
 
-      const summary = invoices.reduce(
-        (acc, inv) => {
-          acc.totalBilled += Number(inv.total || 0);
-          acc.totalPaid += Number(inv.paid || 0);
-          acc.totalBalance += Number(inv.balance || 0);
-          acc.invoiceCount += 1;
-          acc.statusCounts[inv.status] = (acc.statusCounts[inv.status] || 0) + 1;
-          return acc;
-        },
-        { totalBilled: 0, totalPaid: 0, totalBalance: 0, invoiceCount: 0, statusCounts: {} }
-      );
+      const perClass = new Map();
+      for (const inv of invoices) perClass.set(inv.classId, add(perClass.get(inv.classId) || empty(), inv));
+      const classRows = perClass.size
+        ? await prisma.class.findMany({
+            where: { schoolId: req.schoolId, id: { in: [...perClass.keys()] } },
+            select: { id: true, name: true, stream: true, year: true },
+          })
+        : [];
+      const byClass = classRows
+        .map((c) => {
+          const x = perClass.get(c.id);
+          return {
+            classId: c.id,
+            className: c.name,
+            stream: c.stream || "",
+            classYear: c.year,
+            ...x,
+            collectionPct: x.totalBilled ? Number(((x.totalPaid / x.totalBilled) * 100).toFixed(1)) : 0,
+          };
+        })
+        .sort((a, b) => a.className.localeCompare(b.className, undefined, { numeric: true }) || a.stream.localeCompare(b.stream));
 
       await feesAudit(req, {
-  action: "REPORTS_FEES_CLASS_SUMMARY_VIEWED",
-  targetType: "CLASS",
-  targetId: classId,
-  metadata: {
-    classId: String(classId),
-    year: y,
-    term: String(term),
-    export: exportType === "csv" || exportType === "xlsx" ? exportType : null,
-    invoiceCount: summary.invoiceCount,
-    totalBilled: summary.totalBilled,
-    totalPaid: summary.totalPaid,
-    totalBalance: summary.totalBalance,
-  },
-});
+        action: "REPORTS_FEES_CLASS_SUMMARY_VIEWED",
+        targetType: classRow ? "CLASS" : "SCHOOL",
+        targetId: classRow ? classRow.id : req.schoolId,
+        metadata: {
+          classId: classRow?.id || null,
+          year: y,
+          term: String(term),
+          export: exportType === "csv" || exportType === "xlsx" ? exportType : null,
+          invoiceCount: summary.invoiceCount,
+          totalBilled: summary.totalBilled,
+          totalPaid: summary.totalPaid,
+          totalBalance: summary.totalBalance,
+        },
+      });
 
-
-      // ✅ EXPORT MODE
       if (exportType === "csv" || exportType === "xlsx") {
-        const rows = [
-          {
-            classId: classRow.id,
-            className: classRow.name,
-            stream: classRow.stream || "",
-            classYear: classRow.year,
-            term: String(term),
-            year: y,
-            invoiceCount: summary.invoiceCount,
-            totalBilled: summary.totalBilled,
-            totalPaid: summary.totalPaid,
-            totalBalance: summary.totalBalance,
-            issued: summary.statusCounts.ISSUED || 0,
-            partiallyPaid: summary.statusCounts.PARTIALLY_PAID || 0,
-            paid: summary.statusCounts.PAID || 0,
-          },
-        ];
-
-        const fileBase = `fees-class-summary-${classRow.name}-${String(term)}-${y}`.replace(/\s+/g, "-").toLowerCase();
-
-        if (exportType === "csv") {
-          return exportCSV(res, fileBase, rows);
-        }
-
+        const rows = byClass.map((c) => ({
+          classId: c.classId,
+          className: c.className,
+          stream: c.stream,
+          classYear: c.classYear,
+          term: String(term),
+          year: y,
+          invoiceCount: c.invoiceCount,
+          totalBilled: c.totalBilled,
+          totalPaid: c.totalPaid,
+          totalBalance: c.totalBalance,
+          collectionPct: c.collectionPct,
+          issued: c.statusCounts.ISSUED || 0,
+          partiallyPaid: c.statusCounts.PARTIALLY_PAID || 0,
+          paid: c.statusCounts.PAID || 0,
+        }));
+        const fileBase = `fees-summary-${classRow ? classRow.name : "all-classes"}-${String(term)}-${y}`.replace(/\s+/g, "-").toLowerCase();
+        if (exportType === "csv") return exportCSV(res, fileBase, rows);
         return exportXLSX(
           res,
           fileBase,
-          "Class Summary",
+          "Fees Summary",
           [
             { header: "Class ID", key: "classId", width: 18 },
             { header: "Class", key: "className", width: 18 },
@@ -120,6 +130,7 @@ router.get(
             { header: "Total Billed", key: "totalBilled", width: 14 },
             { header: "Total Paid", key: "totalPaid", width: 14 },
             { header: "Total Balance", key: "totalBalance", width: 14 },
+            { header: "Collected %", key: "collectionPct", width: 12 },
             { header: "ISSUED", key: "issued", width: 10 },
             { header: "PARTIALLY_PAID", key: "partiallyPaid", width: 16 },
             { header: "PAID", key: "paid", width: 10 },
@@ -128,12 +139,12 @@ router.get(
         );
       }
 
-      // ✅ NORMAL JSON
       return res.json({
-        classId: String(classId),
+        classId: classRow?.id || null,
         year: y,
         term: String(term),
         ...summary,
+        byClass,
       });
     } catch (err) {
       console.error("CLASS SUMMARY REPORT ERROR:", err);
@@ -141,7 +152,6 @@ router.get(
     }
   }
 );
-
 
 router.get(
   "/reports/defaulters",
@@ -155,37 +165,54 @@ router.get(
       const minB = toNumber(minBalance, 1);
       const lim = Math.min(Math.max(toInt(limit, 50), 1), 500);
 
-      if (!classId || !y || !term) {
-        return res.status(400).json({ message: "classId, year, and term are required." });
+      if (!y || !term) {
+        return res.status(400).json({ message: "year and term are required." });
       }
 
-      const classRow = await prisma.class.findFirst({
-        where: { id: String(classId), schoolId: req.schoolId },
-        select: { id: true, name: true, stream: true, year: true },
-      });
-      if (!classRow) return res.status(400).json({ message: "Invalid classId" });
+      // One class, or the whole school when no classId is given.
+      let classRow = null;
+      if (classId) {
+        classRow = await prisma.class.findFirst({
+          where: { id: String(classId), schoolId: req.schoolId },
+          select: { id: true, name: true, stream: true, year: true },
+        });
+        if (!classRow) return res.status(400).json({ message: "Invalid classId" });
+      }
 
-      const invoices = await prisma.feeInvoice.findMany({
-        where: {
-          schoolId: req.schoolId,
-          classId: String(classId),
-          year: y,
-          term: String(term),
-          balance: { gt: Number(minB) },
-          status: { not: "VOID" },
-        },
-        orderBy: { balance: "desc" },
-        take: lim,
-        select: {
-          id: true,
-          studentId: true,
-          total: true,
-          paid: true,
-          balance: true,
-          status: true,
-          createdAt: true,
-        },
-      });
+      const where = {
+        schoolId: req.schoolId,
+        ...(classRow ? { classId: classRow.id } : {}),
+        year: y,
+        term: String(term),
+        balance: { gt: Number(minB) },
+        status: { not: "VOID" },
+      };
+      const [invoices, overall] = await Promise.all([
+        prisma.feeInvoice.findMany({
+          where,
+          orderBy: { balance: "desc" },
+          take: lim,
+          select: {
+            id: true,
+            studentId: true,
+            classId: true,
+            total: true,
+            paid: true,
+            balance: true,
+            status: true,
+            createdAt: true,
+          },
+        }),
+        // Totals for everyone owing, not just the rows shown.
+        prisma.feeInvoice.aggregate({ where, _sum: { balance: true }, _count: { _all: true } }),
+      ]);
+      const classIds = [...new Set(invoices.map((i) => i.classId))];
+      const classNames = new Map(
+        (classIds.length
+          ? await prisma.class.findMany({ where: { schoolId: req.schoolId, id: { in: classIds } }, select: { id: true, name: true, stream: true } })
+          : []
+        ).map((c) => [c.id, `${c.name}${c.stream ? ` ${c.stream}` : ""}`])
+      );
 
       const studentIds = [...new Set(invoices.map((i) => i.studentId))];
 
@@ -202,6 +229,7 @@ router.get(
           invoiceId: inv.id,
           admissionNo: st?.admissionNo || "",
           studentName: `${st?.firstName || ""} ${st?.lastName || ""}`.trim(),
+          className: classNames.get(inv.classId) || "",
           total: inv.total,
           paid: inv.paid,
           balance: inv.balance,
@@ -212,10 +240,10 @@ router.get(
 
       await feesAudit(req, {
   action: "REPORTS_FEES_DEFAULTERS_VIEWED",
-  targetType: "CLASS",
-  targetId: classId,
+  targetType: classRow ? "CLASS" : "SCHOOL",
+  targetId: classRow ? classRow.id : req.schoolId,
   metadata: {
-    classId: String(classId),
+    classId: classRow?.id || null,
     year: y,
     term: String(term),
     minBalance: Number(minB),
@@ -228,12 +256,12 @@ router.get(
 
       // ✅ EXPORT MODE
       if (exportType === "csv") {
-        const fileBase = `fees-defaulters-${classRow.name}-${String(term)}-${y}`.replace(/\s+/g, "-").toLowerCase();
+        const fileBase = `fees-defaulters-${classRow ? classRow.name : "all-classes"}-${String(term)}-${y}`.replace(/\s+/g, "-").toLowerCase();
         return exportCSV(res, fileBase, rows);
       }
 
       if (exportType === "xlsx") {
-        const fileBase = `fees-defaulters-${classRow.name}-${String(term)}-${y}`.replace(/\s+/g, "-").toLowerCase();
+        const fileBase = `fees-defaulters-${classRow ? classRow.name : "all-classes"}-${String(term)}-${y}`.replace(/\s+/g, "-").toLowerCase();
         return exportXLSX(
           res,
           fileBase,
@@ -242,6 +270,7 @@ router.get(
             { header: "Invoice ID", key: "invoiceId", width: 18 },
             { header: "Admission No", key: "admissionNo", width: 14 },
             { header: "Student Name", key: "studentName", width: 22 },
+            { header: "Class", key: "className", width: 16 },
             { header: "Total", key: "total", width: 12 },
             { header: "Paid", key: "paid", width: 12 },
             { header: "Balance", key: "balance", width: 12 },
@@ -254,17 +283,21 @@ router.get(
 
       // ✅ NORMAL JSON
       return res.json({
-        classId: String(classId),
+        classId: classRow?.id || null,
         year: y,
         term: String(term),
         minBalance: Number(minB),
         count: rows.length,
+        // Everyone owing at least minBalance, beyond the rows listed.
+        totalCount: overall._count._all,
+        totalOutstanding: Number(overall._sum.balance || 0),
         rows: rows.map((r) => ({
           invoiceId: r.invoiceId,
           student: {
             admissionNo: r.admissionNo,
             name: r.studentName,
           },
+          className: r.className,
           total: r.total,
           paid: r.paid,
           balance: r.balance,

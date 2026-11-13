@@ -1,275 +1,184 @@
+// Fees summary: what was billed for a term, what came in, and which classes
+// are behind. The whole school by default; pick a class to narrow it.
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { listClasses } from "@/api/classes.api";
 import { getFeesClassSummary, exportFeesClassSummary } from "@/api/feesReports.api";
 import { printSection } from "@/lib/print";
-import { normalizeArray, fmtClass, fmtMoney } from "../utils/format";
+import { useCurrentTermState, useCurrentYearState, useSchoolCalendar } from "@/lib/schoolCalendar";
 import { getErrorMessage as errMsg } from "@/lib/errors";
-
 import PrintDocument from "@/components/print/PrintDocument";
+import { HeroPanel, Ring, Panel, SegmentBar, BarList } from "@/components/insights/Insights";
 import ReportPrintTitle from "../components/ReportPrintTitle";
 import ReportPrintFooter from "../components/ReportPrintFooter";
+import { ReportHeader, FilterBar, Field, SelectInput, TextInput, ReportState } from "../components/ReportKit";
+import { normalizeArray, fmtClass, fmtKes } from "../utils/format";
 import FinanceNav from "./FinanceNav";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useCurrentTermState, useCurrentYearState } from "@/lib/schoolCalendar";
-
 const TERMS = ["TERM1", "TERM2", "TERM3"];
-
-function Metric({ label, value }) {
-  return (
-    <div>
-      <div className="text-xs opacity-70">{label}</div>
-      <div className="font-medium">{value}</div>
-    </div>
-  );
-}
+const pctTone = (p) => (p >= 90 ? "good" : p >= 60 ? "primary" : p >= 40 ? "warn" : "alert");
 
 export default function FeesSummaryReport() {
+  const { termLabels } = useSchoolCalendar();
   const [classId, setClassId] = useState("");
   const [year, setYear] = useCurrentYearState(true);
   const [term, setTerm] = useCurrentTermState();
 
-  const { data: classesRaw, isLoading: classesLoading } = useQuery({
-    queryKey: ["classes", "active"],
-    queryFn: () => listClasses({ active: true }),
-  });
+  const classesQ = useQuery({ queryKey: ["classes", "active"], queryFn: () => listClasses({ active: true }) });
+  const classes = useMemo(() => normalizeArray(classesQ.data), [classesQ.data]);
+  const selectedClass = classes.find((c) => String(c.id) === String(classId)) || null;
 
-  const classes = useMemo(() => normalizeArray(classesRaw), [classesRaw]);
-
-  const selectedClass = useMemo(
-    () => classes.find((c) => String(c.id) === String(classId)) || null,
-    [classes, classId]
-  );
-
-  const params = useMemo(() => {
-    if (!classId || !year || !term) return null;
-    return { classId: String(classId), year: Number(year), term: String(term) };
-  }, [classId, year, term]);
-
-  const {
-    data: report,
-    isLoading,
-    error,
-  } = useQuery({
+  const params = year && term ? { year: Number(year), term, ...(classId ? { classId } : {}) } : null;
+  const q = useQuery({
     queryKey: ["feesReports", "classSummary", params],
     queryFn: () => getFeesClassSummary(params),
     enabled: Boolean(params),
   });
-
-  const collectionPct = useMemo(() => {
-    const billed = Number(report?.totalBilled || 0);
-    const paid = Number(report?.totalPaid || 0);
-    return billed ? (paid / billed) * 100 : 0;
-  }, [report]);
-
-  const printSubtitle = `${
-    selectedClass ? fmtClass(selectedClass) : classId ? `Class ${classId}` : "-"
-  } • ${term} ${year}`;
-
-  const [exporting, setExporting] = useState(false);
-  const doExport = async (format) => {
-    if (!params) return;
-    setExporting(true);
-    try {
-      await exportFeesClassSummary(params, format);
-    } catch (err) {
-      console.error("EXPORT FEES CLASS SUMMARY ERROR:", err);
-      alert("Export failed. Check your network and try again.");
-    } finally {
-      setExporting(false);
-    }
-  };
+  const r = q.data;
+  const pct = r?.totalBilled ? (r.totalPaid / r.totalBilled) * 100 : 0;
+  const termName = `${termLabels?.[term] || term} ${year}`;
+  const scope = selectedClass ? fmtClass(selectedClass) : "All classes";
+  const sc = r?.statusCounts || {};
+  const byClass = r?.byClass || [];
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 flex-wrap no-print">
-        <div>
-          <h2 className="text-xl font-semibold">Finance — Fees Summary</h2>
-          <p className="opacity-70 mt-1">
-            Class-level billing vs payments (read-only).
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => doExport("csv")}
-            disabled={!report || exporting}
-          >
-            Export CSV
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => doExport("xlsx")}
-            disabled={!report || exporting}
-          >
-            Export Excel
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => printSection("print-fees-summary")}
-            disabled={!report}
-          >
-            Print
-          </Button>
-        </div>
-      </div>
-
       <FinanceNav />
+      <ReportHeader
+        title="Fees summary"
+        subtitle={`${scope} · ${termName}`}
+        ready={Boolean(r)}
+        onExport={(format) => exportFeesClassSummary(params, format)}
+        onPrint={() => printSection("print-fees-summary")}
+      />
+      <FilterBar>
+        <Field label="Class">
+          <SelectInput value={classId} onChange={setClassId} className="min-w-48">
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {fmtClass(c)}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <Field label="Year">
+          <TextInput value={year} onChange={setYear} inputMode="numeric" className="w-24" />
+        </Field>
+        <Field label="Term">
+          <SelectInput value={term} onChange={setTerm}>
+            {TERMS.map((t) => (
+              <option key={t} value={t}>
+                {termLabels?.[t] || t}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+      </FilterBar>
 
-      {/* Filters */}
-      <Card className="no-print">
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
+      <ReportState loading={q.isLoading} error={q.error && errMsg(q.error, "Couldn't load the report")} />
 
-        <CardContent className="grid gap-3 md:grid-cols-3">
-          {/* Class */}
-          <div className="space-y-1">
-            <div className="text-xs opacity-70">Class</div>
-            <Select value={String(classId)} onValueChange={setClassId}>
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    classesLoading ? "Loading classes..." : "Select class"
-                  }
-                />
-              </SelectTrigger>
+      {r && (
+        <PrintDocument screen id="print-fees-summary" bodyClassName="space-y-4">
+          <ReportPrintTitle title="Fees summary" subtitle={`${scope} · ${termName}`} />
+          {r.invoiceCount === 0 ? (
+            <ReportState prompt={`No invoices for ${scope.toLowerCase()} in ${termName} yet.`} />
+          ) : (
+            <>
+              <HeroPanel
+                eyebrow={`Collected · ${scope} · ${termName}`}
+                value={fmtKes(r.totalPaid)}
+                caption={`of ${fmtKes(r.totalBilled)} billed`}
+                minis={[
+                  { label: "Still owed", value: fmtKes(r.totalBalance), alert: r.totalBalance > 0 },
+                  { label: "Invoices", value: r.invoiceCount.toLocaleString() },
+                  { label: "Fully paid", value: (sc.PAID || 0).toLocaleString() },
+                ]}
+                aside={
+                  <Ring percent={pct} size={136} stroke={14} tone={pct >= 100 ? "good" : "#ffffff"} track="rgba(255,255,255,0.18)" label={`${pct.toFixed(1)}% collected`}>
+                    <span className="text-3xl font-extrabold tabular-nums leading-none">{Math.round(pct)}%</span>
+                    <span className="mt-1 text-xs text-white/75 print:text-black/70">collected</span>
+                  </Ring>
+                }
+              />
 
-              <SelectContent>
-                {classes.length === 0 ? (
-                  <div className="px-3 py-2 text-sm opacity-70">
-                    No active classes found.
-                  </div>
-                ) : (
-                  classes.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {fmtClass(c)}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="grid items-start gap-4 lg:grid-cols-5">
+                <Panel title="Invoices by status" subtitle="How many learners have cleared the term" className="lg:col-span-2">
+                  <SegmentBar
+                    segments={[
+                      { label: "Paid", value: sc.PAID || 0, tone: "good" },
+                      { label: "Part paid", value: sc.PARTIALLY_PAID || 0, tone: "warn" },
+                      { label: "Unpaid", value: sc.ISSUED || 0, tone: "alert" },
+                    ]}
+                  />
+                </Panel>
+                <Panel title="Collected, by class" subtitle="Share of each class's bill paid so far" className="lg:col-span-3">
+                  <BarList
+                    max={100}
+                    empty="No classes billed."
+                    items={[...byClass]
+                      .sort((a, b) => a.collectionPct - b.collectionPct)
+                      .map((c) => ({
+                        key: c.classId,
+                        label: `${c.className}${c.stream ? ` ${c.stream}` : ""}`,
+                        value: c.collectionPct,
+                        display: `${Math.round(c.collectionPct)}%`,
+                        sub: `${fmtKes(c.totalBalance)} owed`,
+                        tone: pctTone(c.collectionPct),
+                      }))}
+                  />
+                </Panel>
+              </div>
 
-          {/* Year */}
-          <div className="space-y-1">
-            <div className="text-xs opacity-70">Year</div>
-            <Input
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              inputMode="numeric"
-            />
-          </div>
-
-          {/* Term */}
-          <div className="space-y-1">
-            <div className="text-xs opacity-70">Term</div>
-            <Select value={term} onValueChange={setTerm}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TERMS.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {isLoading && <div className="opacity-70 no-print">Loading report…</div>}
-      {error && (
-        <div className="text-red-600 no-print">
-          {errMsg(error, "Failed to load report")}
-        </div>
+              <Panel title="Class by class">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="py-2 pr-3 font-medium">Class</th>
+                        <th className="py-2 px-3 text-right font-medium">Invoices</th>
+                        <th className="py-2 px-3 text-right font-medium">Billed</th>
+                        <th className="py-2 px-3 text-right font-medium">Paid</th>
+                        <th className="py-2 px-3 text-right font-medium">Owed</th>
+                        <th className="py-2 pl-3 text-right font-medium">Collected</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {byClass.map((c) => (
+                        <tr key={c.classId} className="border-b last:border-0">
+                          <td className="py-2 pr-3 font-medium">
+                            {c.className}
+                            {c.stream ? ` ${c.stream}` : ""}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums">{c.invoiceCount}</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{fmtKes(c.totalBilled)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{fmtKes(c.totalPaid)}</td>
+                          <td className={`py-2 px-3 text-right tabular-nums ${c.totalBalance > 0 ? "text-red-700 dark:text-red-400" : ""}`}>{fmtKes(c.totalBalance)}</td>
+                          <td className="py-2 pl-3 text-right font-semibold tabular-nums">{Math.round(c.collectionPct)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    {byClass.length > 1 && (
+                      <tfoot>
+                        <tr className="border-t-2 font-semibold">
+                          <td className="py-2 pr-3">Total</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{r.invoiceCount}</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{fmtKes(r.totalBilled)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{fmtKes(r.totalPaid)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums">{fmtKes(r.totalBalance)}</td>
+                          <td className="py-2 pl-3 text-right tabular-nums">{Math.round(pct)}%</td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </Panel>
+              <ReportPrintFooter />
+            </>
+          )}
+        </PrintDocument>
       )}
-
-      {/* PRINT BLOCK — always mounted so print works right after load */}
-      <PrintDocument screen id="print-fees-summary" className="space-y-3 bg-white">
-        <ReportPrintTitle title="Fees Summary Report" subtitle={printSubtitle} />
-
-        {!report ? (
-          !isLoading && !error ? (
-            <div className="p-6 text-sm opacity-70">
-              Load a report to view summary details.
-            </div>
-          ) : null
-        ) : (
-          <>
-            {/* Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Summary</CardTitle>
-              </CardHeader>
-
-              <CardContent className="grid gap-3 md:grid-cols-5">
-                <Metric label="Total Billed" value={fmtMoney(report.totalBilled)} />
-                <Metric label="Total Paid" value={fmtMoney(report.totalPaid)} />
-                <Metric label="Total Balance" value={fmtMoney(report.totalBalance)} />
-                <Metric label="Collection %" value={`${collectionPct.toFixed(2)}%`} />
-                <Metric
-                  label="Invoices"
-                  value={Number(report.invoiceCount ?? 0).toLocaleString()}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Status Counts */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Invoice Status Counts</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                {Object.keys(report.statusCounts || {}).length === 0 ? (
-                  <div className="text-sm opacity-70">
-                    No invoice statuses available.
-                  </div>
-                ) : (
-                  Object.entries(report.statusCounts).map(([k, v]) => (
-                    <div key={k} className="border rounded px-3 py-1 text-sm">
-                      <span className="font-medium">{k}</span>
-                      <span className="opacity-70">
-                        {" "}
-                        • {Number(v || 0).toLocaleString()}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent>
-                <ReportPrintFooter />
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </PrintDocument>
-
-      {/* Back Button */}
-      <div className="no-print">
-        <Button asChild variant="outline">
-          <Link to="/app/dashboard">Back to Dashboard</Link>
-        </Button>
-      </div>
     </div>
   );
 }

@@ -76,6 +76,21 @@ export async function getClassPerformanceReport(req) {
   const passCount = rows.filter((r) => Number(r.average || 0) >= passThreshold).length;
   const failCount = studentCount - passCount;
 
+  // Each subject's class average, strongest first (only learners with a mark count).
+  const bySubject = new Map();
+  for (const r of rows) {
+    for (const s of r.subjectScores || []) {
+      if (s.score == null) continue;
+      const x = bySubject.get(s.subjectId) || { subjectId: s.subjectId, subjectName: s.subjectName || "Subject", sum: 0, count: 0 };
+      x.sum += Number(s.score);
+      x.count += 1;
+      bySubject.set(s.subjectId, x);
+    }
+  }
+  const subjectMeans = [...bySubject.values()]
+    .map((x) => ({ subjectId: x.subjectId, subjectName: x.subjectName, mean: Number((x.sum / x.count).toFixed(1)), count: x.count }))
+    .sort((a, b) => b.mean - a.mean);
+
   const ranking = rows.map((r) => ({
     studentId: r.student.id,
     admissionNo: r.student.admissionNo,
@@ -110,6 +125,7 @@ export async function getClassPerformanceReport(req) {
       gradeDistribution,
       passCount,
       failCount,
+      subjectMeans,
     },
     ranking,
   };

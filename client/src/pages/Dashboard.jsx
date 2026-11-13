@@ -1,631 +1,450 @@
 // src/pages/Dashboard.jsx
-import { useMemo } from "react";
+// The staff home. It opens with the figure that matters for the role (money
+// for the bursar and admin, registers for a teacher), then what still needs
+// doing today, then the trend and the activity feed. Learners and parents get
+// their own home (features/portal), never this.
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+
 import { me } from "../api/auth.api";
 import { getDashboardSummary, getDashboardActivity } from "@/api/dashboard.api";
 import { api } from "@/api/axios";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { LoadingState, ErrorState, EmptyState, PageSkeleton } from "@/components/ui/state-blocks";
+import { Badge } from "@/components/ui/badge";
+import { ErrorState, PageSkeleton } from "@/components/ui/state-blocks";
+import { PageHeader, Panel, HeroPanel, Ring, StatTile, Meter, BarList, ColumnChart, EmptyNote } from "@/components/insights/Insights";
 
-// Roles with no name profile of their own (no Teacher/Student row), so there
-// is nowhere to read a real name from. Shown instead of the raw email, which
-// used to be the fallback and read like unfinished debug text on the
-// dashboard's own welcome headline.
-const ROLE_LABELS = {
-  SYSTEM_ADMIN: "Platform Owner",
-  ADMIN: "Admin",
-  BURSAR: "Bursar",
-  TEACHER: "Teacher",
-  STUDENT: "Student",
+const ROLE_LABELS = { SYSTEM_ADMIN: "Platform owner", ADMIN: "Admin", BURSAR: "Bursar", TEACHER: "Teacher" };
+
+const kes = (n) => `KES ${Math.round(Number(n) || 0).toLocaleString("en-KE")}`;
+const compact = (n) => {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `${Math.round(v / 1e3)}K`;
+  return String(Math.round(v));
 };
 
-function fmtName(user) {
-  const full = `${user?.firstName || ""} ${user?.lastName || ""}`.trim();
-  if (full) return full;
-  // /api/me already joins the Teacher/Student profile's real name onto the
-  // user object (see server/src/app.js) — this just wasn't being read here.
-  if (user?.teacher?.name) return user.teacher.name;
-  if (user?.student?.name) return user.student.name;
-  return ROLE_LABELS[String(user?.role || "").toUpperCase()] || user?.email || user?.id || "—";
+function firstName(user) {
+  const full = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || user?.teacher?.name || "";
+  return full.split(" ")[0] || ROLE_LABELS[String(user?.role || "").toUpperCase()] || "there";
 }
 
-function money(n) {
-  if (n == null) return "—";
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+}
+
+const longDate = (iso) => {
   try {
-    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(n));
+    return new Intl.DateTimeFormat("en-KE", { weekday: "long", day: "numeric", month: "long" }).format(new Date(`${iso}T12:00:00Z`));
   } catch {
-    return String(n);
+    return iso;
   }
+};
+const shortDay = (iso) => {
+  try {
+    return new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short" }).format(new Date(`${iso}T12:00:00Z`));
+  } catch {
+    return iso;
+  }
+};
+
+// What each role can open from here (the server enforces it; this keeps the
+// page from offering doors that are locked).
+const ACTIONS = {
+  ADMIN: [
+    { to: "/app/fees", label: "Receive payment", primary: true },
+    { to: "/app/attendance", label: "Take attendance" },
+    { to: "/app/notices", label: "Post a notice" },
+    { to: "/app/reports", label: "Reports" },
+  ],
+  BURSAR: [
+    { to: "/app/fees", label: "Receive payment", primary: true },
+    { to: "/app/reports/fees/defaulters", label: "Who owes" },
+    { to: "/app/reports", label: "Reports" },
+  ],
+  TEACHER: [
+    { to: "/app/attendance", label: "Take attendance", primary: true },
+    { to: "/app/exams", label: "Enter marks" },
+    { to: "/app/report-cards", label: "Report cards" },
+  ],
+};
+
+const ACTIVITY_TEXT = {
+  ATTENDANCE: { SUBMIT_SESSION: "submitted a register", LOCK_SESSION: "locked a register", UNLOCK_SESSION: "unlocked a register", CREATE_RECORD: "marked attendance", UPDATE_RECORD: "changed attendance" },
+  FEES: { PAYMENT_RECEIVED: "received a payment" },
+  EXAMS: { SESSION_CREATED: "created an exam" },
+};
+const MODULE_DOT = { ATTENDANCE: "bg-sky-500", FEES: "bg-emerald-500", EXAMS: "bg-violet-500" };
+
+function timeAgo(at) {
+  const ms = Date.now() - new Date(at).getTime();
+  if (!Number.isFinite(ms)) return "";
+  const m = Math.round(ms / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "yesterday" : `${d} days ago`;
 }
 
-function capLabel(cap) {
-  if (cap === null) return "Unlimited";
-  if (cap === undefined) return "—";
-  return String(cap);
-}
-
-function clampPct(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return null;
-  return Math.max(0, Math.min(100, n));
-}
-
-function ProgressBar({ percent }) {
-  const p = clampPct(percent);
-  if (p == null) return null;
+function Activity({ q }) {
+  const items = q.data?.items || [];
   return (
-    <div className="h-2 w-full rounded bg-muted overflow-hidden">
-      <div className="h-full bg-primary transition-all" style={{ width: `${p}%` }} />
-    </div>
+    <Panel
+      title="Recent activity"
+      action={
+        <Button variant="ghost" size="sm" onClick={() => q.refetch()} disabled={q.isFetching}>
+          Refresh
+        </Button>
+      }
+    >
+      {q.isLoading && <div className="text-sm text-muted-foreground">Loading…</div>}
+      {q.isError && <EmptyNote>Couldn&apos;t load activity.</EmptyNote>}
+      {!q.isLoading && !q.isError && items.length === 0 && <EmptyNote>Nothing has happened yet today.</EmptyNote>}
+      <ol className="space-y-3">
+        {items.slice(0, 8).map((it) => {
+          const verb = ACTIVITY_TEXT[it.module]?.[it.action] || "made a change";
+          return (
+            <li key={it.id} className="flex gap-3 text-sm">
+              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${MODULE_DOT[it.module] || "bg-slate-400"}`} aria-hidden="true" />
+              <div className="min-w-0">
+                <div>
+                  <span className="font-medium">{it.actor || "System"}</span> {verb}
+                  {it.entity?.receiptNo ? <span className="text-muted-foreground"> · {it.entity.receiptNo}</span> : null}
+                </div>
+                <div className="text-xs text-muted-foreground">{it.at ? timeAgo(it.at) : ""}</div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </Panel>
   );
 }
 
-function UsageMini({ label, used, cap, percent }) {
-  const p = clampPct(percent);
-  const danger = p != null && p >= 90;
-  const warn = p != null && p >= 80 && p < 90;
-
-  const badgeVariant = danger ? "destructive" : warn ? "secondary" : "outline";
-
+function Registers({ att, compactView = false }) {
+  if (!att || !att.classes) {
+    return (
+      <Panel title="Registers today">
+        <EmptyNote>No classes to mark.</EmptyNote>
+      </Panel>
+    );
+  }
+  const pct = (att.registersDone / att.classes) * 100;
+  const done = att.registersDone === att.classes;
   return (
-    <div className="rounded-lg border bg-background p-3 space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <Badge variant={badgeVariant} className="text-[10px] uppercase">
-          {cap === null ? "Unlimited" : `${used ?? 0}/${cap ?? "—"}`}
-        </Badge>
-      </div>
-      <div className="text-sm font-semibold">{used ?? 0}</div>
-      <div className="text-[11px] text-muted-foreground">
-        Cap: <span className="font-medium text-foreground">{capLabel(cap)}</span>
-      </div>
-      <ProgressBar percent={percent} />
-    </div>
-  );
-}
-
-// Role → module access (UX only; backend still enforces real security)
-function canUseModule(role, moduleKey) {
-  const r = String(role || "").toUpperCase();
-
-  // SYSTEM_ADMIN is governance-only (no daily ops modules)
-  if (r === "SYSTEM_ADMIN") return false;
-
-  const RULES = {
-    ATTENDANCE: ["ADMIN", "TEACHER"],
-    EXAMS: ["ADMIN", "TEACHER"],
-    REPORTS: ["ADMIN", "TEACHER"],
-    STUDENTS: ["ADMIN", "TEACHER"],
-    CLASSES: ["ADMIN"],
-    FEES: ["ADMIN", "BURSAR"],
-  };
-
-  const allowed = RULES[moduleKey] || ["ADMIN"];
-  return allowed.includes(r);
-}
-
-function ActivityItem({ item }) {
-  const at = item?.at ? new Date(item.at).toLocaleString() : "—";
-  const mod = item?.module || "SYSTEM";
-  const actor = item?.actor || "System";
-  const action = item?.action || "EVENT";
-
-  const desc = (() => {
-    if (mod === "ATTENDANCE") {
-      if (action === "SUBMIT_SESSION") return "Submitted attendance session";
-      if (action === "LOCK_SESSION") return "Locked attendance session";
-      if (action === "UNLOCK_SESSION") return "Unlocked attendance session";
-      if (action === "CREATE_RECORD") return "Created attendance record";
-      if (action === "UPDATE_RECORD") return "Updated attendance record";
-      return "Attendance activity";
-    }
-    if (mod === "FEES") {
-      if (action === "PAYMENT_RECEIVED") return "Received a fee payment";
-      return "Fees activity";
-    }
-    if (mod === "EXAMS") {
-      if (action === "SESSION_CREATED") return "Created an exam session";
-      return "Exams activity";
-    }
-    return "System activity";
-  })();
-
-  return (
-    <div className="rounded-lg border bg-background p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="font-medium text-sm">{desc}</div>
-        <Badge variant="secondary" className="text-[10px] uppercase">
-          {mod}
-        </Badge>
-      </div>
-      <div className="text-xs text-muted-foreground mt-1">
-        {actor} • {at}
-      </div>
-      {item?.entity?.receiptNo ? (
-        <div className="text-xs mt-1">
-          Receipt: <span className="font-medium">{item.entity.receiptNo}</span>
+    <Panel
+      title="Registers today"
+      subtitle={done ? "Every class is marked." : `${att.classes - att.registersDone} still to mark`}
+      action={
+        <Button asChild size="sm" variant="outline">
+          <Link to="/app/attendance">Open attendance</Link>
+        </Button>
+      }
+    >
+      <div className="flex flex-wrap items-center gap-5">
+        <Ring percent={pct} size={compactView ? 96 : 112} tone={done ? "good" : "primary"} label={`${att.registersDone} of ${att.classes} registers marked`}>
+          <span className="text-2xl font-extrabold tabular-nums leading-none">
+            {att.registersDone}
+            <span className="text-sm font-semibold text-muted-foreground">/{att.classes}</span>
+          </span>
+          <span className="mt-1 text-xs text-muted-foreground">marked</span>
+        </Ring>
+        <div className="min-w-0 flex-1 space-y-2 text-sm">
+          {att.ratePct != null ? (
+            <>
+              <div>
+                <span className="text-2xl font-bold tabular-nums">{att.ratePct}%</span>{" "}
+                <span className="text-muted-foreground">came in (present or late)</span>
+              </div>
+              <div className="text-muted-foreground">
+                {att.present} present · {att.late} late · <span className={att.absent ? "font-semibold text-red-700 dark:text-red-400" : ""}>{att.absent} absent</span>
+              </div>
+            </>
+          ) : (
+            <div className="text-muted-foreground">No one has been marked yet today.</div>
+          )}
         </div>
-      ) : null}
-    </div>
+      </div>
+      {att.notMarked?.length > 0 && (
+        <div className="mt-4">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Still to mark</div>
+          <div className="flex flex-wrap gap-2">
+            {att.notMarked.map((c) => (
+              <Link key={c.classId} to="/app/attendance" className="rounded-full border px-3 py-1 text-sm hover:border-primary hover:text-primary">
+                {c.label}
+              </Link>
+            ))}
+            {att.classes - att.registersDone > att.notMarked.length && (
+              <span className="px-1 py-1 text-sm text-muted-foreground">+{att.classes - att.registersDone - att.notMarked.length} more</span>
+            )}
+          </div>
+        </div>
+      )}
+    </Panel>
   );
 }
 
-function ActionCard({ to, label, badge, allowed }) {
-  const cls =
-    "group rounded-xl border bg-background p-4 transition " +
-    (allowed
-      ? "hover:bg-muted/40 hover:border-muted-foreground/20 cursor-pointer"
-      : "opacity-60 cursor-not-allowed");
+function FeesHero({ fees, termLabel }) {
+  const t = fees.term;
+  if (!t || !t.invoices) {
+    return (
+      <HeroPanel eyebrow="Fees" value={kes(fees.collectedToday)} caption={`collected today · ${fees.receiptsToday} receipt${fees.receiptsToday === 1 ? "" : "s"}`} minis={[{ label: "Outstanding", value: kes(fees.outstandingTotal), alert: fees.outstandingTotal > 0 }]} />
+    );
+  }
+  return (
+    <HeroPanel
+      eyebrow={`Collected · ${termLabel}`}
+      value={kes(t.paid)}
+      caption={`of ${kes(t.billed)} billed on ${t.invoices.toLocaleString()} invoice${t.invoices === 1 ? "" : "s"}`}
+      minis={[
+        { label: "Still owed", value: kes(t.balance), alert: t.balance > 0 },
+        { label: "Today", value: kes(fees.collectedToday) },
+        { label: "Receipts today", value: fees.receiptsToday.toLocaleString() },
+        { label: "Fully paid", value: `${t.fullyPaid.toLocaleString()} of ${t.invoices.toLocaleString()}` },
+      ]}
+      aside={
+        <Ring percent={t.percent} size={136} stroke={14} tone={t.percent >= 100 ? "good" : "#ffffff"} track="rgba(255,255,255,0.18)" label={`${t.percent}% of term fees collected`}>
+          <span className="text-3xl font-extrabold tabular-nums leading-none">{Math.round(t.percent)}%</span>
+          <span className="mt-1 text-xs text-white/75 print:text-black/70">collected</span>
+        </Ring>
+      }
+    />
+  );
+}
 
-  const inner = (
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <div className={allowed ? "font-medium group-hover:underline" : "font-medium"}>
-          {label}
-        </div>
-        <div className="flex items-center gap-2">
-          {!allowed ? (
-            <Badge variant="outline" className="text-[10px] uppercase">
-              No access
+function FeesTrend({ fees }) {
+  const trend = fees.trend || [];
+  const total = trend.reduce((n, d) => n + d.amount, 0);
+  return (
+    <Panel
+      title="Collections, last 14 days"
+      subtitle={`${kes(total)} in ${trend.reduce((n, d) => n + d.receipts, 0)} receipts`}
+      action={
+        <Button asChild size="sm" variant="ghost">
+          <Link to="/app/reports/fees/collections">Details</Link>
+        </Button>
+      }
+    >
+      <ColumnChart
+        points={trend.map((d) => ({ key: d.date, label: shortDay(d.date), value: d.amount, display: kes(d.amount) }))}
+        ariaLabel="Fees collected each day for the last 14 days"
+        empty="No payments in the last 14 days."
+        highlightLast
+      />
+    </Panel>
+  );
+}
+
+function OwedByClass({ fees }) {
+  const rows = fees.byClass || [];
+  return (
+    <Panel
+      title="Most owed, by class"
+      subtitle="This term's unpaid balances"
+      action={
+        <Button asChild size="sm" variant="ghost">
+          <Link to="/app/reports/fees/defaulters">Who owes</Link>
+        </Button>
+      }
+    >
+      <BarList
+        tone="alert"
+        empty="Nothing owed this term."
+        items={rows.map((c) => ({
+          key: c.classId,
+          label: c.label,
+          value: c.balance,
+          display: kes(c.balance),
+          sub: c.billed ? `${Math.round((c.balance / c.billed) * 100)}% unpaid` : null,
+        }))}
+      />
+    </Panel>
+  );
+}
+
+function LatestExam({ exam, termLabels, canOpen }) {
+  return (
+    <Panel title="Latest exam">
+      {!exam ? (
+        <EmptyNote>No exams yet.</EmptyNote>
+      ) : (
+        <div className="space-y-2 text-sm">
+          <div className="font-semibold">{exam.name || "Exam"}</div>
+          <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+            {termLabels?.[exam.term] || exam.term} {exam.year}
+            <Badge variant={exam.status === "PUBLISHED" ? "secondary" : "outline"} className="text-[10px] uppercase">
+              {String(exam.status || "").toLowerCase()}
             </Badge>
-          ) : null}
-          <Badge variant="secondary" className="text-[10px] uppercase">
-            {badge}
-          </Badge>
+          </div>
+          {canOpen && (
+            <Button asChild size="sm" variant="outline" className="mt-1">
+              <Link to={exam.status === "PUBLISHED" ? "/app/results" : "/app/exams"}>{exam.status === "PUBLISHED" ? "See results" : "Open exam"}</Link>
+            </Button>
+          )}
         </div>
-      </div>
-      <div className="text-sm text-muted-foreground mt-1">
-        {allowed ? `Open ${label.toLowerCase()} module.` : "You don't have permission for this module."}
-      </div>
-    </>
-  );
-
-  return allowed ? (
-    <Link to={to} className={cls}>
-      {inner}
-    </Link>
-  ) : (
-    <div className={cls} role="button" aria-disabled="true" tabIndex={-1}>
-      {inner}
-    </div>
+      )}
+    </Panel>
   );
 }
 
-async function fetchSubscriptionOverview() {
-  const { data } = await api.get("/api/settings/subscription/overview");
-  return data;
+function PlanCard({ planQ }) {
+  const sub = planQ.data?.subscription;
+  const usage = planQ.data?.usage || {};
+  const pct = planQ.data?.percent || {};
+  return (
+    <Panel
+      title="Plan"
+      subtitle={planQ.isLoading ? "Loading…" : sub?.planCode || "—"}
+      action={
+        <Button asChild size="sm" variant="ghost">
+          <Link to="/app/settings?tab=subs">Manage</Link>
+        </Button>
+      }
+    >
+      {planQ.isError && <div className="text-sm text-muted-foreground">Couldn&apos;t load the plan.</div>}
+      {sub && (
+        <div className="space-y-3 text-sm">
+          {[
+            ["Students", usage.studentsCount, sub.maxStudents, pct.students],
+            ["Teachers", usage.teachersCount, sub.maxTeachers, pct.teachers],
+          ].map(([label, used, cap, p]) => (
+            <div key={label}>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{label}</span>
+                <span className="font-medium tabular-nums">
+                  {used ?? 0}
+                  {cap == null ? "" : ` of ${cap}`}
+                </span>
+              </div>
+              {cap != null && <Meter percent={p} tone={p >= 90 ? "alert" : p >= 80 ? "warn" : "primary"} className="mt-1" />}
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
 }
 
 export default function Dashboard() {
-  const meQ = useQuery({
-    queryKey: ["me"],
-    queryFn: me,
-    retry: false,
-    staleTime: 60 * 1000,
-  });
-
+  const meQ = useQuery({ queryKey: ["me"], queryFn: me, retry: false, staleTime: 60 * 1000 });
   const user = meQ.data?.user ?? meQ.data;
-  const role = user?.role || "—";
-  const roleUpper = String(role || "").toUpperCase();
-  const isGovOnly = roleUpper === "SYSTEM_ADMIN";
+  const role = String(user?.role || "").toUpperCase();
+  const isOwner = role === "SYSTEM_ADMIN";
+  const { termLabels } = useSchoolCalendar();
 
-  const summaryQ = useQuery({
-    queryKey: ["dashboardSummary"],
-    queryFn: getDashboardSummary,
-    retry: false,
-    staleTime: 15 * 1000,
-    enabled: !!user,
-  });
-
+  const summaryQ = useQuery({ queryKey: ["dashboardSummary"], queryFn: getDashboardSummary, retry: false, staleTime: 15 * 1000, enabled: !!user });
   const activityQ = useQuery({
     queryKey: ["dashboardActivity", { limit: 20 }],
     queryFn: () => getDashboardActivity({ limit: 20 }),
     retry: false,
     staleTime: 10 * 1000,
-    enabled: !!user,
+    enabled: !!user && !isOwner,
   });
-
-  // Current Plan panel. Billing is an Admin/Platform-Owner concern — the server
-  // 403s this for Teacher/Bursar/Student, so only fetch it for roles that can
-  // actually read it. For SYSTEM_ADMIN it only works once a school context is selected.
-  const hasTenantHeader = !!localStorage.getItem("schoolId");
-  const canLoadPlan = !!user && (roleUpper === "ADMIN" || (isGovOnly && hasTenantHeader));
-
+  const hasSchool = !!localStorage.getItem("schoolId");
   const planQ = useQuery({
-    queryKey: ["subscriptionOverview", isGovOnly ? localStorage.getItem("schoolId") || "NO_SCOPE" : "TENANT"],
-    queryFn: fetchSubscriptionOverview,
-    enabled: canLoadPlan,
+    queryKey: ["subscriptionOverview", isOwner ? localStorage.getItem("schoolId") || "NO_SCOPE" : "TENANT"],
+    queryFn: () => api.get("/api/settings/subscription/overview").then((r) => r.data),
+    enabled: !!user && (role === "ADMIN" || (isOwner && hasSchool)),
     retry: false,
     staleTime: 30 * 1000,
   });
 
-  const quickActions = useMemo(() => {
-    const base = [
-      { to: "/app/attendance", label: "Take attendance", badge: "Daily", moduleKey: "ATTENDANCE" },
-      { to: "/app/fees", label: "Receive payment", badge: "Money", moduleKey: "FEES" },
-      { to: "/app/exams", label: "Enter marks", badge: "Academics", moduleKey: "EXAMS" },
-      { to: "/app/reports", label: "Reports", badge: "Insights", moduleKey: "REPORTS" },
-      { to: "/app/students", label: "Students", badge: "Core", moduleKey: "STUDENTS" },
-      { to: "/app/classes", label: "Classes", badge: "Core", moduleKey: "CLASSES" },
-    ];
-
-    if (roleUpper === "TEACHER") {
-      return base.filter((x) =>
-        ["/app/attendance", "/app/exams", "/app/reports", "/app/students"].includes(x.to)
-      );
-    }
-    return base;
-  }, [roleUpper]);
-
   if (meQ.isLoading) return <PageSkeleton />;
-  if (meQ.isError)
+  if (meQ.isError) {
     return (
       <div className="p-6">
-        <ErrorState
-          title="Failed to load dashboard"
-          message={meQ.error?.response?.data?.message || meQ.error?.message}
-          onRetry={() => meQ.refetch()}
-        />
+        <ErrorState title="Failed to load dashboard" message={meQ.error?.response?.data?.message || meQ.error?.message} onRetry={() => meQ.refetch()} />
       </div>
     );
+  }
 
-  const summary = summaryQ.data;
-  const activity = activityQ.data?.items || [];
+  const s = summaryQ.data;
+  const cal = s?.calendar;
+  const termLabel = cal?.term ? `${termLabels?.[cal.term] || cal.term} ${cal.year}` : cal?.year ? String(cal.year) : "";
+  const eyebrow = [cal?.today ? longDate(cal.today) : null, termLabel || null].filter(Boolean).join(" · ");
+  const counts = s?.counts || {};
+  const fees = s?.fees;
+  const att = s?.attendanceToday;
+  const canAttendance = role === "ADMIN" || role === "TEACHER";
 
-  const studentsActive = summary?.counts?.studentsActive ?? 0;
-  const classesCount = summary?.counts?.classesCount ?? 0;
-  const teachersCount = summary?.counts?.teachersCount ?? 0;
-
-  const att = summary?.attendanceToday;
-  const fees = summary?.fees;
-  const exams = summary?.exams?.latestSession;
-
-  const canAttendance = canUseModule(role, "ATTENDANCE");
-  const canFees = canUseModule(role, "FEES");
-  const canReports = canUseModule(role, "REPORTS");
-  const canExams = canUseModule(role, "EXAMS");
-
-  const sub = planQ.data?.subscription || null;
-  const usage = planQ.data?.usage || {};
-  const pct = planQ.data?.percent || {};
-  const flags = planQ.data?.flags || {};
-
-  const writeEnabled = !!flags.canWrite;
+  if (isOwner) {
+    return (
+      <div className="space-y-6 p-4 md:p-6">
+        <PageHeader
+          eyebrow="Platform"
+          title={`${greeting()}, ${firstName(user)}`}
+          subtitle="Schools, plans and the audit trail across the platform."
+          actions={
+            <>
+              <Button asChild size="sm">
+                <Link to="/app/settings">Open settings</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link to="/app/settings?tab=logs">Logs</Link>
+              </Button>
+            </>
+          }
+        />
+        {hasSchool ? (
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatTile label="Active learners" value={summaryQ.isLoading ? "…" : (counts.studentsActive ?? 0).toLocaleString()} />
+            <StatTile label="Classes" value={summaryQ.isLoading ? "…" : counts.classesCount ?? 0} />
+            <StatTile label="Teachers" value={summaryQ.isLoading ? "…" : counts.teachersCount ?? 0} />
+          </div>
+        ) : (
+          <EmptyNote>Choose a school in Settings to see its figures.</EmptyNote>
+        )}
+        {hasSchool && <PlanCard planQ={planQ} />}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 p-4">
-      {/* HERO - Cleaned up but kept all content */}
-      <Card>
-        <CardContent className="p-5">
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-semibold">Welcome, {fmtName(user)}</h1>
-                <div className="flex items-center gap-1.5">
-                  <Badge variant="secondary" className="text-xs font-normal">
-                    {role}
-                  </Badge>
-                  {isGovOnly && (
-                    <Badge variant="outline" className="text-xs font-normal">
-                      Governance
-                    </Badge>
-                  )}
-                </div>
-              </div>
+    <div className="space-y-6 p-4 md:p-6">
+      <PageHeader
+        eyebrow={eyebrow}
+        title={`${greeting()}, ${firstName(user)}`}
+        actions={(ACTIONS[role] || []).map((a) => (
+          <Button key={a.to} asChild size="sm" variant={a.primary ? "default" : "outline"}>
+            <Link to={a.to}>{a.label}</Link>
+          </Button>
+        ))}
+      />
 
-              <p className="text-sm text-muted-foreground">
-                {isGovOnly
-                  ? "Platform governance dashboard — tenant oversight, visibility, and control."
-                  : "Your control room for daily ops — attendance, fees, exams, reports."}
-              </p>
+      {summaryQ.isError && (
+        <ErrorState bare title="Couldn't load today's figures" message={summaryQ.error?.response?.data?.message} onRetry={() => summaryQ.refetch()} />
+      )}
+      {summaryQ.isLoading && <div className="h-48 animate-pulse rounded-3xl bg-muted" />}
 
-              {/* HERO BUTTONS - Same logic, cleaner spacing */}
-              <div className="flex flex-wrap gap-2 pt-2">
-                {isGovOnly ? (
-                  <>
-                    <Button asChild size="sm">
-                      <Link to="/app/settings">Open settings</Link>
-                    </Button>
-                    <Button asChild variant="outline" size="sm">
-                      <Link to="/app/settings?tab=logs">Logs & monitoring</Link>
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button asChild size="sm" disabled={!canAttendance}>
-                      {canAttendance ? (
-                        <Link to="/app/attendance">Take attendance</Link>
-                      ) : (
-                        <span>Take attendance</span>
-                      )}
-                    </Button>
-                    <Button asChild variant="outline" size="sm" disabled={!canFees}>
-                      {canFees ? (
-                        <Link to="/app/fees">Receive payment</Link>
-                      ) : (
-                        <span>Receive payment</span>
-                      )}
-                    </Button>
-                    <Button asChild variant="outline" size="sm" disabled={!canReports}>
-                      {canReports ? (
-                        <Link to="/app/reports">Open reports</Link>
-                      ) : (
-                        <span>Open reports</span>
-                      )}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
+      {s && fees && <FeesHero fees={fees} termLabel={termLabel || "this term"} />}
 
-            {/* Right side cards - Reorganized in a cleaner way */}
-            <div className="lg:w-80 space-y-4">
-              {/* System status card - Cleaned up */}
-              <div className="rounded-lg border bg-muted/10 p-4">
-                <div className="text-sm font-medium mb-2">System Status</div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-muted-foreground">API Status</span>
-                  <Badge variant="outline" className="text-xs">
-                    {summaryQ.isLoading ? "Loading…" : summaryQ.isError ? "Partial" : "Online"}
-                  </Badge>
-                </div>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <div>Printing: <span className="text-foreground font-medium">Ready</span></div>
-                  <div>Security: <span className="text-foreground font-medium">Role-gated</span></div>
-                </div>
-                <Separator className="my-3" />
-                <div className="text-xs text-muted-foreground">
-                  {isGovOnly
-                    ? "Every school's data stays isolated, with a full audit trail across the platform."
-                    : "Attendance, fees and results stay in sync automatically — nothing to reconcile by hand."}
-                </div>
-              </div>
-
-              {/* Current Plan card: billing is an Admin/Platform-Owner concern.
-                  The server already 403s this query for Teacher/Bursar/Student
-                  (their `sub` never loads), so gating on `!sub` instead of role
-                  used to show them a confusing "couldn't load subscription"
-                  card, while a normal Admin whose plan DID load saw nothing at
-                  all — the one role this card is for never saw it. */}
-              {isGovOnly || roleUpper === "ADMIN" ? (
-                <div className="rounded-lg border bg-background p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="text-sm font-medium">Current Plan</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {planQ.isLoading ? "Loading…" : sub?.planCode || "—"}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Badge variant={writeEnabled ? "secondary" : "outline"} className="text-xs">
-                        {planQ.isLoading ? "…" : writeEnabled ? "WRITE" : "READ"}
-                      </Badge>
-                      <Button asChild size="sm" variant="ghost" className="h-7 px-2">
-                        <Link to="/app/settings?tab=subs">Manage</Link>
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {isGovOnly && !hasTenantHeader ? (
-                    <div className="text-xs text-muted-foreground">
-                      Select a school context to view plan usage.
-                    </div>
-                  ) : planQ.isError ? (
-                    <div className="text-xs text-muted-foreground">
-                      Couldn't load subscription overview.
-                    </div>
-                  ) : sub ? (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <UsageMini
-                        label="Students"
-                        used={usage.studentsCount ?? 0}
-                        cap={sub.maxStudents}
-                        percent={pct.students}
-                      />
-                      <UsageMini
-                        label="Teachers"
-                        used={usage.teachersCount ?? 0}
-                        cap={sub.maxTeachers}
-                        percent={pct.teachers}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+      {s && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            {canAttendance && <Registers att={att} />}
+            {fees && <FeesTrend fees={fees} />}
+            {fees && <OwedByClass fees={fees} />}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <StatTile label="Active learners" value={(counts.studentsActive ?? 0).toLocaleString()} to={role === "BURSAR" ? undefined : "/app/students"} />
+              <StatTile label="Classes" value={counts.classesCount ?? 0} to={role === "ADMIN" ? "/app/classes" : undefined} />
+              <StatTile label="Teachers" value={counts.teachersCount ?? 0} to={role === "ADMIN" ? "/app/teachers" : undefined} />
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Main Content Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - KPIs, Quick Actions, Attendance & Exams */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* KPIs Grid - Cleaner layout */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground mb-1">Active students</div>
-                <div className="text-2xl font-semibold">
-                  {summaryQ.isLoading ? "…" : studentsActive}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground mb-1">Classes</div>
-                <div className="text-2xl font-semibold">
-                  {summaryQ.isLoading ? "…" : classesCount}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground mb-1">Teachers</div>
-                <div className="text-2xl font-semibold">
-                  {summaryQ.isLoading ? "…" : teachersCount}
-                </div>
-              </CardContent>
-            </Card>
-            {/* The server sends fees only to roles that handle money. */}
-            {fees && (
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground mb-1">Fees collected today</div>
-                <div className="text-2xl font-semibold">
-                  {summaryQ.isLoading ? "…" : money(fees?.collectedToday)}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Receipts: {fees?.receiptsToday ?? "—"}
-                </div>
-              </CardContent>
-            </Card>
+          <div className="space-y-6">
+            {/* Only when it adds something: other terms' arrears on top of this term's. */}
+            {fees && fees.outstandingTotal > 0 && fees.outstandingTotal !== fees.term?.balance && (
+              <StatTile label="Owed across all terms" value={compact(fees.outstandingTotal)} hint={`${kes(fees.outstandingTotal)} on ${fees.invoicesCount} invoices`} tone="alert" to="/app/reports/fees/defaulters" />
             )}
-          </div>
-
-          {/* Quick Actions - Only for non-Gov */}
-          {!isGovOnly && (
-            <Card>
-              <CardHeader className="pb-3">
-                <div>
-                  <CardTitle className="text-base">Quick Actions</CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">No hunting. Just execute.</p>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {quickActions.map((a) => (
-                    <ActionCard
-                      key={a.to}
-                      to={a.to}
-                      label={a.label}
-                      badge={a.badge}
-                      allowed={canUseModule(role, a.moduleKey)}
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Attendance & Exams Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Attendance Today</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Total sessions</span>
-                    <span className="font-semibold">{att?.total ?? "—"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="text-center p-2 bg-muted/20 rounded">
-                      <div className="font-semibold">{att?.draft ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground">Draft</div>
-                    </div>
-                    <div className="text-center p-2 bg-muted/20 rounded">
-                      <div className="font-semibold">{att?.submitted ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground">Submitted</div>
-                    </div>
-                    <div className="text-center p-2 bg-muted/20 rounded">
-                      <div className="font-semibold">{att?.locked ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground">Locked</div>
-                    </div>
-                  </div>
-                  {!isGovOnly && (
-                    <>
-                      <Separator />
-                      <Button asChild className="w-full" disabled={!canAttendance}>
-                        {canAttendance ? (
-                          <Link to="/app/attendance">Open Attendance</Link>
-                        ) : (
-                          <span>Open Attendance</span>
-                        )}
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Latest Exam Session</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!exams ? (
-                  <div className="text-sm text-muted-foreground">No exam sessions found yet.</div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="font-semibold">{exams.name || "Exam session"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {exams.term} • {exams.year} • {String(exams.status || "").toUpperCase()}
-                    </div>
-                    {!isGovOnly && (
-                      <>
-                        <Separator />
-                        <Button asChild variant="outline" className="w-full" disabled={!canExams}>
-                          {canExams ? (
-                            <Link to="/app/exams">Open Exams</Link>
-                          ) : (
-                            <span>Open Exams</span>
-                          )}
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {role !== "BURSAR" && <LatestExam exam={s.exams?.latestSession} termLabels={termLabels} canOpen={role === "ADMIN" || role === "TEACHER"} />}
+            <Activity q={activityQ} />
+            {role === "ADMIN" && <PlanCard planQ={planQ} />}
           </div>
         </div>
-
-        {/* Right Column - Activity Feed */}
-        <div className="lg:col-span-1">
-          <Card className="sticky top-6">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Recent Activity</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => activityQ.refetch()}
-                  disabled={activityQ.isLoading}
-                >
-                  Refresh
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4">
-              {activityQ.isLoading && <LoadingState title="Loading activity…" />}
-              {activityQ.isError && (
-                <ErrorState
-                  bare
-                  title="Failed to load activity"
-                  onRetry={() => activityQ.refetch()}
-                />
-              )}
-              {!activityQ.isLoading && !activityQ.isError && activity.length === 0 && (
-                <EmptyState bare size="sm" title="No activity yet" />
-              )}
-              <div className="space-y-3">
-                {activity.slice(0, 6).map((it) => (
-                  <ActivityItem key={it.id} item={it} />
-                ))}
-              </div>
-              <div className="text-xs text-muted-foreground mt-4 pt-3 border-t">
-                This feed is audit-powered — it's the "what happened" timeline.
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

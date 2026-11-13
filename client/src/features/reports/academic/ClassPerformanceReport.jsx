@@ -1,6 +1,6 @@
-// src/features/reports/academic/ClassPerformanceReport.jsx
+// Class performance for one published exam: the class average, how grades
+// spread, which subjects are strong or weak, and the ranking.
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { listExamSessions } from "@/api/exams.api";
@@ -8,351 +8,171 @@ import { listClasses } from "@/api/classes.api";
 import { exportClassPerformanceReport } from "@/api/reports.api";
 import { useClassPerformanceReport } from "../hooks/useClassPerformanceReport";
 import { printSection } from "@/lib/print";
-import { normalizeArray, fmtClass, fmtNumber } from "../utils/format";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
 import { getErrorMessage as errMsg } from "@/lib/errors";
-
 import PrintDocument from "@/components/print/PrintDocument";
+import { HeroPanel, Ring, Panel, BarList } from "@/components/insights/Insights";
 import ReportPrintTitle from "../components/ReportPrintTitle";
 import ReportPrintFooter from "../components/ReportPrintFooter";
+import { ReportHeader, FilterBar, Field, SelectInput, ReportState } from "../components/ReportKit";
+import { normalizeArray, fmtClass, fmtNumber } from "../utils/format";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
-function RankingTable({ ranking, sticky }) {
-  return (
-    <table className="w-full text-sm">
-      <thead className={`text-left opacity-70 border-b ${sticky ? "sticky top-0 bg-white" : ""}`}>
-        <tr>
-          <th className="py-2">Pos</th>
-          <th>Adm</th>
-          <th>Student</th>
-          <th className="text-right">Avg</th>
-          <th className="text-right">Total</th>
-          <th className="text-right">Grade</th>
-        </tr>
-      </thead>
-      <tbody>
-        {ranking.map((r) => (
-          <tr key={r.studentId} className={`border-t ${sticky ? "hover:bg-gray-50" : ""}`}>
-            <td className="py-2">{r.position}</td>
-            <td>{r.admissionNo}</td>
-            <td>{r.name}</td>
-            <td className="text-right">{fmtNumber(r.average ?? 0, 2)}</td>
-            <td className="text-right">{fmtNumber(r.total ?? 0)}</td>
-            <td className="text-right">{r.grade || "-"}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
+const meanTone = (m) => (m >= 70 ? "good" : m >= 50 ? "primary" : m >= 40 ? "warn" : "alert");
+const MEDAL = ["bg-amber-400 text-amber-950", "bg-slate-300 text-slate-900", "bg-orange-300 text-orange-950"];
 
 export default function ClassPerformanceReport() {
+  const { termLabels } = useSchoolCalendar();
   const [classId, setClassId] = useState("");
   const [sessionId, setSessionId] = useState("");
 
-  // Classes
-  const { data: classesRaw, isLoading: classesLoading } = useQuery({
-    queryKey: ["classes", "active"],
-    queryFn: () => listClasses({ active: true }),
+  const classesQ = useQuery({ queryKey: ["classes", "active"], queryFn: () => listClasses({ active: true }) });
+  const classes = useMemo(() => normalizeArray(classesQ.data), [classesQ.data]);
+  const effectiveClassId = classId || classes[0]?.id || "";
+
+  const sessionsQ = useQuery({
+    queryKey: ["examSessions", "published", effectiveClassId],
+    queryFn: () => listExamSessions({ classId: String(effectiveClassId), status: "PUBLISHED" }),
+    enabled: Boolean(effectiveClassId),
   });
+  const sessions = useMemo(() => normalizeArray(sessionsQ.data), [sessionsQ.data]);
+  // The latest published exam unless another is picked (and still in the list).
+  const effectiveSessionId = sessions.some((s) => s.id === sessionId) ? sessionId : sessions[0]?.id || "";
 
-  const classes = useMemo(() => normalizeArray(classesRaw), [classesRaw]);
-
-  // Sessions (published only)
-  const { data: sessionsRaw, isLoading: sessionsLoading } = useQuery({
-    queryKey: ["examSessions", "published", classId],
-    queryFn: () =>
-      listExamSessions({ classId: String(classId), status: "PUBLISHED" }),
-    enabled: Boolean(classId),
-  });
-
-  const sessions = useMemo(() => normalizeArray(sessionsRaw), [sessionsRaw]);
-
-  // Report
-  const { data: reportRaw, isLoading, error } = useClassPerformanceReport({
-    sessionId,
-  });
-
-  const report = reportRaw?.data;
-
-  const selectedClass = useMemo(
-    () => classes.find((c) => String(c.id) === String(classId)) || null,
-    [classes, classId]
-  );
-
-  const selectedSession = useMemo(
-    () => sessions.find((s) => String(s.id) === String(sessionId)) || null,
-    [sessions, sessionId]
-  );
-
-  const printSubtitle = useMemo(() => {
-    const c = selectedClass ? fmtClass(selectedClass) : "—";
-    const s = selectedSession
-      ? `${selectedSession.name || "Session"} • ${selectedSession.term} ${selectedSession.year}`
-      : "—";
-    return `${c} • ${s}`;
-  }, [selectedClass, selectedSession]);
-
-  const ranking = report?.ranking || [];
-  const showHint =
-    !classId || !sessionId || (!report && !isLoading && !error);
-
-  const [exporting, setExporting] = useState(false);
-  const doExport = async (format) => {
-    if (!sessionId || !report) return;
-    setExporting(true);
-    try {
-      await exportClassPerformanceReport(sessionId, format);
-    } catch (err) {
-      console.error("EXPORT CLASS PERFORMANCE ERROR:", err);
-      alert("Export failed. Check your network and try again.");
-    } finally {
-      setExporting(false);
+  const q = useClassPerformanceReport({ sessionId: effectiveSessionId });
+  const r = q.data?.data;
+  const st = r?.stats;
+  const ranking = useMemo(() => r?.ranking || [], [r]);
+  const passPct = st?.studentCount ? (st.passCount / st.studentCount) * 100 : 0;
+  const subjects = st?.subjectMeans || [];
+  const grades = useMemo(() => {
+    const avg = new Map();
+    for (const x of ranking) {
+      const g = x.grade || "N/A";
+      const a = avg.get(g) || { sum: 0, n: 0 };
+      a.sum += Number(x.average || 0);
+      a.n += 1;
+      avg.set(g, a);
     }
-  };
+    const mean = (g) => (avg.get(g) ? avg.get(g).sum / avg.get(g).n : -1);
+    return [...(st?.gradeDistribution || [])].sort((a, b) => mean(b.grade) - mean(a.grade));
+  }, [ranking, st]);
+  const title = r ? `${r.session?.name || "Exam"} · ${fmtClass(r.class)}` : "";
+  const termName = r ? `${termLabels?.[r.session?.term] || r.session?.term} ${r.session?.year}` : "";
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 flex-wrap no-print">
-        <div>
-          <h2 className="text-xl font-semibold">Academic — Class Performance</h2>
-          <p className="opacity-70 mt-1">
-            Read-only summary + ranking for a{" "}
-            <span className="font-medium">PUBLISHED</span> exam session.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => doExport("csv")} disabled={!report || exporting}>
-            Export CSV
-          </Button>
-          <Button variant="outline" onClick={() => doExport("xlsx")} disabled={!report || exporting}>
-            Export Excel
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => printSection("print-class-performance")}
-            disabled={!report}
-            title={!report ? "Load a report first" : "Print this report"}
+      <ReportHeader
+        title="Class performance"
+        subtitle={r ? `${title} · ${termName}` : "Published exams only"}
+        ready={Boolean(r)}
+        onExport={(format) => exportClassPerformanceReport(effectiveSessionId, format)}
+        onPrint={() => printSection("print-class-performance")}
+      />
+      <FilterBar>
+        <Field label="Class">
+          <SelectInput
+            value={effectiveClassId}
+            onChange={(v) => {
+              setClassId(v);
+              setSessionId("");
+            }}
+            className="min-w-48"
           >
-            Print
-          </Button>
-        </div>
-      </div>
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {fmtClass(c)}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <Field label="Exam">
+          <SelectInput value={effectiveSessionId} onChange={setSessionId} className="min-w-64" disabled={!sessions.length}>
+            {!sessions.length && <option value="">{sessionsQ.isLoading ? "Loading…" : "No published exams"}</option>}
+            {sessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name || "Exam"} · {termLabels?.[s.term] || s.term} {s.year}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+      </FilterBar>
 
-      {/* Filters */}
-      <Card className="no-print">
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
+      {!sessionsQ.isLoading && effectiveClassId && sessions.length === 0 && <ReportState prompt="This class has no published exams yet." />}
+      <ReportState loading={q.isLoading && Boolean(effectiveSessionId)} error={q.error && errMsg(q.error, "Couldn't load the report")} />
 
-        <CardContent className="grid gap-3 md:grid-cols-2">
-          {/* Class */}
-          <div className="space-y-1">
-            <div className="text-xs opacity-70">Class</div>
+      {r && st && (
+        <PrintDocument screen id="print-class-performance" bodyClassName="space-y-4">
+          <ReportPrintTitle title="Class performance" subtitle={`${title} · ${termName}`} />
+          <HeroPanel
+            eyebrow={`Class average · ${title}`}
+            value={fmtNumber(st.classMean, 1)}
+            caption={`${st.studentCount} learner${st.studentCount === 1 ? "" : "s"} · ${termName}`}
+            minis={[
+              { label: "Top average", value: ranking[0] ? `${fmtNumber(ranking[0].average, 1)} · ${ranking[0].name}` : "—" },
+              { label: `At or above ${r.meta?.passThreshold ?? 50}`, value: st.passCount },
+              { label: `Below ${r.meta?.passThreshold ?? 50}`, value: st.failCount, alert: st.failCount > 0 },
+            ]}
+            aside={
+              <Ring percent={passPct} size={136} stroke={14} tone={passPct >= 75 ? "good" : "#ffffff"} track="rgba(255,255,255,0.18)" label={`${Math.round(passPct)}% at or above the pass mark`}>
+                <span className="text-3xl font-extrabold tabular-nums leading-none">{Math.round(passPct)}%</span>
+                <span className="mt-1 text-xs text-white/75 print:text-black/70">pass mark</span>
+              </Ring>
+            }
+          />
 
-            <Select
-              value={String(classId || "")}
-              onValueChange={(v) => {
-                setClassId(v);
-                setSessionId("");
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    classesLoading ? "Loading classes..." : "Select class"
-                  }
-                />
-              </SelectTrigger>
-
-              <SelectContent>
-                {classes.length === 0 ? (
-                  <div className="px-3 py-2 text-sm opacity-70">
-                    No active classes found.
-                  </div>
-                ) : (
-                  classes.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {fmtClass(c)}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Panel title="Subjects" subtitle="Class average per subject, strongest first">
+              <BarList
+                max={100}
+                empty="No subject marks."
+                items={subjects.map((s) => ({ key: s.subjectId, label: s.subjectName, value: s.mean, display: fmtNumber(s.mean, 1), tone: meanTone(s.mean) }))}
+              />
+            </Panel>
+            <Panel title="Grades" subtitle="How many learners got each overall grade, best first">
+              <BarList
+                empty="No grades."
+                items={grades.map((g) => ({
+                  key: g.grade,
+                  label: g.grade,
+                  value: g.count,
+                  display: `${g.count} · ${st.studentCount ? Math.round((g.count / st.studentCount) * 100) : 0}%`,
+                }))}
+              />
+            </Panel>
           </div>
 
-          {/* Session */}
-          <div className="space-y-1">
-            <div className="text-xs opacity-70">Published Exam Session</div>
-
-            <Select
-              value={String(sessionId || "")}
-              onValueChange={(v) => setSessionId(v)}
-              disabled={!classId}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    !classId
-                      ? "Select class first"
-                      : sessionsLoading
-                      ? "Loading sessions..."
-                      : "Select session"
-                  }
-                />
-              </SelectTrigger>
-
-              <SelectContent>
-                {!classId ? (
-                  <div className="px-3 py-2 text-sm opacity-70">
-                    Select a class first.
-                  </div>
-                ) : sessions.length === 0 ? (
-                  <div className="px-3 py-2 text-sm opacity-70">
-                    No <span className="font-medium">PUBLISHED</span> sessions
-                    for{" "}
-                    <span className="font-medium">
-                      {selectedClass ? fmtClass(selectedClass) : "this class"}
-                    </span>
-                    .
-                  </div>
-                ) : (
-                  sessions.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {(s.name || "Session")} • {s.term} {s.year}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-
-            {classId && sessions.length === 0 && !sessionsLoading && (
-              <div className="text-xs opacity-70">
-                Tip: sessions only show after you{" "}
-                <span className="font-medium">publish</span> results.
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Guidance */}
-      {showHint && (
-        <div className="no-print text-sm opacity-70">
-          Select a <span className="font-medium">Class</span> and a{" "}
-          <span className="font-medium">Published Session</span> to view the report.
-        </div>
-      )}
-
-      {/* States */}
-      {isLoading && <div className="opacity-70 no-print">Loading report…</div>}
-
-      {error && (
-        <div className="text-red-600 no-print">
-          {errMsg(error, "Failed to load report")}
-        </div>
-      )}
-
-      {/* Report */}
-      {report && (
-        <PrintDocument screen id="print-class-performance" className="space-y-3 bg-white">
-          <ReportPrintTitle title="Class Performance Report" subtitle={printSubtitle} />
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Overview</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-4">
-              <div>
-                <div className="text-xs opacity-70">Class</div>
-                <div className="font-medium">
-                  {report.class?.name}
-                  {report.class?.stream ? ` ${report.class.stream}` : ""} (
-                  {report.class?.year})
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs opacity-70">Session</div>
-                <div className="font-medium">
-                  {report.session?.name || "Session"} • {report.session?.term}{" "}
-                  {report.session?.year}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs opacity-70">Students</div>
-                <div className="font-medium">
-                  {fmtNumber(report.stats?.studentCount ?? 0)}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs opacity-70">Class Mean</div>
-                <div className="font-medium">
-                  {fmtNumber(report.stats?.classMean ?? 0, 2)}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Grade Distribution</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {(report.stats?.gradeDistribution || []).length === 0 ? (
-                <div className="text-sm opacity-70">
-                  No grade distribution available.
-                </div>
-              ) : (
-                report.stats.gradeDistribution.map((g) => (
-                  <div
-                    key={g.grade}
-                    className="border rounded-full px-3 py-1 text-sm"
-                  >
-                    <span className="font-medium">{g.grade}</span>
-                    <span className="opacity-70"> • {fmtNumber(g.count)}</span>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Ranking</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-auto">
-              <div className="max-h-[520px] overflow-auto no-print">
-                <RankingTable ranking={ranking} sticky />
-              </div>
-
-              {/* Print version (no sticky header/hover — irrelevant on paper) */}
-              <div className="hidden print:block">
-                <RankingTable ranking={ranking} />
-              </div>
-
-              <ReportPrintFooter />
-            </CardContent>
-          </Card>
-
-          {/* Screen-only */}
-          <div className="no-print">
-            <Button asChild variant="outline">
-              <Link to="/app/dashboard">Back to Dashboard</Link>
-            </Button>
-          </div>
+          <Panel title="Ranking">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="py-2 pr-3 font-medium">Pos.</th>
+                    <th className="py-2 px-3 font-medium">Learner</th>
+                    <th className="py-2 px-3 text-right font-medium">Total</th>
+                    <th className="py-2 px-3 text-right font-medium">Average</th>
+                    <th className="py-2 pl-3 text-right font-medium">Grade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ranking.map((x) => (
+                    <tr key={x.studentId} className="border-b last:border-0">
+                      <td className="py-2 pr-3">
+                        <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-xs font-bold ${MEDAL[x.position - 1] || "bg-muted"}`}>{x.position}</span>
+                      </td>
+                      <td className="py-2 px-3">
+                        <div className="font-medium">{x.name}</div>
+                        <div className="text-xs text-muted-foreground">{x.admissionNo}</div>
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums">{fmtNumber(x.total ?? 0)}</td>
+                      <td className="py-2 px-3 text-right font-semibold tabular-nums">{fmtNumber(x.average ?? 0, 1)}</td>
+                      <td className="py-2 pl-3 text-right">{x.grade || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+          <ReportPrintFooter />
         </PrintDocument>
       )}
     </div>

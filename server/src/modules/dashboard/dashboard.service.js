@@ -1,7 +1,7 @@
 // src/modules/dashboard/dashboard.service.js
 import { prisma } from "../../lib/prisma.js";
 import { AttendanceSessionStatus, InvoiceStatus } from "@prisma/client";
-import { getSchoolCalendar, localDayRange } from "../../utils/schoolTime.js";
+import { getSchoolCalendar, localDayRange, localDateString } from "../../utils/schoolTime.js";
 
 /* =========================
    Time helpers (UTC-day window)
@@ -183,6 +183,98 @@ export async function getSummary(req) {
     feeInvoicesCount = 0;
   }
 
+  // --- This term's fees, the last 14 days of collections, arrears by class ---
+  let feesTerm = null;
+  let feesTrend = [];
+  let feesByClass = [];
+  if (canSeeFees) {
+    const termWhere = {
+      schoolId,
+      year: calendar.currentYear,
+      ...(calendar.currentTerm ? { term: calendar.currentTerm } : {}),
+      status: { not: InvoiceStatus.VOID },
+    };
+    const [termAgg, fullyPaid, perClass] = await Promise.all([
+      prisma.feeInvoice.aggregate({ where: termWhere, _sum: { total: true, paid: true, balance: true }, _count: { _all: true } }),
+      prisma.feeInvoice.count({ where: { ...termWhere, balance: { lte: 0 } } }),
+      prisma.feeInvoice.groupBy({ by: ["classId"], where: termWhere, _sum: { total: true, balance: true } }),
+    ]);
+    const billed = safeNum(termAgg._sum.total);
+    const paid = safeNum(termAgg._sum.paid);
+    feesTerm = {
+      year: calendar.currentYear,
+      term: calendar.currentTerm || null,
+      billed,
+      paid,
+      balance: safeNum(termAgg._sum.balance),
+      invoices: safeNum(termAgg._count._all),
+      fullyPaid,
+      percent: billed ? Math.round((paid / billed) * 1000) / 10 : 0,
+    };
+
+    // Day by day in the school's own time zone, oldest first.
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(`${calendar.today}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+    const span = localDayRange(days[0], days[days.length - 1], calendar.timezone);
+    const recent = await prisma.feePayment.findMany({
+      where: { schoolId, isReversed: false, receivedAt: { gte: span.from, lte: span.to } },
+      select: { amount: true, receivedAt: true },
+    });
+    const perDay = new Map(days.map((d) => [d, { date: d, amount: 0, receipts: 0 }]));
+    for (const p of recent) {
+      const key = localDateString(p.receivedAt, calendar.timezone);
+      const x = perDay.get(key);
+      if (x) {
+        x.amount += safeNum(p.amount);
+        x.receipts += 1;
+      }
+    }
+    feesTrend = [...perDay.values()];
+
+    const owing = perClass.filter((c) => safeNum(c._sum.balance) > 0);
+    const names = owing.length
+      ? await prisma.class.findMany({ where: { schoolId, id: { in: owing.map((c) => c.classId) } }, select: { id: true, name: true, stream: true } })
+      : [];
+    const nameOf = new Map(names.map((c) => [c.id, `${c.name}${c.stream ? ` ${c.stream}` : ""}`]));
+    feesByClass = owing
+      .map((c) => ({ classId: c.classId, label: nameOf.get(c.classId) || "Class", balance: safeNum(c._sum.balance), billed: safeNum(c._sum.total) }))
+      .sort((a, b) => b.balance - a.balance)
+      .slice(0, 6);
+  }
+
+  // --- Registers: which of the caller's classes are marked today, and how many came ---
+  const classScope = { schoolId, isActive: true };
+  if (summaryRole === "TEACHER") {
+    classScope.id = { in: await getTeacherAssignedClassIds({ schoolId, teacherId: req.user?.teacherId || req.teacherId }) };
+  }
+  const scopeClasses = await prisma.class.findMany({
+    where: classScope,
+    select: { id: true, name: true, stream: true },
+    orderBy: [{ name: "asc" }, { stream: "asc" }],
+  });
+  const doneIds = new Set(
+    sessionsToday
+      .filter((s) => [AttendanceSessionStatus.SUBMITTED, AttendanceSessionStatus.LOCKED].includes(mapAttendanceStatus(s.status)))
+      .map((s) => s.classId)
+  );
+  const notMarked = scopeClasses
+    .filter((c) => !doneIds.has(c.id))
+    .map((c) => ({ classId: c.id, label: `${c.name}${c.stream ? ` ${c.stream}` : ""}` }));
+  const marks = sessionsToday.length
+    ? await prisma.attendanceRecord.groupBy({
+        by: ["status"],
+        where: { schoolId, sessionId: { in: sessionsToday.map((s) => s.id) }, status: { not: "UNMARKED" } },
+        _count: { _all: true },
+      })
+    : [];
+  const markCount = Object.fromEntries(marks.map((m) => [m.status, m._count._all]));
+  const marked = marks.reduce((n, m) => n + m._count._all, 0);
+  const cameIn = (markCount.PRESENT || 0) + (markCount.LATE || 0);
+
   // --- Latest exam session (real model) ---
   // exams.services.js#listExamSessions scopes TEACHER callers to their
   // assigned classes only; mirror that here so a TEACHER's "Latest Exam
@@ -240,13 +332,25 @@ export async function getSummary(req) {
       submitted: attendanceSubmitted,
       locked: attendanceLocked,
       recentSessions: sessionsToday.slice(0, 5),
+      classes: scopeClasses.length,
+      registersDone: scopeClasses.length - notMarked.length,
+      notMarked: notMarked.slice(0, 12),
+      marked,
+      present: markCount.PRESENT || 0,
+      late: markCount.LATE || 0,
+      absent: markCount.ABSENT || 0,
+      ratePct: marked ? Math.round((cameIn / marked) * 100) : null,
     },
+    calendar: { year: calendar.currentYear, term: calendar.currentTerm || null, today: calendar.today },
     fees: canSeeFees
       ? {
           collectedToday: feesCollectedToday,
           receiptsToday: feesReceiptsToday,
           outstandingTotal: feeOutstandingTotal,
           invoicesCount: feeInvoicesCount,
+          term: feesTerm,
+          trend: feesTrend,
+          byClass: feesByClass,
         }
       : null,
     exams: {

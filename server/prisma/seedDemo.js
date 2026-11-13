@@ -182,7 +182,7 @@ function addSchool({ code, name, shortName, contactEmail, plan, status, maxStude
 function addSettings(schoolId, extra = {}) {
   rows.schoolSettings.push({
     id: newId(), schoolId, enableClassTeachers: true, enableSubjectAssignments: true,
-    currentAcademicYear: String(YEAR), term1Label: "Term 1", term2Label: "Term 2", term3Label: "Term 3",
+    currentAcademicYear: String(YEAR), currentTerm: CURRENT_TERM, term1Label: "Term 1", term2Label: "Term 2", term3Label: "Term 3",
     ...extra,
   });
 }

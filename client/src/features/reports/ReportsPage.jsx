@@ -1,23 +1,7 @@
 // src/features/reports/ReportsPage.jsx
-import { NavLink, Outlet, Navigate, useLocation } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Link, Outlet, Navigate, useLocation } from "react-router-dom";
 import { useMe } from "@/hooks/useMe";
-
-function Tab({ to, end, children }) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      className={({ isActive }) =>
-        `px-3 py-2 rounded-md border text-sm transition ${
-          isActive ? "bg-black text-white" : "bg-white hover:bg-muted"
-        }`
-      }
-    >
-      {children}
-    </NavLink>
-  );
-}
+import { PageHeader } from "@/components/insights/Insights";
 
 const norm = (v) => String(v || "").trim().toUpperCase();
 
@@ -48,38 +32,32 @@ export default function ReportsPage() {
     return <Navigate to="/app/dashboard" replace />;
   }
 
+  const sections = [
+    canSeeFees && { to: "/app/reports/fees/summary", match: "/app/reports/fees", label: "Fees" },
+    canSeeAcademic && { to: "/app/reports/academic", match: "/app/reports/academic", label: "Exams" },
+    canSeeAttendance && { to: "/app/reports/attendance/summary", match: "/app/reports/attendance", label: "Attendance" },
+  ].filter(Boolean);
+
   return (
-    <div className="space-y-4">
-      <div className="no-print">
-        <h1 className="text-2xl font-semibold">Reports</h1>
-        <p className="opacity-70 mt-1">Read-only analytics (Academic & Finance).</p>
-      </div>
-
-      <Card className="no-print">
-        <CardHeader>
-          <CardTitle>Sections</CardTitle>
-        </CardHeader>
-
-        <CardContent className="flex flex-wrap gap-2">
-          {canSeeAcademic && (
-            <Tab to="/app/reports/academic" end>
-              Academic
-            </Tab>
-          )}
-
-          {canSeeFees && <Tab to="/app/reports/fees/summary">Finance (Fees)</Tab>}
-
-          {canSeeAttendance && <Tab to="/app/reports/attendance/summary">Attendance</Tab>}
-
-          {/* If somehow no tabs are available */}
-          {!canSeeAcademic && !canSeeFees && !canSeeAttendance && (
-            <div className="text-sm text-muted-foreground">
-              No report sections are available for your role.
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
+    <div className="space-y-5 p-4 md:p-6">
+      <PageHeader className="no-print" eyebrow="Reports" title="How the school is doing" subtitle="Fees, exams and attendance. Print or export any report." />
+      {sections.length > 1 && (
+        <nav className="flex flex-wrap gap-2 no-print" aria-label="Report sections">
+          {sections.map((t) => {
+            const active = location.pathname.startsWith(t.match);
+            return (
+              <Link
+                key={t.to}
+                to={t.to}
+                className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${active ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:border-primary/50"}`}
+              >
+                {t.label}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
+      {!sections.length && <div className="text-sm text-muted-foreground">No report sections are available for your role.</div>}
       <Outlet />
     </div>
   );

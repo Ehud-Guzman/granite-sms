@@ -30,7 +30,7 @@ export function fmtNumber(n, dp = 0) {
 
 export function fmtDateTime(d = new Date()) {
   try {
-    return new Date(d).toLocaleString();
+    return new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(d));
   } catch {
     return "";
   }
@@ -40,4 +40,16 @@ export function fmtStudentName(s) {
   const first = s?.firstName || "";
   const last = s?.lastName || "";
   return `${first} ${last}`.trim() || "-";
+}
+
+export function fmtKes(n) {
+  return `KES ${Math.round(Number(n) || 0).toLocaleString("en-KE")}`;
+}
+
+export function fmtDate(d) {
+  try {
+    return new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short", year: "numeric" }).format(new Date(d));
+  } catch {
+    return "";
+  }
 }

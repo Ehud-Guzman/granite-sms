@@ -1,24 +1,14 @@
-// src/features/reports/fees/FinanceNav.jsx
-// Was copy-pasted identically into FeesSummaryReport, FeesDefaultersReport,
-// and FeesCollectionsReport — a change to one tab link silently wouldn't
-// apply to the other two.
-import { NavLink } from "react-router-dom";
-
-const linkCls = ({ isActive }) =>
-  `px-3 py-2 rounded-md border text-sm ${isActive ? "bg-black text-white" : "bg-white hover:bg-muted"}`;
+// The finance report switcher, shared by the three fee reports.
+import { TabLinks } from "@/components/insights/Insights";
 
 export default function FinanceNav() {
   return (
-    <div className="flex gap-2 no-print flex-wrap">
-      <NavLink className={linkCls} to="/app/reports/fees/summary" end>
-        Summary
-      </NavLink>
-      <NavLink className={linkCls} to="/app/reports/fees/defaulters" end>
-        Defaulters
-      </NavLink>
-      <NavLink className={linkCls} to="/app/reports/fees/collections" end>
-        Collections
-      </NavLink>
-    </div>
+    <TabLinks
+      tabs={[
+        { to: "/app/reports/fees/summary", label: "Summary" },
+        { to: "/app/reports/fees/defaulters", label: "Who owes" },
+        { to: "/app/reports/fees/collections", label: "Collections" },
+      ]}
+    />
   );
 }

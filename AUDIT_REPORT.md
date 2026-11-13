@@ -37,7 +37,9 @@
 | Feature 3 M-Pesa (paybill + STK push) | Built; needs `MPESA_ENC_KEY`, `PUBLIC_API_URL` and Daraja keys, see docs/MPESA.md | 4d46d91, 87f0e61 |
 | Features 4, 5, 6 (ledger, CBE grading, term report cards) | Built | 04d82f5, 258d5a1, 3a5b0e0 |
 | Feature 9 parent portal | Built | 7745cb9 |
-| Feature 10 notices, feature 11, privacy tooling (consent, retention) | **Open** | |
+| Feature 10 notices | Built | 201f36a |
+| Privacy tooling (consent, anonymising leavers, retention), see docs/PRIVACY.md | Built; ODPC registration, data-processing agreement and privacy notice are for the school | 7979b82 |
+| Feature 11 (timetable, discipline, library, transport, HR) | **Open** | |
 
 ## How this was done
 

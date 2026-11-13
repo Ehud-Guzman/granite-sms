@@ -2,6 +2,7 @@
 import * as svc from "./exams.services.js";
 import * as reportCards from "./reportCards.js";
 import { prisma } from "../../lib/prisma.js";
+import { accountSummary } from "../fees/ledger.js";
 import { loadLetterhead, startPdf, drawResultSlip, drawReportCard, safeFilePart } from "../print/pdfDocs.js";
 
 export async function wrap(req, res, fn) {
@@ -40,6 +41,13 @@ export const getStudentResults = (req, res) => wrap(req, res, svc.getStudentResu
 // JSON reads they are built from.
 // ------------------------
 
+/** The family's fee balance, only when the school prints it on reports. */
+async function feeExtras(schoolId, lh, studentId) {
+  if (!lh.style.show.feeBalance || !studentId) return {};
+  const { net } = await accountSummary(prisma, { schoolId, studentId });
+  return { feeBalance: net };
+}
+
 async function pdfOrError(res, build) {
   try {
     await build();
@@ -58,7 +66,8 @@ export const getStudentSlipPdf = (req, res) =>
     const lh = await loadLetterhead(req.schoolId);
     const name = `${payload.student?.firstName || ""}-${payload.student?.lastName || ""}`;
     const doc = startPdf(res, `result-slip-${safeFilePart(name)}-${safeFilePart(payload.session?.name)}.pdf`);
-    drawResultSlip(doc, lh, { payload, classLabel: klass ? `${klass.name}${klass.stream ? ` ${klass.stream}` : ""}` : "—" });
+    const extras = await feeExtras(req.schoolId, lh, payload.student?.id);
+    drawResultSlip(doc, lh, { payload, classLabel: klass ? `${klass.name}${klass.stream ? ` ${klass.stream}` : ""}` : "—", extras });
     doc.end();
   });
 
@@ -68,6 +77,6 @@ export const getStudentReportCardPdf = (req, res) =>
     const lh = await loadLetterhead(req.schoolId);
     const st = report.students[0].student;
     const doc = startPdf(res, `report-card-${safeFilePart(`${st.firstName}-${st.lastName}`)}-${report.term}-${report.year}.pdf`);
-    drawReportCard(doc, lh, report);
+    drawReportCard(doc, lh, report, await feeExtras(req.schoolId, lh, st.id));
     doc.end();
   });

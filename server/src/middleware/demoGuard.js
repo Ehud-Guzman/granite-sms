@@ -3,12 +3,14 @@ import { isDemo } from "../config/demo.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-// The only writes a demo visitor may make: signing in, and a SYSTEM_ADMIN
-// choosing which school to look at (it only issues a new token).
+// The only POSTs a demo visitor may make: signing in, a SYSTEM_ADMIN
+// choosing which school to look at (it only issues a new token), and the
+// report design preview (draws a PDF, stores nothing).
 const EXEMPT = new Set([
   "/api/auth/login",
   "/api/auth/demo-login",
   "/api/auth/select-school",
+  "/api/settings/print/preview",
 ]);
 
 export const DEMO_MESSAGE =

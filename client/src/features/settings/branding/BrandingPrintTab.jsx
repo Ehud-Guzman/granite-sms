@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import ReportDesignCard from "./ReportDesignCard";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -538,14 +539,7 @@ const logoSrc = form?.brandLogoUrl
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-6">
-          <div className="text-sm font-medium">Print Settings</div>
-          <div className="text-xs text-muted-foreground mt-1">
-            Next: letterhead (logo, header text, footer text) + apply on receipts/reports.
-          </div>
-        </CardContent>
-      </Card>
+      <ReportDesignCard schoolId={sys ? schoolId : undefined} brandColor={/^#[0-9a-f]{6}$/i.test(form?.brandPrimaryColor || "") ? form.brandPrimaryColor : undefined} />
     </div>
   );
 }

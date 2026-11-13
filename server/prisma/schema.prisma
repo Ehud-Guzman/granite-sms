@@ -214,6 +214,8 @@ model SchoolSettings {
   printShowLogo   Boolean @default(true)
   printHeaderText String?
   printFooterText String?
+  // Report card and result slip design (see modules/print/reportStyle.js).
+  reportStyle     Json?
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 

@@ -39,8 +39,12 @@ function filterNavByCaps(role, navItems) {
   });
 }
 
-function getPageTitle(pathname) {
-  if (pathname.includes("/app/dashboard")) return "Dashboard";
+// Learners and parents call their landing page "Home" in the sidebar; match it.
+function getPageTitle(pathname, role) {
+  if (pathname.includes("/app/dashboard")) return role === "STUDENT" || role === "PARENT" ? "Home" : "Dashboard";
+  if (pathname.includes("/app/notices")) return "Notices";
+  if (pathname.includes("/app/report-cards") || pathname.includes("/report-card")) return "Report cards";
+  if (pathname.includes("/statement")) return "Fee statement";
   if (pathname.includes("/app/students")) return "Students";
   if (pathname.includes("/app/classes")) return "Classes";
   if (pathname.includes("/app/teachers")) return "Teachers";
@@ -84,7 +88,7 @@ export default function AppShell() {
     return filterNavByCaps(role, base);
   }, [role]);
 
-  const title = useMemo(() => getPageTitle(location.pathname), [location.pathname]);
+  const title = useMemo(() => getPageTitle(location.pathname, role), [location.pathname, role]);
 
   const logout = () => {
     doLogout();

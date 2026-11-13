@@ -185,7 +185,8 @@ router.get("/", requireAuth, async (req, res) => {
   try {
     const resolved = resolveSchoolScope(req, {
       allowPlatform: false,
-      allowRoles: ["SYSTEM_ADMIN", "ADMIN", "TEACHER", "BURSAR"],
+      // Learners and parents see the school's name, logo and colours too.
+      allowRoles: ["SYSTEM_ADMIN", "ADMIN", "TEACHER", "BURSAR", "STUDENT", "PARENT"],
     });
     if (!resolved.ok) return res.status(resolved.code).json({ message: resolved.message });
 

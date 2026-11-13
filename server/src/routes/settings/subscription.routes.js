@@ -1,7 +1,7 @@
 // src/routes/settings/subscription.routes.js
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
-import { requireAuth } from "../../middleware/auth.js";
+import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { tenantContext, requireTenant } from "../../middleware/tenant.js";
 import { logAudit } from "../../utils/audit.js";
 import { invalidateEntitlementsCache } from "../../middleware/entitlements.js";
@@ -116,7 +116,8 @@ router.use(requireAuth, tenantContext);
 // -----------------------------
 // GET /api/settings/subscription/overview
 // -----------------------------
-router.get("/overview", requireTenant, async (req, res) => {
+// Plan and usage are for staff; learners and parents have no use for them.
+router.get("/overview", requireTenant, requireRole("SYSTEM_ADMIN", "ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
   try {
     const schoolId = req.schoolId;
     const role = upper(req.role);

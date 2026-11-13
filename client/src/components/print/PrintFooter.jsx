@@ -6,7 +6,7 @@ import { getPrintSettings } from "@/api/printSettings.api";
 export default function PrintFooter() {
   const printQ = useQuery({
     queryKey: ["settings", "print"],
-    queryFn: getPrintSettings,
+    queryFn: () => getPrintSettings(),
     staleTime: 60_000,
   });
 

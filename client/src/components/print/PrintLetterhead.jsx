@@ -36,14 +36,14 @@ export default function PrintLetterhead() {
 
   const brandingQ = useQuery({
     queryKey: ["settings", "branding", "print-letterhead"],
-    queryFn: getBranding,
+    queryFn: () => getBranding(),
     staleTime: 60_000,
     retry: false,
   });
 
   const printQ = useQuery({
     queryKey: ["settings", "print", "print-letterhead"],
-    queryFn: getPrintSettings,
+    queryFn: () => getPrintSettings(),
     staleTime: 60_000,
     retry: false,
   });

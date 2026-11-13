@@ -1,5 +1,5 @@
 // src/features/results/ResultsPage.jsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 
 import { useMe } from "@/hooks/useMe";
@@ -21,6 +21,7 @@ import StudentSlipPanel from "./components/StudentSlipPanel";
 import { fmtClass } from "./utils/format";
 import { printSection } from "@/lib/print";
 import { getErrorMessage as errMsg } from "@/lib/errors";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
 
 function currentYear() {
   return new Date().getFullYear();
@@ -54,7 +55,7 @@ export default function ResultsPage() {
   /* ================= BRANDING ================= */
   const { data: branding } = useQuery({
     queryKey: ["branding"],
-    queryFn: getBranding,
+    queryFn: () => getBranding(),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -217,11 +218,21 @@ export default function ResultsPage() {
     sessionStatus !== "PUBLISHED" &&
     !publishMut.isPending;
 
+  const { termLabels } = useSchoolCalendar();
+  const staffResultsRef = useRef(null);
+  useEffect(() => {
+    if (activeSessionId && !isStudent) staffResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [activeSessionId, isStudent]);
+
   /* ================= HANDLERS ================= */
   const onOpenSession = (id) => {
     setActiveSessionId(id);
     setActiveStudentId(null);
     setToast(null);
+  };
+  const onCloseSession = () => {
+    setActiveSessionId(null);
+    setActiveStudentId(null);
   };
 
   const onPrintClass = () => {
@@ -301,12 +312,49 @@ export default function ResultsPage() {
                 sessions={filteredSessions}
                 activeSessionId={activeSessionId}
                 onOpen={onOpenSession}
+                onClose={isStudent ? onCloseSession : undefined}
                 classLabelById={classLabelById}
+                termLabels={termLabels}
+                detail={isStudent ? <div className="space-y-3">
+                  {!myStudentId && (
+                    <Card>
+                      <CardContent className="p-4 text-red-600">
+                        Your account isn&apos;t linked to a learner record yet. Ask the school office.
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {studentResultsQ.isError && (
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="text-red-600 font-medium">Results unavailable.</div>
+                        <div className="text-sm opacity-70 mt-1">
+                          If results aren’t published yet, you won’t see them. Check with the admin.
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {myStudentId && studentResultsQ.data?.data && (
+                    <StudentSlipPanel
+                      payload={studentResultsQ.data.data}
+                      classLabel={activeClassLabel}
+                      showGrades={showGrades}
+                      schoolName={schoolName}
+                      sessionName={sessionName}
+                      canPrint={canPrintStudent}
+                      buttonLabel="Print My Slip"
+                    />
+                  )}
+
+                  {studentResultsQ.isLoading && <div className="opacity-70">Loading your results…</div>}
+                </div> : null}
               />
             </CardContent>
           </Card>
 
-          {/* Class results (Admin/Teacher) */}
+          {/* Class results (Admin/Teacher); the page scrolls here when an exam opens */}
+          <div ref={staffResultsRef} className="scroll-mt-4" />
           {role !== "STUDENT" && activeSessionId && (
             <ClassResultsCard
               schoolName={schoolName}
@@ -384,42 +432,7 @@ export default function ResultsPage() {
           {/* Student slip section (unchanged) */}
           {activeSessionId && (
             <>
-              {role === "STUDENT" ? (
-                <>
-                  {!myStudentId && (
-                    <Card>
-                      <CardContent className="p-4 text-red-600">
-                        Your account has no studentId linked. Fix `/api/me` for students.
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {studentResultsQ.isError && (
-                    <Card>
-                      <CardContent className="p-4">
-                        <div className="text-red-600 font-medium">Results unavailable.</div>
-                        <div className="text-sm opacity-70 mt-1">
-                          If results aren’t published yet, you won’t see them. Check with the admin.
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {myStudentId && studentResultsQ.data?.data && (
-                    <StudentSlipPanel
-                      payload={studentResultsQ.data.data}
-                      classLabel={activeClassLabel}
-                      showGrades={showGrades}
-                      schoolName={schoolName}
-                      sessionName={sessionName}
-                      canPrint={canPrintStudent}
-                      buttonLabel="Print My Slip"
-                    />
-                  )}
-
-                  {studentResultsQ.isLoading && <div className="opacity-70">Loading your results…</div>}
-                </>
-              ) : (
+              {role !== "STUDENT" && (
                 <>
                   {activeStudentId && studentResultsQ.data?.data && (
                     <StudentSlipPanel

@@ -122,6 +122,8 @@ router.post(
 // Term report cards (published exams of a term, combined by weight)
 // ------------------------
 router.get("/report-cards", requireRole("ADMIN", "TEACHER"), requireEntitlement("EXAMS_READ"), ctrl.getClassReportCards);
+// The whole class as one PDF, a page per learner, for printing.
+router.get("/report-cards/pdf", requireRole("ADMIN", "TEACHER"), requireEntitlement("EXAMS_READ"), ctrl.getClassReportCardsPdf);
 router.get(
   "/report-cards/students/:studentId",
   requireRole("ADMIN", "TEACHER", "STUDENT", "PARENT"),

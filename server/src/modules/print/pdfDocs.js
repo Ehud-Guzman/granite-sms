@@ -48,7 +48,7 @@ export async function loadLetterhead(schoolId, override = null) {
     prisma.school.findUnique({ where: { id: schoolId }, select: { name: true, contactEmail: true, contactPhone: true } }),
     prisma.schoolSettings.findUnique({
       where: { schoolId },
-      select: { printShowLogo: true, printHeaderText: true, printFooterText: true, reportStyle: true, brandPrimaryColor: true },
+      select: { printShowLogo: true, printHeaderText: true, printFooterText: true, reportStyle: true, brandPrimaryColor: true, brandSecondaryColor: true },
     }),
     prisma.schoolLogo.findUnique({ where: { schoolId }, select: { mime: true, data: true } }),
     getSchoolCalendar(schoolId),
@@ -57,7 +57,9 @@ export async function loadLetterhead(schoolId, override = null) {
   const style = resolveStyle(override?.reportStyle ?? settings?.reportStyle);
   // pdfkit draws PNG and JPEG only.
   const usableLogo = p.printShowLogo !== false && logo && /image\/(png|jpe?g)/i.test(logo.mime) ? Buffer.from(logo.data) : null;
-  const brand = HEX.test(settings?.brandPrimaryColor || "") ? settings.brandPrimaryColor : null;
+  // The school's main colour (stored as brandSecondaryColor: it's the one on
+  // the app's buttons), else its accent colour.
+  const brand = [settings?.brandSecondaryColor, settings?.brandPrimaryColor].find((c) => HEX.test(c || "")) || null;
   return {
     name: school?.name || "School",
     header: p.printHeaderText || "",

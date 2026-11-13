@@ -10,10 +10,8 @@ import { api } from "@/api/axios";
 import { listClasses } from "@/api/classes.api";
 import { useMe } from "@/hooks/useMe";
 import { useCurrentTermState, useCurrentYearState, useSchoolCalendar } from "@/lib/schoolCalendar";
-import { printSection } from "@/lib/print";
-import { downloadFromApi } from "@/lib/download";
-import { Download } from "lucide-react";
-import PrintDocument from "@/components/print/PrintDocument";
+import { downloadFromApi, printFromApi } from "@/lib/download";
+import { Download, Printer } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -154,6 +152,18 @@ export default function ReportCardsPage() {
   const [term, setTerm] = useCurrentTermState();
   const [classId, setClassId] = useState("");
   const [openId, setOpenId] = useState(null);
+  // Printing uses the school's designed PDF (Settings > Branding).
+  const [printing, setPrinting] = useState(null);
+  const runPrint = async (which, url, params) => {
+    setPrinting(which);
+    try {
+      await printFromApi(url, params);
+    } catch (e) {
+      toast.error(e?.response?.status === 404 ? "No published exams to print yet." : "Could not prepare the report cards. Try again.");
+    } finally {
+      setPrinting(null);
+    }
+  };
 
   const classesQ = useQuery({
     queryKey: ["classes", { year }],
@@ -213,8 +223,13 @@ export default function ReportCardsPage() {
             ))}
           </select>
           {report && !isStudent && report.students.length > 0 && (
-            <Button variant="outline" onClick={() => printSection("print-all-report-cards")}>
-              Print all
+            <Button
+              variant="outline"
+              disabled={printing === "all"}
+              onClick={() => runPrint("all", "/api/exams/report-cards/pdf", { classId, year, term })}
+            >
+              <Printer className="mr-1.5 h-4 w-4" />
+              {printing === "all" ? "Preparing…" : `Print all (${report.students.length})`}
             </Button>
           )}
         </CardContent>
@@ -296,28 +311,22 @@ export default function ReportCardsPage() {
                 <Download className="mr-1.5 h-4 w-4" />
                 Download PDF
               </Button>
-              <Button variant="outline" onClick={() => printSection("print-one-report-card")}>
-                Print this card
+              <Button
+                variant="outline"
+                disabled={printing === "one"}
+                onClick={() => {
+                  const row = isStudent ? report.students[0] : open;
+                  runPrint("one", `/api/exams/report-cards/students/${row.student.id}/pdf`, { year, term });
+                }}
+              >
+                <Printer className="mr-1.5 h-4 w-4" />
+                {printing === "one" ? "Preparing…" : "Print this card"}
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {report && (isStudent ? report.students[0] : open) && (
-        <PrintDocument id="print-one-report-card">
-          <ReportCard report={report} row={isStudent ? report.students[0] : open} termLabel={termLabel} />
-        </PrintDocument>
-      )}
-      {report && !isStudent && (
-        <PrintDocument id="print-all-report-cards">
-          {report.students.map((r) => (
-            <div key={r.student.id} style={{ breakAfter: "page" }}>
-              <ReportCard report={report} row={r} termLabel={termLabel} />
-            </div>
-          ))}
-        </PrintDocument>
-      )}
     </div>
   );
 }

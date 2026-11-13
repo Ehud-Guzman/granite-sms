@@ -80,3 +80,19 @@ export const getStudentReportCardPdf = (req, res) =>
     drawReportCard(doc, lh, report, await feeExtras(req.schoolId, lh, st.id));
     doc.end();
   });
+
+export const getClassReportCardsPdf = (req, res) =>
+  pdfOrError(res, async () => {
+    const report = await reportCards.getClassReportCards(req);
+    if (!report.students.length) throw Object.assign(new Error("No published exams for this class and term yet."), { statusCode: 404 });
+    const lh = await loadLetterhead(req.schoolId);
+    const cls = report.class ? `${report.class.name}${report.class.stream ? `-${report.class.stream}` : ""}` : "class";
+    const doc = startPdf(res, `report-cards-${safeFilePart(cls)}-${report.term}-${report.year}.pdf`);
+    // One learner per page, in class position order.
+    for (let i = 0; i < report.students.length; i++) {
+      if (i > 0) doc.addPage();
+      const row = report.students[i];
+      drawReportCard(doc, lh, { ...report, students: [row] }, await feeExtras(req.schoolId, lh, row.student.id));
+    }
+    doc.end();
+  });

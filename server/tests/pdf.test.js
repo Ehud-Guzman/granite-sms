@@ -49,4 +49,13 @@ describe("PDF downloads", () => {
     expect(pages(r.body)).toBe(1);
     expect((await as(s.studentUser).get(`/api/exams/report-cards/students/${s.students[2].id}/pdf?year=2026&term=TERM1`)).status).toBe(403);
   });
+
+  it("prints a whole class, one page per learner, for staff only", async () => {
+    const q = `?classId=${s.klass.id}&year=2026&term=TERM1`;
+    const r = await as(s.teacher).get(`/api/exams/report-cards/pdf${q}`).buffer(true).parse(binary);
+    expect(r.status).toBe(200);
+    expect(pages(r.body)).toBe(s.students.length);
+    expect((await as(s.studentUser).get(`/api/exams/report-cards/pdf${q}`)).status).toBe(403);
+    expect((await as(s.teacher2).get(`/api/exams/report-cards/pdf${q}`)).status).toBe(403);
+  });
 });

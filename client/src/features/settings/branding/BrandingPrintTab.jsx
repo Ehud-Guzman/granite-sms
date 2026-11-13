@@ -196,11 +196,21 @@ export default function BrandingPrintTab() {
     }
   }
 
-  // Apply theme to the document whenever branding data changes (so refresh
-  // keeps theme) — a genuine external-system sync, so this stays an effect.
+  // Live preview: every change shows across the app at once (colours only
+  // once they're valid hex). Nothing is stored until Save.
   useEffect(() => {
-    if (brandingQ.data) applyFromBranding(brandingQ.data);
+    if (!brandingQ.data) return;
+    const p = normalizeHex(form?.brandPrimaryColor);
+    const s2 = normalizeHex(form?.brandSecondaryColor);
+    if (isValidHex(p) && isValidHex(s2)) applyFromForm(form);
+  }, [form, brandingQ.data]);
+
+  // Leaving the tab without saving puts the saved look back.
+  const savedRef = useRef(null);
+  useEffect(() => {
+    savedRef.current = brandingQ.data;
   }, [brandingQ.data]);
+  useEffect(() => () => savedRef.current && applyFromBranding(savedRef.current), []);
 
   const colorsValid = useMemo(() => {
     const p = normalizeHex(form?.brandPrimaryColor);
@@ -219,10 +229,7 @@ export default function BrandingPrintTab() {
       // saved is flat branding object
       qc.setQueryData(key, saved);
 
-      const next = toUiForm(saved);
-      setForm(next);
-
-      applyFromBranding(saved);
+      setForm(toUiForm(saved));
       toast.success("Branding saved");
     },
     onError: (err) => toast.error(err?.response?.data?.message || "Failed to save branding"),
@@ -257,25 +264,8 @@ export default function BrandingPrintTab() {
 
   const onReset = () => {
     if (!brandingQ.data) return;
-    const next = toUiForm(brandingQ.data);
-    setForm(next);
-    applyFromBranding(brandingQ.data);
-    toast.message("Reset to saved values");
-  };
-
-  const applyPreview = () => {
-    if (!colorsValid) {
-      toast.error("Fix invalid hex values first");
-      return;
-    }
-    applyFromForm(form);
-    toast.success("Preview applied (not saved)");
-  };
-
-  const resetPreview = () => {
-    if (!brandingQ.data) return;
-    applyFromBranding(brandingQ.data);
-    toast.message("Preview reset");
+    setForm(toUiForm(brandingQ.data));
+    toast.message("Changes discarded");
   };
 
   const usePresetColors = () => {
@@ -283,10 +273,7 @@ export default function BrandingPrintTab() {
     const next = { ...form, brandPrimaryColor: "", brandSecondaryColor: "" };
     setForm(next);
 
-    // apply immediately (null => clear overrides)
-    applyFromForm(next);
-
-    toast.message("Custom colors cleared. Click Save to persist preset colors.");
+    toast.message("Preset colours shown. Save to keep them.");
   };
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -391,7 +378,7 @@ const logoSrc = form?.brandLogoUrl
                 disabled={!dirty || saveBranding.isPending}
                 onClick={onReset}
               >
-                Reset
+                Discard
               </Button>
 
               <Button
@@ -498,38 +485,25 @@ const logoSrc = form?.brandLogoUrl
 
           {/* Colors */}
           <div className="grid md:grid-cols-2 gap-4">
+            {/* Stored as brandSecondaryColor / brandPrimaryColor: the "secondary"
+                one drives --primary (buttons, links, highlights). */}
             <ColorField
-              label="Primary color override (optional)"
-              value={form.brandPrimaryColor}
-              onChange={(v) => setForm((p) => ({ ...p, brandPrimaryColor: v }))}
-            />
-            <ColorField
-              label="Secondary color override (optional)"
+              label="Main colour"
+              hint="Buttons, links, the selected menu item and highlights. Blank = the theme's colour."
               value={form.brandSecondaryColor}
               onChange={(v) => setForm((p) => ({ ...p, brandSecondaryColor: v }))}
             />
+            <ColorField
+              label="Accent colour"
+              hint="Dark accents such as highlighted text. Blank = the theme's colour."
+              value={form.brandPrimaryColor}
+              onChange={(v) => setForm((p) => ({ ...p, brandPrimaryColor: v }))}
+            />
           </div>
 
-          {/* Preview */}
-          <div className="rounded-xl border p-4 space-y-2">
-            <div className="text-sm font-medium">Preview</div>
-            <div className="rounded-lg border p-4 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium">UI Theme + Brand</div>
-                <div className="text-xs text-muted-foreground">
-                  Preview applies instantly (not saved).
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <Button size="sm" onClick={applyPreview} disabled={!colorsValid}>
-                  Preview
-                </Button>
-                <Button size="sm" variant="outline" onClick={resetPreview}>
-                  Reset
-                </Button>
-              </div>
-            </div>
+          <div className="rounded-xl border border-dashed p-3 text-xs text-muted-foreground">
+            Changes show across the app as you make them, so you can see them on this page, the sidebar and the buttons.
+            They are only kept when you press <b className="text-foreground">Save</b>; leaving without saving puts the old look back.
           </div>
 
           <div className="text-[11px] text-muted-foreground">
@@ -539,7 +513,24 @@ const logoSrc = form?.brandLogoUrl
         </CardContent>
       </Card>
 
-      <ReportDesignCard schoolId={sys ? schoolId : undefined} brandColor={/^#[0-9a-f]{6}$/i.test(form?.brandPrimaryColor || "") ? form.brandPrimaryColor : undefined} />
+      {dirty && (
+        <div className="sticky bottom-3 z-30 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 px-4 py-3 shadow-lg backdrop-blur">
+          <div className="text-sm">
+            <b>Unsaved branding changes</b>
+            <span className="ml-2 text-muted-foreground">{colorsValid ? "You're seeing them now." : "Fix the colour codes (like #0f766e) to see them."}</span>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={onReset} disabled={saveBranding.isPending}>
+              Discard
+            </Button>
+            <Button size="sm" onClick={onSave} disabled={!colorsValid || saveBranding.isPending}>
+              {saveBranding.isPending ? "Saving…" : "Save branding"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <ReportDesignCard schoolId={sys ? schoolId : undefined} brandColor={[form?.brandSecondaryColor, form?.brandPrimaryColor].find((x) => /^#[0-9a-f]{6}$/i.test(x || "")) || undefined} />
     </div>
   );
 }
@@ -555,7 +546,7 @@ function slugify(label) {
     .replace(/(^-|-$)/g, "");
 }
 
-function ColorField({ label, value, onChange }) {
+function ColorField({ label, value, onChange, hint = "Leave blank to use preset colors (recommended)." }) {
   const normalized = normalizeHex(value) || "";
   const id = `color-field-${slugify(label)}`;
 
@@ -578,9 +569,7 @@ function ColorField({ label, value, onChange }) {
           onBlur={() => onChange(normalizeHex(value))}
         />
       </div>
-      <div className="text-[11px] text-muted-foreground">
-        Leave blank to use preset colors (recommended).
-      </div>
+      <div className="text-[11px] text-muted-foreground">{hint}</div>
     </div>
   );
 }

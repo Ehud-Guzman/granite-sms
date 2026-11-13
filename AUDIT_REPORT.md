@@ -48,7 +48,7 @@
 - Signed tokens for every role and attacked the API with curl: cross-school access, role escalation, concurrent payments, bad input, oversized bodies, lockout abuse, backup/restore.
 - Scale test: added 9 more years of invoices (6,301 total) and re-timed the slow endpoints.
 - Lint, production build, bundle sizes, `npm audit` on both apps.
-- **Not done:** visual review in a browser (no browser tool here). UI findings come from reading the code.
+- At first, no visual review in a browser (no browser tool then), so the UI findings came from reading the code. **Done since (2026-11-13):** every screen for every role was screenshotted at laptop (1366px) and phone (390px) width with Playwright against the demo, checked for console errors, failed requests and sideways scrolling, and the problems found were fixed (see the commits from "Screen pass at laptop and phone width" onward).
 
 Severity:
 - **Critical:** loses or corrupts money or marks data, or lets one user take over another.

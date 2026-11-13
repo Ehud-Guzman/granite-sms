@@ -151,7 +151,7 @@ const rows = {
   subject: [], classTeacher: [], teachingAssignment: [], feeItem: [], feePlan: [], feePlanItem: [],
   feeInvoice: [], feeInvoiceLine: [], feePayment: [], feePaymentAllocation: [], attendanceSession: [], attendanceRecord: [],
   attendanceEditLog: [], examType: [], examSession: [], markSheet: [], mark: [], examAuditLog: [],
-  auditLog: [],
+  auditLog: [], guardian: [], studentGuardian: [], notice: [], termDate: [],
 };
 
 const ALL_ENTITLEMENTS = {
@@ -368,6 +368,76 @@ function build() {
   // The demo student can sign in.
   const studentUser = addUser({ email: DEMO_ACCOUNTS.STUDENT, role: "STUDENT", schoolId: S, lastLoginAt: addDays(NOW, -2) });
   demoStudent.row.userId = studentUser.id;
+
+  /* ---------- Parents ---------- */
+  // Every learner has a primary parent and often a second; about one family in
+  // eight has a younger child here too. The numbers are never texted: the demo
+  // refuses every write and has no SMS provider.
+  let phoneSeq = 0;
+  const nextPhone = () => `+2547999${String(10000 + phoneSeq++).slice(-5)}`;
+  const addGuardian = ({ firstName, lastName, userId = null }) => {
+    const g = { id: newId(), schoolId: S, firstName, lastName, phone: nextPhone(), email: null, occupation: null, userId, createdAt: START_OF_YEAR };
+    rows.guardian.push(g);
+    return g;
+  };
+  const link = (student, guardian, relationship, isPrimary) =>
+    rows.studentGuardian.push({ id: newId(), schoolId: S, studentId: student.id, guardianId: guardian.id, relationship, isPrimary, receivesSms: true, createdAt: START_OF_YEAR });
+
+  // Zawadi's mother has the parent login, and Zawadi has a younger brother in Grade 4.
+  const brother = byLabel["Grade 4"].students.find((m) => m.row.gender === "M") || byLabel["Grade 4"].students[0];
+  brother.row.lastName = "Kiptoo";
+  const parentUser = addUser({ email: DEMO_ACCOUNTS.PARENT, role: "PARENT", schoolId: S, lastLoginAt: addDays(NOW, -1) });
+  const mary = addGuardian({ firstName: "Mary", lastName: "Kiptoo", userId: parentUser.id });
+  mary.phone = DEMO_ACCOUNTS.PARENT;
+  const joseph = addGuardian({ firstName: "Joseph", lastName: "Kiptoo" });
+  for (const kid of [demoStudent.row, brother.row]) {
+    link(kid, mary, "MOTHER", true);
+    link(kid, joseph, "FATHER", false);
+  }
+
+  const FATHERS = ["John", "Peter", "James", "Joseph", "David", "Samuel", "Daniel", "Paul", "Stephen", "Moses", "Ali", "Hassan"];
+  const MOTHERS = ["Mary", "Grace", "Jane", "Ann", "Esther", "Lucy", "Faith", "Mercy", "Joyce", "Rose", "Amina", "Fatuma"];
+  // Pick the sibling pairs first (an older learner and a younger one), then
+  // give each family its parents once.
+  const taken = new Set([demoStudent.row.id, brother.row.id]);
+  const siblingOf = new Map();
+  for (const m of allStudents) {
+    if (taken.has(m.row.id) || m.cls.grade < 7 || !chance(0.12)) continue;
+    const sib = allStudents.find((x) => x.cls.grade <= 5 && !taken.has(x.row.id) && x.row.gender === m.row.gender);
+    if (!sib) continue;
+    taken.add(m.row.id);
+    taken.add(sib.row.id);
+    sib.row.lastName = m.row.lastName;
+    siblingOf.set(m.row.id, sib.row);
+  }
+  const younger = new Set(siblingOf.values());
+  for (const m of allStudents) {
+    if (m === demoStudent || m === brother || younger.has(m.row)) continue;
+    const surname = m.row.lastName;
+    const kids = [m.row, siblingOf.get(m.row.id)].filter(Boolean);
+    const mum = addGuardian({ firstName: pick(MOTHERS), lastName: surname });
+    const dad = chance(0.55) ? addGuardian({ firstName: pick(FATHERS), lastName: surname }) : null;
+    const motherFirst = !dad || chance(0.7);
+    for (const kid of kids) {
+      link(kid, mum, "MOTHER", motherFirst);
+      if (dad) link(kid, dad, "FATHER", !motherFirst);
+    }
+  }
+
+  // Data protection consent, given by the primary parent at admission or the
+  // start of the year; a few forms are still outstanding.
+  const studentById = new Map(rows.student.map((r) => [r.id, r]));
+  const guardianById = new Map(rows.guardian.map((g) => [g.id, g]));
+  const REL = { MOTHER: "mother", FATHER: "father", GUARDIAN: "guardian" };
+  for (const l of rows.studentGuardian) {
+    if (!l.isPrimary) continue;
+    const st = studentById.get(l.studentId);
+    if (!st || !st.isActive || st.consentAt || (st !== demoStudent.row && !chance(0.92))) continue;
+    const g = guardianById.get(l.guardianId);
+    st.consentAt = addDays(START_OF_YEAR, randInt(0, 20));
+    st.consentBy = `${g.firstName} ${g.lastName} (${REL[l.relationship] || "parent"})`;
+    st.photoConsent = chance(0.75);
+  }
 
   /* ---------- Fees ---------- */
   const FEE_ITEMS = ["Tuition", "Lunch Programme", "Activity Fee", "Exam Fee", "Development Levy", "Transport"];
@@ -718,6 +788,46 @@ function build() {
     }
   }
 
+  /* ---------- Term dates ---------- */
+  // Kenyan-style terms. Term 3 runs at least a week past the day the demo is
+  // built, so today's registers always fall inside a term.
+  const termEnds = {
+    TERM1: new Date(Date.UTC(YEAR, 3, 2)),
+    TERM2: new Date(Date.UTC(YEAR, 7, 7)),
+    TERM3: new Date(Math.max(Date.UTC(YEAR, 10, 27), addDays(TODAY, 7).getTime())),
+  };
+  for (const t of ["TERM1", "TERM2", "TERM3"]) {
+    rows.termDate.push({ id: newId(), schoolId: S, year: YEAR, term: t, startsOn: termStart(t), endsOn: termEnds[t], createdAt: START_OF_YEAR, updatedAt: START_OF_YEAR });
+  }
+
+  /* ---------- Notices ---------- */
+  const notice = (daysAgo, data) =>
+    rows.notice.push({
+      id: newId(), schoolId: S, classIds: [], pinned: false, expiresAt: null, smsQueued: 0, createdById: admin.id,
+      createdAt: atNairobi(addDays(TODAY, -daysAgo), 9, 15), updatedAt: atNairobi(addDays(TODAY, -daysAgo), 9, 15),
+      ...data,
+    });
+  notice(1, {
+    title: "Half-term break",
+    body: "School closes on Thursday at 12:30 pm for the half-term break and reopens on Monday at 7:30 am. Learners in the lunch programme will be served before they leave.",
+    audience: "EVERYONE", pinned: true, expiresAt: addDays(TODAY, 10), smsQueued: 187,
+  });
+  notice(3, {
+    title: "Grade 7 trip to the National Museum",
+    body: "Grade 7 learners visit the Nairobi National Museum next Friday. Please send the signed consent form and KES 800 for transport and entry by Wednesday.",
+    audience: "FAMILIES", classIds: [byLabel["Grade 7 East"].id, byLabel["Grade 7 West"].id], expiresAt: addDays(TODAY, 8), smsQueued: 49,
+  });
+  notice(5, {
+    title: "Term 3 fees reminder",
+    body: "Term 3 fees are due by the end of this month. Pay by M-Pesa to the school paybill with the learner's admission number as the account, and keep the M-Pesa message.",
+    audience: "FAMILIES",
+  });
+  notice(2, {
+    title: "Staff meeting on Monday",
+    body: "All teaching staff: short meeting in the staffroom on Monday at 3:45 pm to agree end-term exam timetables and marking deadlines.",
+    audience: "STAFF", expiresAt: addDays(TODAY, 4),
+  });
+
   return { mwa, sysadmin };
 }
 
@@ -726,10 +836,10 @@ function build() {
 /* ------------------------------------------------------------------ */
 // Insert order follows the foreign keys.
 const ORDER = [
-  "school", "schoolSettings", "subscription", "user", "teacher", "class", "student", "subject",
+  "school", "schoolSettings", "termDate", "subscription", "user", "teacher", "class", "student", "guardian", "studentGuardian", "subject",
   "classTeacher", "teachingAssignment", "feeItem", "feePlan", "feePlanItem", "feeInvoice",
   "feeInvoiceLine", "feePayment", "feePaymentAllocation", "attendanceSession", "attendanceRecord", "attendanceEditLog",
-  "examType", "examSession", "markSheet", "mark", "examAuditLog", "auditLog",
+  "examType", "examSession", "markSheet", "mark", "examAuditLog", "auditLog", "notice",
 ];
 
 async function emptyDatabase() {

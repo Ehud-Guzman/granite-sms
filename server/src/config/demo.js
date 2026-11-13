@@ -28,6 +28,8 @@ export const DEMO_ACCOUNTS = {
   BURSAR: "rose.nduta@mwangaza.invalid",
   TEACHER: "grace.wanjiru@mwangaza.invalid",
   STUDENT: "zawadi.kiptoo@mwangaza.invalid",
+  // Parents sign in with their phone number; this one is Zawadi's mother.
+  PARENT: "+254799900000",
 };
 
 // The database a Postgres URL points at:

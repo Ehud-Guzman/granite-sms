@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, GraduationCap, ShieldCheck, UserRound, Wallet } from "lucide-react";
+import { Building2, GraduationCap, ShieldCheck, UserRound, Users, Wallet } from "lucide-react";
 
 // One icon per demo role, so the five rows are scannable at a glance instead
 // of reading as identical text. Decorative only — the real role check still
@@ -19,6 +19,7 @@ const ROLE_ICONS = {
   TEACHER: GraduationCap,
   BURSAR: Wallet,
   STUDENT: UserRound,
+  PARENT: Users,
   SYSTEM_ADMIN: Building2,
 };
 

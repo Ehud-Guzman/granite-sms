@@ -339,7 +339,7 @@ router.post("/login", async (req, res) => {
 /**
  * Demo sign-in (demo deployments only)
  * POST /api/auth/demo-login
- * Body: { role } one of SYSTEM_ADMIN | ADMIN | BURSAR | TEACHER | STUDENT
+ * Body: { role } one of SYSTEM_ADMIN | ADMIN | BURSAR | TEACHER | STUDENT | PARENT
  *
  * The demo has no passwords to hand out, so this signs the visitor in as the
  * seeded sample account for that role. It answers 404 unless DEMO_MODE is on,

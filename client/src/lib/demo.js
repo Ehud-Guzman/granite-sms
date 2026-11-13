@@ -33,6 +33,11 @@ export const DEMO_ROLES = [
     note: "Zawadi Kiptoo (Grade 7 East): her results and fee statement",
   },
   {
+    role: "PARENT",
+    label: "Parent",
+    note: "Mary Kiptoo: her two children's fees, results and school notices",
+  },
+  {
     role: "SYSTEM_ADMIN",
     label: "Platform Owner",
     note: "Every school on the platform, plans, users and backups",

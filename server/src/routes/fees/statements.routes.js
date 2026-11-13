@@ -133,6 +133,8 @@ router.get(
           year: inv.year,
           term: inv.term,
           amount: inv.total,
+          discount: inv.discount || 0,
+          invoiceNo: inv.invoiceNo,
           status: inv.status,
         });
 

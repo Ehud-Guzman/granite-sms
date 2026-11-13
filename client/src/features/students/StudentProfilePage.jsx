@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Breadcrumbs from "@/components/ui/breadcrumbs";
 // src/features/students/StudentProfilePage.jsx
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -112,6 +113,7 @@ export default function StudentProfilePage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
+          <Breadcrumbs items={[{ label: "Students", to: "/app/students" }, { label: fullName(s) }]} />
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-2xl font-semibold">{fullName(s)}</h1>
             <Badge variant={s?.isActive ? "default" : "secondary"}>
@@ -131,10 +133,6 @@ export default function StudentProfilePage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild size="sm">
-            <Link to="/app/students">Back to List</Link>
-          </Button>
-
           {role === "ADMIN" && (
             <Button
               variant="outline"

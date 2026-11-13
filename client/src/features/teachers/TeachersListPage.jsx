@@ -26,7 +26,6 @@ import {
   Users,
   RefreshCw,
   MoreVertical,
-  Eye,
   Shield,
   AlertCircle,
   Loader2,
@@ -36,6 +35,8 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingState, ErrorState, EmptyState, PageSkeleton } from "@/components/ui/state-blocks";
 import { confirmAction } from "@/lib/confirm-store";
+import Pager from "@/components/ui/pager";
+import usePageFor from "@/hooks/usePageFor";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -131,6 +132,11 @@ export default function TeachersListPage() {
         return txt.includes(needle);
       });
   }, [teachersQ.data, q, status]);
+
+  // 12 cards a page (filtering above is instant, so it stays in the browser).
+  const TEACHER_PAGE = 12;
+  const [teacherPage, goTeacherPage] = usePageFor(`${q}|${status}`);
+  const pageRows = rows.slice((teacherPage - 1) * TEACHER_PAGE, teacherPage * TEACHER_PAGE);
 
   if (meLoading) {
     return <PageSkeleton />;
@@ -361,7 +367,7 @@ export default function TeachersListPage() {
             />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {rows.map((u) => {
+              {pageRows.map((u) => {
                 const name = teacherName(u);
                 const email = teacherEmail(u);
                 const active = isActiveTeacher(u);
@@ -437,13 +443,6 @@ export default function TeachersListPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link to={`/app/teachers/${u.id}`}>
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Details
-                              </Link>
-                            </DropdownMenuItem>
-
                             <DropdownMenuItem asChild>
                               <Link to="/app/settings?tab=users">
                                 <Shield className="h-4 w-4 mr-2" />
@@ -567,6 +566,7 @@ export default function TeachersListPage() {
               })}
             </div>
           )}
+          <Pager className="rounded-xl border" page={teacherPage} pageSize={TEACHER_PAGE} total={rows.length} onGo={goTeacherPage} noun="teachers" />
         </>
       )}
 

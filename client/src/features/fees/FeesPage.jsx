@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 
 import { useMe } from "@/hooks/useMe";
 
@@ -96,20 +96,22 @@ export default function FeesPage() {
   const allowedTabs = useMemo(() => getAllowedTabsByRole(role), [role]);
   const defaultTab = useMemo(() => getDefaultTabByRole(role), [role]);
 
-  const [tab, setTab] = useState(defaultTab);
-
-  // Sync tab when role changes (rare but possible after user update)
-  useEffect(() => {
-    setTab(defaultTab);
-  }, [defaultTab]);
-
-  // Hard guard: if tab becomes disallowed, snap to a valid default
-  useEffect(() => {
-    if (!allowedTabs.length) return;
-    if (!allowedTabs.includes(tab)) {
-      setTab(defaultTab);
-    }
-  }, [tab, allowedTabs, defaultTab]);
+  // The open tab lives in the address (?tab=payments), so a link (or the
+  // search box) can open a section directly and Back works between tabs.
+  // A tab this role can't use falls back to its default.
+  const [params, setParams] = useSearchParams();
+  const asked = params.get("tab");
+  const tab = asked && allowedTabs.includes(asked) ? asked : defaultTab;
+  const setTab = (t) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", t);
+        next.delete("student");
+        return next;
+      },
+      { replace: false }
+    );
 
   // 🚀 printing flow: when receipt changes -> whitelist -> print -> cleanup
   useEffect(() => {

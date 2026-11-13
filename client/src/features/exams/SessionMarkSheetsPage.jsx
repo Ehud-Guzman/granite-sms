@@ -1,5 +1,6 @@
 // src/features/exams/SessionMarkSheetsPage.jsx
 import { useMemo, useState } from "react";
+import Breadcrumbs from "@/components/ui/breadcrumbs";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -203,6 +204,7 @@ export default function SessionMarkSheetsPage() {
         <CardHeader className="space-y-1">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
+              <Breadcrumbs items={[{ label: "Exams", to: "/app/exams" }, { label: classesQ.isLoading ? "…" : classLabel || "Exam" }]} />
               <CardTitle>{headerTitle}</CardTitle>
 
               <div className="text-sm opacity-70 mt-1">

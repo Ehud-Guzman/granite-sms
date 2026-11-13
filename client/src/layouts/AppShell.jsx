@@ -37,6 +37,7 @@ import { getBranding } from "@/api/settingsBranding.api";
 import { api } from "@/api/axios";
 
 import { applyAppearance } from "@/lib/appearance";
+import QuickSearch from "@/components/QuickSearch";
 
 /* =========================
    Helpers
@@ -171,7 +172,8 @@ export default function AppShell() {
                 <div className="text-base font-semibold truncate">{title}</div>
               </div>
               <div className="flex items-center gap-2">
-                <div className="hidden sm:block text-sm text-muted-foreground truncate max-w-[200px]">{schoolName}</div>
+                {["ADMIN", "TEACHER", "BURSAR"].includes(role) && <QuickSearch role={role} navItems={navItems} />}
+                <div className="hidden xl:block text-sm text-muted-foreground truncate max-w-[200px]">{schoolName}</div>
                 <Badge variant="outline" className="text-xs font-normal">
                   {ROLE_NAME[role] || role}
                 </Badge>

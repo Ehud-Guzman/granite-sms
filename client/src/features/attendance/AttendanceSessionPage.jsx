@@ -1,5 +1,6 @@
 // src/features/attendance/AttendanceSessionPage.jsx
 import { useMemo, useState } from "react";
+import Breadcrumbs from "@/components/ui/breadcrumbs";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -240,7 +241,7 @@ export default function AttendanceSessionPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Register</div>
+          <Breadcrumbs items={[{ label: "Attendance", to: "/app/attendance" }, { label: dateLabel || "Register" }]} />
           <h1 className="text-2xl font-semibold">{session?.class ? `${session.class.name}${session.class.stream ? ` ${session.class.stream}` : ""}` : "Class register"}</h1>
           <div className="text-sm text-muted-foreground mt-1">
             {dateLabel} · {termLabels?.[session?.term] || session?.term || "-"} {session?.year || ""}

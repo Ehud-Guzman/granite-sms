@@ -13,7 +13,8 @@ import { useSchoolCalendar } from "@/lib/schoolCalendar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ErrorState, PageSkeleton } from "@/components/ui/state-blocks";
-import { PageHeader, Panel, HeroPanel, Ring, StatTile, Meter, BarList, ColumnChart, EmptyNote } from "@/components/insights/Insights";
+import { PageHeader, Panel, Ring, StatTile, Meter, EmptyNote } from "@/components/insights/Insights";
+import { FeesHero, FeesTrend, OwedByClass } from "@/components/insights/FeesWidgets";
 
 const ROLE_LABELS = { SYSTEM_ADMIN: "Platform owner", ADMIN: "Admin", BURSAR: "Bursar", TEACHER: "Teacher" };
 
@@ -38,13 +39,6 @@ function greeting() {
 const longDate = (iso) => {
   try {
     return new Intl.DateTimeFormat("en-KE", { weekday: "long", day: "numeric", month: "long" }).format(new Date(`${iso}T12:00:00Z`));
-  } catch {
-    return iso;
-  }
-};
-const shortDay = (iso) => {
-  try {
-    return new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short" }).format(new Date(`${iso}T12:00:00Z`));
   } catch {
     return iso;
   }
@@ -188,84 +182,6 @@ function Registers({ att, compactView = false }) {
   );
 }
 
-function FeesHero({ fees, termLabel }) {
-  const t = fees.term;
-  if (!t || !t.invoices) {
-    return (
-      <HeroPanel eyebrow="Fees" value={kes(fees.collectedToday)} caption={`collected today · ${fees.receiptsToday} receipt${fees.receiptsToday === 1 ? "" : "s"}`} minis={[{ label: "Outstanding", value: kes(fees.outstandingTotal), alert: fees.outstandingTotal > 0 }]} />
-    );
-  }
-  return (
-    <HeroPanel
-      eyebrow={`Collected · ${termLabel}`}
-      value={kes(t.paid)}
-      caption={`of ${kes(t.billed)} billed on ${t.invoices.toLocaleString()} invoice${t.invoices === 1 ? "" : "s"}`}
-      minis={[
-        { label: "Still owed", value: kes(t.balance), alert: t.balance > 0 },
-        { label: "Today", value: kes(fees.collectedToday) },
-        { label: "Receipts today", value: fees.receiptsToday.toLocaleString() },
-        { label: "Fully paid", value: `${t.fullyPaid.toLocaleString()} of ${t.invoices.toLocaleString()}` },
-      ]}
-      aside={
-        <Ring percent={t.percent} size={136} stroke={14} tone={t.percent >= 100 ? "good" : "#ffffff"} track="rgba(255,255,255,0.18)" label={`${t.percent}% of term fees collected`}>
-          <span className="text-3xl font-extrabold tabular-nums leading-none">{Math.round(t.percent)}%</span>
-          <span className="mt-1 text-xs text-white/75 print:text-black/70">collected</span>
-        </Ring>
-      }
-    />
-  );
-}
-
-function FeesTrend({ fees }) {
-  const trend = fees.trend || [];
-  const total = trend.reduce((n, d) => n + d.amount, 0);
-  return (
-    <Panel
-      title="Collections, last 14 days"
-      subtitle={`${kes(total)} in ${trend.reduce((n, d) => n + d.receipts, 0)} receipts`}
-      action={
-        <Button asChild size="sm" variant="ghost">
-          <Link to="/app/reports/fees/collections">Details</Link>
-        </Button>
-      }
-    >
-      <ColumnChart
-        points={trend.map((d) => ({ key: d.date, label: shortDay(d.date), value: d.amount, display: kes(d.amount) }))}
-        ariaLabel="Fees collected each day for the last 14 days"
-        empty="No payments in the last 14 days."
-        highlightLast
-      />
-    </Panel>
-  );
-}
-
-function OwedByClass({ fees }) {
-  const rows = fees.byClass || [];
-  return (
-    <Panel
-      title="Most owed, by class"
-      subtitle="This term's unpaid balances"
-      action={
-        <Button asChild size="sm" variant="ghost">
-          <Link to="/app/reports/fees/defaulters">Who owes</Link>
-        </Button>
-      }
-    >
-      <BarList
-        tone="alert"
-        empty="Nothing owed this term."
-        items={rows.map((c) => ({
-          key: c.classId,
-          label: c.label,
-          value: c.balance,
-          display: kes(c.balance),
-          sub: c.billed ? `${Math.round((c.balance / c.billed) * 100)}% unpaid` : null,
-        }))}
-      />
-    </Panel>
-  );
-}
-
 function LatestExam({ exam, termLabels, canOpen }) {
   return (
     <Panel title="Latest exam">
@@ -390,7 +306,7 @@ export default function Dashboard() {
           }
         />
         {hasSchool ? (
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-3">
             <StatTile label="Active learners" value={summaryQ.isLoading ? "…" : (counts.studentsActive ?? 0).toLocaleString()} />
             <StatTile label="Classes" value={summaryQ.isLoading ? "…" : counts.classesCount ?? 0} />
             <StatTile label="Teachers" value={summaryQ.isLoading ? "…" : counts.teachersCount ?? 0} />
@@ -428,7 +344,7 @@ export default function Dashboard() {
             {canAttendance && <Registers att={att} />}
             {fees && <FeesTrend fees={fees} />}
             {fees && <OwedByClass fees={fees} />}
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-3 gap-3">
               <StatTile label="Active learners" value={(counts.studentsActive ?? 0).toLocaleString()} to={role === "BURSAR" ? undefined : "/app/students"} />
               <StatTile label="Classes" value={counts.classesCount ?? 0} to={role === "ADMIN" ? "/app/classes" : undefined} />
               <StatTile label="Teachers" value={counts.teachersCount ?? 0} to={role === "ADMIN" ? "/app/teachers" : undefined} />

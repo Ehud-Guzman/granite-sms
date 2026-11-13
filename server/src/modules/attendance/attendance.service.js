@@ -161,7 +161,7 @@ export async function upsertSessionAndEnsureRecords({
 export async function getSessionWithRecords({ schoolId, sessionId, role, userId }) {
   const session = await prisma.attendanceSession.findFirst({
     where: { id: sessionId, schoolId },
-    include: { records: true },
+    include: { records: true, class: { select: { name: true, stream: true } } },
   });
 
   if (!session) {

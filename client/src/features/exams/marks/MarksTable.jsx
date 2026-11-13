@@ -67,7 +67,7 @@ const MarkRow = memo(function MarkRow({
       onKeyDown={onRowKeyDown}
       tabIndex={-1}
     >
-      <td className="px-4 py-3 font-medium">{admissionNo || "—"}</td>
+      <td className="px-4 py-3 font-medium whitespace-nowrap">{admissionNo || "—"}</td>
 
       <td className="px-4 py-3">
         <div className="font-medium">{name}</div>
@@ -393,7 +393,7 @@ export default function MarksTable({
               <table className="w-full text-sm table-fixed">
                 <thead className="sticky top-0 bg-background border-b z-10">
                   <tr className="text-left">
-                    <th scope="col" className="w-24 px-4 py-3 font-medium">Adm No</th>
+                    <th scope="col" className="w-28 px-4 py-3 font-medium whitespace-nowrap">Adm No</th>
                     <th scope="col" className="w-64 px-4 py-3 font-medium">Student</th>
                     <th scope="col" className="w-32 px-4 py-3 font-medium">Score (/100)</th>
                     <th scope="col" className="w-28 px-4 py-3 font-medium text-center">Missing</th>

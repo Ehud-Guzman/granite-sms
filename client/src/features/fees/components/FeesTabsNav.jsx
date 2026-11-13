@@ -1,21 +1,20 @@
 // src/features/fees/components/FeesTabsNav.jsx
-import { Button } from "@/components/ui/button";
 
 /**
  * Single source of truth for all possible tabs.
  * Visibility is controlled by the `tabs` prop.
  */
 const ALL_TABS = [
-  { key: "dashboard", label: "Dashboard" },
+  { key: "dashboard", label: "Overview" },
 
   // Setup (Admin)
-  { key: "items", label: "Fee Items" },
-  { key: "plans", label: "Fee Plans" },
+  { key: "items", label: "Fee items" },
+  { key: "plans", label: "Fee plans" },
 
   // Operations
   { key: "invoices", label: "Invoices" },
-  { key: "cashier", label: "Receive Payment" },
-  { key: "student", label: "Student Statement" },
+  { key: "cashier", label: "Receive payment" },
+  { key: "student", label: "Statements" },
   { key: "mpesa", label: "M-Pesa" },
 ];
 
@@ -31,24 +30,21 @@ export default function FeesTabsNav({
       : ALL_TABS;
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <nav className="inline-flex max-w-full flex-wrap gap-1 rounded-xl border bg-muted/50 p-1" aria-label="Fees sections">
       {visibleTabs.map((t) => {
         const isActive = tab === t.key;
-
         return (
-          <Button
+          <button
             key={t.key}
-            size="sm"
-            variant={isActive ? "default" : "outline"}
-            onClick={() => {
-              if (!isActive) setTab(t.key);
-            }}
+            type="button"
+            onClick={() => !isActive && setTab(t.key)}
             aria-current={isActive ? "page" : undefined}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${isActive ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
           >
             {t.label}
-          </Button>
+          </button>
         );
       })}
-    </div>
+    </nav>
   );
 }

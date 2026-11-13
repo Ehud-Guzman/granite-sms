@@ -15,6 +15,7 @@ import {
   reverseFeePayment,
   requestPaymentReversal,
   voidFeeInvoice,
+  getStudentFeesSummary,
 } from "@/api/fees.api";
 
 import { Button } from "@/components/ui/button";
@@ -26,11 +27,15 @@ import StudentLookupByAdmission from "../components/StudentLookupByAdmission";
 import QueryBlock from "../components/QueryBlock";
 import SimpleModal from "../components/SimpleModal";
 import { money, toNumberOrZero } from "../components/FeeMoney";
-import { useCurrentTermState, useCurrentYearState } from "@/lib/schoolCalendar";
+import { useCurrentTermState, useCurrentYearState, useSchoolCalendar } from "@/lib/schoolCalendar";
+import { StatTile } from "@/components/insights/Insights";
 import { confirmAction } from "@/lib/confirm-store";
 
 const PAYMENT_METHODS = ["CASH", "MPESA", "BANK", "CHEQUE", "OTHER"];
 const TERMS = ["TERM1", "TERM2", "TERM3"];
+const METHOD_LABEL = { CASH: "Cash", MPESA: "M-Pesa", BANK: "Bank", CHEQUE: "Cheque", OTHER: "Other" };
+const when = (d) =>
+  d ? new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(d)) : "";
 
 const norm = (v) => String(v || "").trim().toUpperCase();
 
@@ -55,6 +60,8 @@ export default function FeeCashierTab({ onReceiptReady }) {
   // filters (cashier context)
   const [year, setYear] = useCurrentYearState();
   const [term, setTerm] = useCurrentTermState();
+  const { termLabels } = useSchoolCalendar();
+  const termName = termLabels?.[term] || term;
 
   // student selection
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -160,6 +167,14 @@ export default function FeeCashierTab({ onReceiptReady }) {
     queryFn: () => listFeeInvoices({ studentId, year, term }),
     enabled: !!studentId,
   });
+
+  // The learner's whole account, not just this term's invoice.
+  const accountQ = useQuery({
+    queryKey: ["feesAccount", studentId],
+    queryFn: () => getStudentFeesSummary(studentId),
+    enabled: !!studentId,
+  });
+  const account = accountQ.data?.account || null;
 
   const invoices = useMemo(() => {
     const d = invQ.data;
@@ -273,6 +288,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
     mutationFn: createFeePayment,
     onSuccess: async (res) => {
       await qc.invalidateQueries({ queryKey: ["feeInvoices", { studentId, year, term }] });
+      qc.invalidateQueries({ queryKey: ["feesAccount", studentId] });
 
       const payment = res?.payment || null;
       if (!payment?.id) {
@@ -490,16 +506,19 @@ export default function FeeCashierTab({ onReceiptReady }) {
       {/* Top controls */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-2">
-            <span>Receive Payment</span>
-            <Badge variant="outline">{isAdmin ? "ADMIN" : "BURSAR"}</Badge>
-          </CardTitle>
+          <CardTitle>Receive a payment</CardTitle>
+          <p className="text-sm text-muted-foreground">Find the learner by admission number, check what they owe, then post the payment and print the receipt.</p>
         </CardHeader>
 
         <CardContent className="space-y-3">
+          <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-3">
+            <div className="text-sm font-medium mb-2">Learner</div>
+            <StudentLookupByAdmission onSelect={onSelectStudent} />
+          </div>
+
           <div className="grid gap-2 md:grid-cols-6">
             <div className="md:col-span-2">
-              <div className="text-xs text-muted-foreground mb-1">Year</div>
+              <div className="text-xs text-muted-foreground mb-1">Billing year</div>
               <Input
                 type="number"
                 value={year}
@@ -508,7 +527,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
             </div>
 
             <div className="md:col-span-2">
-              <div className="text-xs text-muted-foreground mb-1">Term</div>
+              <div className="text-xs text-muted-foreground mb-1">Billing term</div>
               <select
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                 value={term}
@@ -516,7 +535,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
               >
                 {TERMS.map((t) => (
                   <option key={t} value={t}>
-                    {t}
+                    {termLabels?.[t] || t}
                   </option>
                 ))}
               </select>
@@ -524,9 +543,10 @@ export default function FeeCashierTab({ onReceiptReady }) {
 
             <div className="md:col-span-2 flex items-end justify-end">
               {lastReceipt?.paymentId ? (
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-2 flex-wrap items-center">
+                  <span className="text-xs text-muted-foreground">Last receipt {lastReceipt.receiptNo}</span>
                   <Button variant="outline" onClick={printLastReceipt}>
-                    Print / Save PDF
+                    Reprint
                   </Button>
                   <Button variant="ghost" onClick={clearReceipt}>
                     Clear
@@ -538,10 +558,6 @@ export default function FeeCashierTab({ onReceiptReady }) {
             </div>
           </div>
 
-          <div className="border rounded-md p-3">
-            <div className="text-sm font-medium mb-2">Find student</div>
-            <StudentLookupByAdmission onSelect={onSelectStudent} />
-          </div>
         </CardContent>
       </Card>
 
@@ -558,15 +574,23 @@ export default function FeeCashierTab({ onReceiptReady }) {
                 </span>
               </span>
 
-              <div className="flex gap-2">
-                <Badge variant="outline">{term}</Badge>
-                <Badge variant="outline">{year}</Badge>
-              </div>
+              <Badge variant="outline">
+                {termName} {year}
+              </Badge>
             </CardTitle>
           </CardHeader>
 
           <CardContent className="space-y-4">
-            {/* Billing setup status */}
+            {account && (
+              <div className="grid grid-cols-3 gap-3">
+                <StatTile label="Owed, all terms" value={money(account.owed)} tone={account.owed > 0 ? "alert" : undefined} />
+                <StatTile label="Credit" value={money(account.credit)} tone={account.credit > 0 ? "good" : undefined} />
+                <StatTile label={account.net > 0 ? "Balance due" : "In credit"} value={money(Math.abs(account.net))} hint="after credit" />
+              </div>
+            )}
+
+            {/* Billing setup: only matters when this term has no invoice yet */}
+            {!invQ.isLoading && invoices.length === 0 && (
             <div className="border rounded-md p-3">
               <div className="font-medium">Billing Setup</div>
               <div className="text-xs text-muted-foreground mt-1">
@@ -582,14 +606,23 @@ export default function FeeCashierTab({ onReceiptReady }) {
                 <div className="text-xs text-muted-foreground mt-2">Checking fee plans…</div>
               ) : !chosenPlan ? (
                 <div className="mt-2 text-sm text-destructive">
-                  No Fee Plan exists for this class/year/term. Create one in <b>Fee Plans</b> tab.
+                  {canGenerateInvoice ? (
+                    <>
+                      No fee plan for this class in {termName} {year}. Create one in the <b>Fee Plans</b> tab first.
+                    </>
+                  ) : (
+                    <>
+                      No invoice for {termName} {year} yet. Ask an admin to bill this class.
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="mt-2 text-sm">
-                  Fee Plan found: <b>{chosenPlan.title || "Fee Plan"}</b>
+                  No invoice for {termName} {year} yet. Fee plan ready: <b>{chosenPlan.title || "Fee plan"}</b>
                 </div>
               )}
             </div>
+            )}
 
             {/* Invoices */}
             <div className="space-y-2">
@@ -632,7 +665,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
                 isError={invQ.isError}
                 error={invQ.error}
                 empty={!invQ.isLoading && invoices.length === 0}
-                emptyText="No invoices yet for this term/year."
+                emptyText={`No invoices for ${termName} ${year}.`}
               >
                 <div className="grid gap-2">
                   {invoices.map((inv) => {
@@ -708,7 +741,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
                   >
                     {PAYMENT_METHODS.map((m) => (
                       <option key={m} value={m}>
-                        {m}
+                        {METHOD_LABEL[m] || m}
                       </option>
                     ))}
                   </select>
@@ -719,7 +752,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
                   <Input
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
-                    placeholder="MPESA code / Bank slip"
+                    placeholder="M-Pesa code or bank slip no."
                     disabled={isReadOnly || !activeInvoiceId || activeInvoiceIsVoid}
                   />
                 </div>
@@ -777,24 +810,30 @@ export default function FeeCashierTab({ onReceiptReady }) {
                     >
                       <div className="min-w-[220px]">
                         <div className="text-sm font-medium">
-                          {money(p.amount)}{" "}
-                          <span className="text-muted-foreground">• {p.method}</span>
+                          <span className={p.isReversed ? "line-through text-muted-foreground" : ""}>{money(p.amount)}</span>{" "}
+                          <span className="text-muted-foreground">• {METHOD_LABEL[p.method] || p.method}</span>
+                          {p.isReversed && (
+                            <Badge variant="outline" className="ml-2 text-[10px] uppercase">
+                              Reversed
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           Receipt: {p.receiptNo || "—"} •{" "}
-                          {p.createdAt ? new Date(p.createdAt).toLocaleString() : ""}
+                          {when(p.receivedAt || p.createdAt)}
                         </div>
                       </div>
 
                       <div className="flex gap-2 flex-wrap">
                         <Button size="sm" variant="outline" onClick={() => printPaymentId(p.id)}>
-                          Print / Save PDF
+                          Print receipt
                         </Button>
 
-                        {canReversePayment && (
+                        {canReversePayment && !p.isReversed && (
                           <Button
                             size="sm"
-                            variant="destructive"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
                             disabled={reverseMut.isPending || isReadOnly || !!p.isReversed}
                             onClick={() => askReverse(p)}
                             title={p.isReversed ? "Already reversed" : undefined}

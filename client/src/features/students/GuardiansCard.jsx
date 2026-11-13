@@ -104,6 +104,7 @@ export default function GuardiansCard({ studentId, canEdit }) {
                   {g.guardian.firstName} {g.guardian.lastName}
                   <Badge variant="outline">{relLabel(g.relationship)}</Badge>
                   {g.isPrimary && <Badge>Primary contact</Badge>}
+                  {g.guardian.userId && <Badge variant="secondary">Has parent login</Badge>}
                 </div>
                 <a href={`tel:${g.guardian.phone}`} className="text-sm inline-flex items-center gap-1 text-primary">
                   <Phone className="h-3.5 w-3.5" aria-hidden="true" />

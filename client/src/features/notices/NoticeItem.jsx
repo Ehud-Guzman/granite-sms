@@ -1,4 +1,11 @@
-import { dateIn } from "@/lib/schoolCalendar";
+// "12 Nov 2026", as the school sees the day.
+const dateIn = (d, tz) => {
+  try {
+    return new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short", year: "numeric", timeZone: tz || "Africa/Nairobi" }).format(new Date(d));
+  } catch {
+    return "";
+  }
+};
 import { Badge } from "@/components/ui/badge";
 import { AUDIENCE_LABEL } from "./notices.api";
 

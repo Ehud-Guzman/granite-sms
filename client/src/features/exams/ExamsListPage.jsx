@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { getErrorMessage as errMsg } from "@/lib/errors";
+import { useCurrentTermState, useSchoolCalendar } from "@/lib/schoolCalendar";
 
 import ExamCreateDrawer from "./ExamCreateDrawer";
 
@@ -49,7 +50,9 @@ export default function ExamsListPage() {
   const role = meData?.user?.role;
 
   const [year, setYear] = useState(String(currentYear()));
-  const [term, setTerm] = useState("ALL");
+  // Opens on the current term; "All terms" is one click away.
+  const [term, setTerm] = useCurrentTermState("ALL");
+  const { termLabels } = useSchoolCalendar();
 
   const [search, setSearch] = useState("");
 
@@ -147,7 +150,7 @@ const activeFiltersText = useMemo(() => {
 >
   {TERMS.map((t) => (
     <option key={t} value={t}>
-      {t === "ALL" ? "All terms" : t}
+      {t === "ALL" ? "All terms" : termLabels?.[t] || t}
     </option>
   ))}
 </select>
@@ -222,9 +225,10 @@ const activeFiltersText = useMemo(() => {
 
                       <div className="text-sm opacity-70 flex flex-wrap gap-2 items-center">
                         <Badge variant={statusBadgeVariant(s.status)}>{s.status}</Badge>
-                        <span>Year: {s.year}</span>
-                        <span>Term: {s.term}</span>
-                        <span>Class: {clsLabel}</span>
+                        <span className="font-medium text-foreground">{clsLabel}</span>
+                        <span>
+                          {termLabels?.[s.term] || s.term} {s.year}
+                        </span>
 
                         {s.examType?.name && (
                           <span>

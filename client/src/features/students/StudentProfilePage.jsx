@@ -23,7 +23,7 @@ const fullName = (s) => `${s?.firstName || ""} ${s?.lastName || ""}`.trim();
 function fmtDate(d) {
   if (!d) return "-";
   try {
-    return new Date(d).toLocaleDateString("en-US", {
+    return new Date(d).toLocaleDateString("en-KE", {
       year: "numeric",
       month: "short",
       day: "numeric"
@@ -130,7 +130,7 @@ export default function StudentProfilePage() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild size="sm">
             <Link to="/app/students">Back to List</Link>
           </Button>
@@ -207,7 +207,7 @@ export default function StudentProfilePage() {
             <div className="space-y-2">
               <div>
                 <div className="text-xs text-muted-foreground">Gender</div>
-                <div className="font-medium">{s.gender || "-"}</div>
+                <div className="font-medium">{{ M: "Male", F: "Female", MALE: "Male", FEMALE: "Female" }[String(s.gender || "").toUpperCase()] || s.gender || "-"}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Date of Birth</div>

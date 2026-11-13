@@ -47,6 +47,8 @@ function ReportCard({ report, row, termLabel }) {
         </div>
       </div>
 
+      {/* A column per exam can be wider than a phone: scroll the table, not the page. */}
+      <div className="overflow-x-auto">
       <table className="w-full border-collapse">
         <thead>
           <tr className="text-left border-b">
@@ -77,6 +79,7 @@ function ReportCard({ report, row, termLabel }) {
           ))}
         </tbody>
       </table>
+      </div>
 
       <div className="text-xs text-muted-foreground">
         Grading: {report.gradeScale?.name}. Exams combined by weight: {report.sessions.map((s) => `${s.name} ×${s.weight}`).join(", ")}.

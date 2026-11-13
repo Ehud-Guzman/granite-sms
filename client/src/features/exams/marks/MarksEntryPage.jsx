@@ -21,6 +21,7 @@ import { confirmAction } from "@/lib/confirm-store";
 import { getErrorMessage as errMsg } from "@/lib/errors";
 
 import MarksTable from "./MarksTable";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
 import UnlockReasonDialog from "./UnlockReasonDialog";
 
 // ---------- helpers ----------
@@ -106,6 +107,7 @@ export default function MarksEntryPage() {
   const classId = session?.classId;
   const year = session?.year;
   const term = session?.term;
+  const { termLabels } = useSchoolCalendar();
 
   const marks = marksheet?.marks || [];
 
@@ -380,7 +382,7 @@ export default function MarksEntryPage() {
                 {dirty && <Badge variant="outline">Unsaved changes</Badge>}
 
                 <span className="text-sm opacity-70">
-                  {classLabel} • {term ?? "-"} {year ?? "-"} • /100
+                  {classLabel} • {termLabels?.[term] || term || "-"} {year ?? "-"} • out of 100
                 </span>
               </div>
             </div>
@@ -390,16 +392,13 @@ export default function MarksEntryPage() {
               {session?.id && (
                 <Button asChild variant="outline">
                   <Link to={`/app/exams/sessions/${session.id}/marksheets`}>
-                    Back to marksheets
+                    ← Subjects in this exam
                   </Link>
                 </Button>
               )}
 
-              <Button asChild variant="outline">
-                <Link to="/app/exams">Back to sessions</Link>
-              </Button>
-
-              <Button variant="outline" onClick={smartBack}>
+              {/* Asks first if there are unsaved marks. */}
+              <Button variant="ghost" onClick={smartBack}>
                 Back
               </Button>
             </div>

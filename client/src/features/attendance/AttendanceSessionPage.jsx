@@ -19,6 +19,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
+
+const STATUSES = [
+  ["PRESENT", "Present", "bg-emerald-600 text-white shadow-sm"],
+  ["ABSENT", "Absent", "bg-red-600 text-white shadow-sm"],
+  ["LATE", "Late", "bg-amber-500 text-white shadow-sm"],
+  ["EXCUSED", "Excused", "bg-slate-500 text-white shadow-sm"],
+];
 
 function badgeVariant(status) {
   const s = String(status || "DRAFT").toUpperCase();
@@ -28,6 +36,7 @@ function badgeVariant(status) {
 }
 
 export default function AttendanceSessionPage() {
+  const { termLabels } = useSchoolCalendar();
   const { sessionId } = useParams();
   const qc = useQueryClient();
 
@@ -219,7 +228,10 @@ export default function AttendanceSessionPage() {
     });
   }, [local, search, studentById]);
 
-  const dateLabel = session?.date ? String(session.date).slice(0, 10) : "—";
+  // The register's date is stored as a calendar day (midnight UTC): "Friday, 13 Nov".
+  const dateLabel = session?.date
+    ? new Intl.DateTimeFormat("en-KE", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(session.date))
+    : "—";
 
   if (meLoading) return <div className="p-6">Loading...</div>;
 
@@ -228,19 +240,14 @@ export default function AttendanceSessionPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm text-muted-foreground">Attendance session</div>
-          <h1 className="text-2xl font-semibold">Class Attendance</h1>
-          <div className="text-xs text-muted-foreground mt-1">
-            Date: <span className="font-medium text-foreground">{dateLabel}</span> • Term:{" "}
-            <span className="font-medium text-foreground">{session?.term || "-"}</span> • Year:{" "}
-            <span className="font-medium text-foreground">{session?.year || "-"}</span>
+          <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Register</div>
+          <h1 className="text-2xl font-semibold">{session?.class ? `${session.class.name}${session.class.stream ? ` ${session.class.stream}` : ""}` : "Class register"}</h1>
+          <div className="text-sm text-muted-foreground mt-1">
+            {dateLabel} · {termLabels?.[session?.term] || session?.term || "-"} {session?.year || ""}
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="uppercase text-[10px]">
-            {role || "—"}
-          </Badge>
           <Button variant="outline" asChild>
             <Link to="/app/attendance">Back</Link>
           </Button>
@@ -336,7 +343,7 @@ export default function AttendanceSessionPage() {
           <Separator />
 
           <div className="text-xs text-muted-foreground">
-            DRAFT editable • SUBMITTED frozen • LOCKED hard stop (admin can unlock).
+            A draft can be changed. Once submitted it is final; only an admin can unlock it.
           </div>
         </CardContent>
       </Card>
@@ -345,8 +352,15 @@ export default function AttendanceSessionPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center justify-between">
-            <span>Students</span>
-            <span className="text-xs text-muted-foreground">{filtered.length} shown</span>
+            <span>Learners</span>
+            <span className="flex items-center gap-2">
+              {!disableEdits && unmarkedCount > 0 && (
+                <Button size="sm" variant="outline" onClick={() => local.filter((x) => x.status === "UNMARKED").forEach((x) => setStatus(x.studentId, "PRESENT"))}>
+                  Mark the rest present
+                </Button>
+              )}
+              <span className="text-xs font-normal text-muted-foreground">{filtered.length} shown</span>
+            </span>
           </CardTitle>
         </CardHeader>
 
@@ -382,81 +396,57 @@ export default function AttendanceSessionPage() {
                       return (
                         <div
                           key={r.studentId}
-                          className="rounded-md border bg-background p-3 space-y-2"
+                          className={`rounded-lg border p-3 space-y-2 ${r.status === "UNMARKED" ? "border-amber-400 bg-amber-50/60 dark:bg-amber-900/10" : "bg-background"}`}
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="font-medium">{fullName}</div>
-                              <div className="text-xs text-muted-foreground">
-                                Adm: {stu?.admissionNo || "-"}
-                              </div>
+                          <div className="flex items-baseline justify-between gap-3">
+                            <div className="min-w-0">
+                              <span className="font-medium">{fullName}</span>{" "}
+                              <span className="text-xs text-muted-foreground">{stu?.admissionNo || ""}</span>
                             </div>
-
-                            <Badge
-                              variant={r.status === "UNMARKED" ? "destructive" : "outline"}
-                              className="text-[10px]"
-                            >
-                              {r.status === "UNMARKED" ? "Not marked" : r.status}
-                            </Badge>
+                            {r.status === "UNMARKED" && <span className="shrink-0 text-xs font-medium text-amber-700 dark:text-amber-400">Not marked</span>}
                           </div>
 
-                          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
-                            <div className="flex gap-2 flex-wrap">
-                              <Button
-                                size="sm"
-                                variant={r.status === "PRESENT" ? "default" : "outline"}
-                                onClick={() => setStatus(r.studentId, "PRESENT")}
+                          {/* One tap per learner; the chosen status is filled in its colour. */}
+                          <div className="grid grid-cols-4 gap-1 rounded-lg bg-muted/60 p-1" role="radiogroup" aria-label={`Attendance for ${fullName}`}>
+                            {STATUSES.map(([value, label, on]) => (
+                              <button
+                                key={value}
+                                type="button"
+                                role="radio"
+                                aria-checked={r.status === value}
+                                onClick={() => setStatus(r.studentId, value)}
                                 disabled={disableEdits}
+                                className={`rounded-md px-1 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${r.status === value ? on : "text-muted-foreground hover:bg-background"}`}
                               >
-                                Present
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant={r.status === "ABSENT" ? "default" : "outline"}
-                                onClick={() => setStatus(r.studentId, "ABSENT")}
-                                disabled={disableEdits}
-                              >
-                                Absent
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant={r.status === "LATE" ? "default" : "outline"}
-                                onClick={() => setStatus(r.studentId, "LATE")}
-                                disabled={disableEdits}
-                              >
-                                Late
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant={r.status === "EXCUSED" ? "default" : "outline"}
-                                onClick={() => setStatus(r.studentId, "EXCUSED")}
-                                disabled={disableEdits}
-                              >
-                                Excused
-                              </Button>
-                            </div>
+                                {label}
+                              </button>
+                            ))}
+                          </div>
 
-                            <div className="flex gap-2 items-center">
+                          {(r.status !== "PRESENT" && r.status !== "UNMARKED") || r.comment ? (
+                            <div className="flex gap-2">
+                              {r.status === "LATE" && (
+                                <Input
+                                  className="w-28 shrink-0"
+                                  type="number"
+                                  min={0}
+                                  max={600}
+                                  placeholder="Mins late"
+                                  value={r.minutesLate ?? ""}
+                                  onChange={(e) => setMinutesLate(r.studentId, e.target.value)}
+                                  disabled={disableEdits}
+                                />
+                              )}
                               <Input
-                                className="w-28"
-                                type="number"
-                                min={0}
-                                max={600}
-                                placeholder="mins late"
-                                value={r.minutesLate ?? ""}
-                                onChange={(e) => setMinutesLate(r.studentId, e.target.value)}
-                                disabled={r.status !== "LATE" || disableEdits}
-                              />
-                              <Input
-                                className="w-56"
-                                placeholder="Comment (optional)"
+                                className="min-w-0 flex-1"
+                                placeholder={r.status === "ABSENT" ? "Reason, if known (optional)" : "Note (optional)"}
                                 value={r.comment || ""}
                                 onChange={(e) => setComment(r.studentId, e.target.value)}
                                 disabled={disableEdits}
                                 maxLength={250}
                               />
                             </div>
-                          </div>
+                          ) : null}
                         </div>
                       );
                     })}

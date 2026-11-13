@@ -6,6 +6,7 @@ import { useMe } from "@/hooks/useMe";
 import FeesTabsNav from "../fees/components/FeesTabsNav";
 
 import FeesDashboardTab from "../fees/tabs/FeesDashboardTab";
+import { PageHeader } from "@/components/insights/Insights";
 import FeeItemsTab from "../fees/tabs/FeeItemsTab";
 import FeePlansTab from "../fees/tabs/FeePlansTab";
 import InvoicesTab from "../fees/tabs/InvoicesTab";
@@ -139,19 +140,11 @@ export default function FeesPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Fees</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Setup → Bill (Invoices) → Receive Payments → Statements → Reports.
-          </p>
-
-          {/* Subtle role chip */}
-          <div className="mt-2 text-xs text-muted-foreground">
-            Access level: <span className="font-medium">{role}</span>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Fees"
+        title={role === "BURSAR" ? "Fees and payments" : "Fees"}
+        subtitle={role === "ADMIN" ? "Set fees, bill classes, take payments and follow up arrears." : "Take payments, print receipts and follow up arrears."}
+      />
 
       {/* Pass allowed tabs to nav so it only renders what the user can use */}
       <FeesTabsNav tab={tab} setTab={setTab} tabs={allowedTabs} />

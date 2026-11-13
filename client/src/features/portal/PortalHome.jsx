@@ -2,6 +2,7 @@
 // the latest published result and this term's attendance; links to the
 // statement and report cards; parents can pay by M-Pesa prompt.
 import { useState } from "react";
+import { ALL_ON } from "@/lib/planFeatures";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -22,14 +23,30 @@ const kes = (n) => `KES ${Math.round(Number(n) || 0).toLocaleString("en-KE")}`;
 function PayBox({ studentId, suggested }) {
   const [amount, setAmount] = useState(suggested > 0 ? String(suggested) : "");
   const pay = useMutation({
-    mutationFn: () => api.post(`/api/portal/learners/${studentId}/pay`, { amount: Number(amount) }).then((r) => r.data),
+    mutationFn: () =>
+      api
+        .post(`/api/portal/learners/${studentId}/pay`, {
+          amount: Number(amount),
+        })
+        .then((r) => r.data),
     onSuccess: (d) => toast.success(d.message),
-    onError: (e) => toast.error(e?.response?.data?.message || "Could not start the payment"),
+    onError: (e) =>
+      toast.error(e?.response?.data?.message || "Could not start the payment"),
   });
   return (
     <div className="flex gap-2 items-center">
-      <Input aria-label="Amount to pay" type="number" className="w-36" value={amount} onChange={(e) => setAmount(e.target.value)} />
-      <Button size="sm" disabled={pay.isPending || !(Number(amount) >= 10)} onClick={() => pay.mutate()}>
+      <Input
+        aria-label="Amount to pay"
+        type="number"
+        className="w-36"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+      />
+      <Button
+        size="sm"
+        disabled={pay.isPending || !(Number(amount) >= 10)}
+        onClick={() => pay.mutate()}
+      >
         {pay.isPending ? "Sending…" : "Pay with M-Pesa"}
       </Button>
     </div>
@@ -41,15 +58,36 @@ export default function PortalHome() {
   const role = meQ.data?.user?.role;
   const { termLabels, timezone } = useSchoolCalendar();
   const noticesQ = useNotices({ limit: 3 });
-  const q = useQuery({ queryKey: ["portalLearners"], queryFn: () => api.get("/api/portal/learners").then((r) => r.data), enabled: !!role });
+  const q = useQuery({
+    queryKey: ["portalLearners"],
+    queryFn: () => api.get("/api/portal/learners").then((r) => r.data),
+    enabled: !!role,
+  });
   const learners = q.data?.learners || [];
   const isParent = role === "PARENT";
+  // Only the parts the school's plan includes.
+  const features = { ...ALL_ON, ...(meQ.data?.features || {}) };
+  const parts = [
+    features.fees && "fees",
+    features.exams && "results",
+    features.attendance && "attendance",
+  ].filter(Boolean);
 
   return (
     <div className="p-4 md:p-6 space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">{isParent ? "Your children" : "Your school summary"}</h1>
-        <p className="text-sm text-muted-foreground">Fees, results and attendance in one place.</p>
+        <h1 className="text-2xl font-semibold">
+          {isParent ? "Your children" : "Your school summary"}
+        </h1>
+        {parts.length > 0 && (
+          <p className="text-sm text-muted-foreground">
+            {parts
+              .join(", ")
+              .replace(/, ([^,]*)$/, " and $1")
+              .replace(/^./, (x) => x.toUpperCase())}{" "}
+            in one place.
+          </p>
+        )}
       </div>
 
       {noticesQ.data?.length > 0 && (
@@ -69,10 +107,16 @@ export default function PortalHome() {
       )}
 
       {q.isLoading && <RowsSkeleton />}
-      {q.isError && <div className="text-sm text-destructive">Couldn&apos;t load this page.</div>}
+      {q.isError && (
+        <div className="text-sm text-destructive">
+          Couldn&apos;t load this page.
+        </div>
+      )}
       {!q.isLoading && !q.isError && learners.length === 0 && (
         <div className="text-sm text-muted-foreground">
-          {isParent ? "No learners are linked to your account yet. Ask the school office." : "Nothing to show yet."}
+          {isParent
+            ? "No learners are linked to your account yet. Ask the school office."
+            : "Nothing to show yet."}
         </div>
       )}
 
@@ -90,54 +134,83 @@ export default function PortalHome() {
                   </span>
                   <span className="text-sm font-normal text-muted-foreground">
                     {st.admissionNo}
-                    {st.class ? ` · ${st.class.name}${st.class.stream ? ` ${st.class.stream}` : ""}` : ""}
+                    {st.class
+                      ? ` · ${st.class.name}${st.class.stream ? ` ${st.class.stream}` : ""}`
+                      : ""}
                   </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span>Fees</span>
-                  {owes ? (
-                    <Badge variant="destructive">Balance {kes(l.account.net)}</Badge>
-                  ) : l.account.credit > 0 ? (
-                    <Badge variant="secondary">Credit {kes(l.account.credit)}</Badge>
-                  ) : (
-                    <Badge>Fully paid</Badge>
-                  )}
-                </div>
-                {isParent && owes && <PayBox studentId={st.id} suggested={l.account.net} />}
+                {features.fees && (
+                  <div className="flex items-center justify-between">
+                    <span>Fees</span>
+                    {owes ? (
+                      <Badge variant="destructive">
+                        Balance {kes(l.account.net)}
+                      </Badge>
+                    ) : l.account.credit > 0 ? (
+                      <Badge variant="secondary">
+                        Credit {kes(l.account.credit)}
+                      </Badge>
+                    ) : (
+                      <Badge>Fully paid</Badge>
+                    )}
+                  </div>
+                )}
+                {features.fees && isParent && owes && (
+                  <PayBox studentId={st.id} suggested={l.account.net} />
+                )}
 
-                <div className="flex items-center justify-between">
-                  <span>Latest results</span>
-                  {r ? (
-                    <span>
-                      {r.exam || termLabels?.[r.term] || r.term}: <b>{r.average}</b>
-                      {r.grade ? ` · ${r.grade}` : ""}
-                      {r.position ? ` · ${r.position} of ${r.outOf}` : ""}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">None published yet</span>
-                  )}
-                </div>
+                {features.exams && (
+                  <div className="flex items-center justify-between">
+                    <span>Latest results</span>
+                    {r ? (
+                      <span>
+                        {r.exam || termLabels?.[r.term] || r.term}:{" "}
+                        <b>{r.average}</b>
+                        {r.grade ? ` · ${r.grade}` : ""}
+                        {r.position ? ` · ${r.position} of ${r.outOf}` : ""}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        None published yet
+                      </span>
+                    )}
+                  </div>
+                )}
 
-                <div className="flex items-center justify-between">
-                  <span>Attendance this term</span>
-                  {l.attendance ? (
-                    <span>
-                      <b>{l.attendance.ratePct}%</b> ({l.attendance.present + l.attendance.late} of {l.attendance.total} days)
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">No registers yet</span>
-                  )}
-                </div>
+                {features.attendance && (
+                  <div className="flex items-center justify-between">
+                    <span>Attendance this term</span>
+                    {l.attendance ? (
+                      <span>
+                        <b>{l.attendance.ratePct}%</b> (
+                        {l.attendance.present + l.attendance.late} of{" "}
+                        {l.attendance.total} days)
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        No registers yet
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex flex-wrap gap-2 pt-1">
-                  <Button asChild size="sm" variant="outline">
-                    <Link to={`/app/portal/${st.id}/statement`}>Fee statement</Link>
-                  </Button>
-                  <Button asChild size="sm" variant="outline">
-                    <Link to={`/app/portal/${st.id}/report-card`}>Report cards</Link>
-                  </Button>
+                  {features.fees && (
+                    <Button asChild size="sm" variant="outline">
+                      <Link to={`/app/portal/${st.id}/statement`}>
+                        Fee statement
+                      </Link>
+                    </Button>
+                  )}
+                  {features.exams && (
+                    <Button asChild size="sm" variant="outline">
+                      <Link to={`/app/portal/${st.id}/report-card`}>
+                        Report cards
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

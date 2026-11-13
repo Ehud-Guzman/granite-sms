@@ -38,6 +38,7 @@ import { api } from "@/api/axios";
 
 import { applyAppearance } from "@/lib/appearance";
 import QuickSearch from "@/components/QuickSearch";
+import { ALL_ON, filterByPlan, moduleOfPath } from "@/lib/planFeatures";
 
 /* =========================
    Helpers
@@ -75,6 +76,30 @@ function getPageTitle(pathname, role) {
 }
 
 // ✅ One canonical query key everywhere in the app
+const MODULE_NAME = { exams: "Exams and results", fees: "Fees", attendance: "Attendance" };
+
+/** Shown instead of a page whose module isn't on the school's plan. */
+function NotOnPlan({ module, role }) {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center p-6">
+      <div className="max-w-md rounded-2xl border bg-card p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+          <School className="h-7 w-7 text-muted-foreground" />
+        </div>
+        <h2 className="text-lg font-semibold">{MODULE_NAME[module]} isn't on your school's plan</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {role === "ADMIN"
+            ? "Upgrade the plan to use it. Your provider can switch it on from the subscription settings."
+            : "Ask the school administrator if you need it."}
+        </p>
+        <Button asChild className="mt-5">
+          <NavLink to="/app/dashboard">Back to the dashboard</NavLink>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function brandingKey(schoolId) {
   return ["settings", "branding", schoolId || "none"];
 }
@@ -100,10 +125,12 @@ export default function AppShell() {
   const schoolName =
     selectedSchool?.name ?? data?.school?.name ?? user?.school?.name ?? "-";
 
+  // What the role may use, minus modules the school's plan doesn't include.
+  const features = useMemo(() => ({ ...ALL_ON, ...(data?.features || {}) }), [data?.features]);
   const navItems = useMemo(() => {
     const base = NAV_BY_ROLE[role] || NAV_BY_ROLE.STUDENT;
-    return filterNavByCaps(role, base);
-  }, [role]);
+    return filterByPlan(filterNavByCaps(role, base), features, role);
+  }, [role, features]);
 
   const title = useMemo(() => getPageTitle(location.pathname, role), [location.pathname, role]);
 
@@ -182,7 +209,10 @@ export default function AppShell() {
           </header>
 
           <main className="flex-1 min-w-0">
-            <Outlet />
+            {(() => {
+              const m = moduleOfPath(location.pathname);
+              return m && features[m] === false ? <NotOnPlan module={m} role={role} /> : <Outlet />;
+            })()}
           </main>
         </div>
       </div>

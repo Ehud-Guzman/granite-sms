@@ -4,6 +4,7 @@
 // doing today, then the trend and the activity feed. Learners and parents get
 // their own home (features/portal), never this.
 import { Link } from "react-router-dom";
+import { ALL_ON, filterByPlan } from "@/lib/planFeatures";
 import { useQuery } from "@tanstack/react-query";
 
 import { me } from "../api/auth.api";
@@ -84,8 +85,8 @@ function timeAgo(at) {
   return d === 1 ? "yesterday" : `${d} days ago`;
 }
 
-function Activity({ q }) {
-  const items = q.data?.items || [];
+function Activity({ q, hide = [] }) {
+  const items = (q.data?.items || []).filter((it) => !hide.includes(it.module));
   return (
     <Panel
       title="Recent activity"
@@ -283,9 +284,11 @@ export default function Dashboard() {
   const termLabel = cal?.term ? `${termLabels?.[cal.term] || cal.term} ${cal.year}` : cal?.year ? String(cal.year) : "";
   const eyebrow = [cal?.today ? longDate(cal.today) : null, termLabel || null].filter(Boolean).join(" · ");
   const counts = s?.counts || {};
-  const fees = s?.fees;
+  // Only what the school's plan includes.
+  const features = { ...ALL_ON, ...(meQ.data?.features || {}) };
+  const fees = features.fees ? s?.fees : null;
   const att = s?.attendanceToday;
-  const canAttendance = role === "ADMIN" || role === "TEACHER";
+  const canAttendance = (role === "ADMIN" || role === "TEACHER") && features.attendance;
 
   if (isOwner) {
     return (
@@ -324,7 +327,7 @@ export default function Dashboard() {
       <PageHeader
         eyebrow={eyebrow}
         title={`${greeting()}, ${firstName(user)}`}
-        actions={(ACTIONS[role] || []).map((a) => (
+        actions={filterByPlan(ACTIONS[role] || [], features).map((a) => (
           <Button key={a.to} asChild size="sm" variant={a.primary ? "default" : "outline"}>
             <Link to={a.to}>{a.label}</Link>
           </Button>
@@ -355,8 +358,8 @@ export default function Dashboard() {
             {fees && fees.outstandingTotal > 0 && fees.outstandingTotal !== fees.term?.balance && (
               <StatTile label="Owed across all terms" value={compact(fees.outstandingTotal)} hint={`${kes(fees.outstandingTotal)} on ${fees.invoicesCount} invoices`} tone="alert" to="/app/reports/fees/defaulters" />
             )}
-            {role !== "BURSAR" && <LatestExam exam={s.exams?.latestSession} termLabels={termLabels} canOpen={role === "ADMIN" || role === "TEACHER"} />}
-            <Activity q={activityQ} />
+            {role !== "BURSAR" && features.exams && <LatestExam exam={s.exams?.latestSession} termLabels={termLabels} canOpen={role === "ADMIN" || role === "TEACHER"} />}
+            <Activity q={activityQ} hide={Object.keys(features).filter((k) => !features[k]).map((k) => k.toUpperCase())} />
             {role === "ADMIN" && <PlanCard planQ={planQ} />}
           </div>
         </div>

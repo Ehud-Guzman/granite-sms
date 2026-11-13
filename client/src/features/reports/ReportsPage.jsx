@@ -1,5 +1,6 @@
 // src/features/reports/ReportsPage.jsx
 import { Link, Outlet, Navigate, useLocation } from "react-router-dom";
+import { ALL_ON } from "@/lib/planFeatures";
 import { useMe } from "@/hooks/useMe";
 import { PageHeader } from "@/components/insights/Insights";
 import { PageSkeleton } from "@/components/ui/state-blocks";
@@ -15,9 +16,11 @@ export default function ReportsPage() {
 
   const role = norm(data.user.role);
 
-  const canSeeAcademic = role === "ADMIN";
-  const canSeeFees = role === "ADMIN" || role === "BURSAR";
-  const canSeeAttendance = role === "ADMIN" || role === "TEACHER";
+  // The role's reports, minus modules the school's plan doesn't include.
+  const features = { ...ALL_ON, ...(data.features || {}) };
+  const canSeeAcademic = role === "ADMIN" && features.exams;
+  const canSeeFees = (role === "ADMIN" || role === "BURSAR") && features.fees;
+  const canSeeAttendance = (role === "ADMIN" || role === "TEACHER") && features.attendance;
 
   // If user lands on /app/reports directly (or /app/reports/),
   // redirect to the best allowed section to avoid "blank outlet" feeling.

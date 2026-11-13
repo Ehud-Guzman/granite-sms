@@ -11,6 +11,7 @@ import crypto from "crypto";
 
 import { prisma } from "./lib/prisma.js";
 import { getSchoolCalendar } from "./utils/schoolTime.js";
+import { moduleAccess } from "./config/plans.js";
 
 import authRoutes from "./routes/auth.js";
 
@@ -295,8 +296,22 @@ app.get("/api/me", async (req, res) => {
       };
     }
 
+    // Which modules the school's plan includes, so menus hide the rest.
+    // A platform admin outside any school sees everything.
+    let features = { exams: true, fees: true, attendance: true };
+    if (req.schoolId) {
+      const sub = await prisma.subscription.findFirst({
+        where: { schoolId: req.schoolId },
+        orderBy: { createdAt: "desc" },
+        select: { status: true, entitlements: true, currentPeriodEnd: true },
+      });
+      // No subscription row yet: the first request makes a FREE trial (loadSubscription).
+      features = sub ? moduleAccess(sub) : { exams: true, fees: true, attendance: true };
+    }
+
     return res.json({
       calendar,
+      features,
       user: {
         ...base,
         role: req.role,

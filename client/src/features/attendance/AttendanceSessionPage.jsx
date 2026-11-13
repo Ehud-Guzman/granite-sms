@@ -98,7 +98,7 @@ export default function AttendanceSessionPage() {
         const r = recordByStudentId.get(stu.id);
         return {
           studentId: stu.id,
-          status: String(r?.status || "PRESENT").toUpperCase(),
+          status: String(r?.status || "UNMARKED").toUpperCase(),
           minutesLate: r?.minutesLate ?? null,
           comment: r?.comment ?? "",
         };
@@ -109,7 +109,7 @@ export default function AttendanceSessionPage() {
         if (!students.some((s) => String(s.id) === String(r.studentId))) {
           merged.push({
             studentId: r.studentId,
-            status: String(r?.status || "PRESENT").toUpperCase(),
+            status: String(r?.status || "UNMARKED").toUpperCase(),
             minutesLate: r?.minutesLate ?? null,
             comment: r?.comment ?? "",
           });
@@ -187,8 +187,18 @@ export default function AttendanceSessionPage() {
     setDirty(true);
   };
 
+  // Learners not marked yet (the register starts this way; a register can't
+  // be submitted until everyone has a status).
+  const unmarkedCount = local.filter((r) => r.status === "UNMARKED").length;
+
+  const markRestPresent = () => {
+    setLocal((prev) => prev.map((r) => (r.status === "UNMARKED" ? { ...r, status: "PRESENT", minutesLate: null } : r)));
+    setDirty(true);
+  };
+
   const save = () => {
-    const payload = local.map((r) => ({
+    // Unmarked rows stay unmarked on the server; only real statuses are sent.
+    const payload = local.filter((r) => r.status !== "UNMARKED").map((r) => ({
       studentId: r.studentId,
       status: r.status,
       minutesLate: r.status === "LATE" ? (r.minutesLate ?? 0) : null,
@@ -258,6 +268,12 @@ export default function AttendanceSessionPage() {
             />
 
             <div className="flex gap-2 flex-wrap">
+              {unmarkedCount > 0 && !disableEdits && (
+                <Button variant="outline" onClick={markRestPresent}>
+                  Mark remaining {unmarkedCount} present
+                </Button>
+              )}
+
               <Button onClick={save} disabled={!local.length || disableEdits || saveMut.isPending}>
                 {saveMut.isPending ? "Saving…" : "Save"}
               </Button>
@@ -265,8 +281,14 @@ export default function AttendanceSessionPage() {
               <Button
                 variant="outline"
                 onClick={() => submitMut.mutate()}
-                disabled={!local.length || disableEdits || submitMut.isPending || dirty}
-                title={dirty ? "Save your changes before submitting" : undefined}
+                disabled={!local.length || disableEdits || submitMut.isPending || dirty || unmarkedCount > 0}
+                title={
+                  unmarkedCount > 0
+                    ? `${unmarkedCount} learner(s) not marked yet`
+                    : dirty
+                      ? "Save your changes before submitting"
+                      : undefined
+                }
               >
                 {submitMut.isPending ? "Submitting…" : "Submit"}
               </Button>
@@ -370,8 +392,11 @@ export default function AttendanceSessionPage() {
                               </div>
                             </div>
 
-                            <Badge variant="outline" className="text-[10px]">
-                              {r.status}
+                            <Badge
+                              variant={r.status === "UNMARKED" ? "destructive" : "outline"}
+                              className="text-[10px]"
+                            >
+                              {r.status === "UNMARKED" ? "Not marked" : r.status}
                             </Badge>
                           </div>
 

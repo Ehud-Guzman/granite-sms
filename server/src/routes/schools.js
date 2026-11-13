@@ -5,6 +5,8 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { logAudit, actorCtx } from "../utils/audit.js";
 import { PLAN_DEFAULTS, normalizePlanCode as normalizePlan } from "../config/plans.js";
 import { isValidId } from "../utils/validate.js";
+import { sessionProblem } from "../middleware/session.js";
+import { invalidateSchoolCache } from "../middleware/tenant.js";
 
 const router = Router();
 
@@ -93,12 +95,11 @@ async function requireFreshSystemAdmin(req, res, next) {
 
     const dbUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, isActive: true },
+      select: { id: true, role: true, isActive: true, tokenVersion: true, mustChangePassword: true },
     });
 
-    if (!dbUser || !dbUser.isActive) {
-      return res.status(401).json({ message: "User not found or inactive" });
-    }
+    const problem = sessionProblem(req, dbUser);
+    if (problem) return res.status(problem.status).json(problem.body);
 
     req.role = dbUser.role;
     return next();
@@ -239,6 +240,7 @@ router.patch("/:id", async (req, res) => {
       data: { name },
       select: { id: true, name: true, isActive: true, createdAt: true },
     });
+    invalidateSchoolCache();
 
     await logAudit({
       req,
@@ -286,6 +288,8 @@ router.patch("/:id/status", async (req, res) => {
       data: { isActive },
       select: { id: true, name: true, isActive: true, createdAt: true },
     });
+    // A suspension applies on the next request, not up to 30s later (audit M10).
+    invalidateSchoolCache();
 
     await logAudit({
       req,

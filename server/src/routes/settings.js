@@ -12,6 +12,7 @@ import academicsRoutes from "./settings/academics.routes.js";
 import brandingRoutes from "./settings/branding.routes.js";
 
 import printRoutes from "./settings/print.routes.js";
+import exportRoutes from "./settings/export.routes.js";
 
 
 
@@ -48,5 +49,8 @@ router.use("/print", printRoutes);
 
 // /api/settings/backup/*
 router.use("/backup", backupRoutes);
+
+// /api/settings/export (school data as .xlsx; one learner as .json)
+router.use("/export", exportRoutes);
 
 export default router;

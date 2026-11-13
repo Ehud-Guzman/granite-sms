@@ -10,7 +10,8 @@ import RoleGuard from "./guards/RoleGuard.jsx";
 import SubscriptionBlockerProvider from "@/components/subscription/SubscriptionBlockerProvider";
 
 const Login = lazy(() => import("./pages/Login.jsx"));
-const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const HomeRoute = lazy(() => import("./features/portal/HomeRoute.jsx"));
+const PortalStatementPage = lazy(() => import("./features/portal/PortalStatementPage.jsx"));
 const Placeholder = lazy(() => import("./pages/Placeholder.jsx"));
 
 // Students
@@ -29,13 +30,17 @@ const AttendancePage = lazy(() => import("@/features/attendance/AttendancePage.j
 const AttendanceSessionPage = lazy(() => import("@/features/attendance/AttendanceSessionPage.jsx"));
 
 // Fees
-const FeesPage = lazy(() => import("@/features/fees/FeesPage.jsx"));
+const FeesRoute = lazy(() => import("@/features/fees/FeesRoute.jsx"));
 
 // Exams / Results
 const MarksEntryPage = lazy(() => import("@/features/exams/marks/MarksEntryPage.jsx"));
 const ExamsListPage = lazy(() => import("@/features/exams/ExamsListPage.jsx"));
 const SessionMarkSheetsPage = lazy(() => import("@/features/exams/SessionMarkSheetsPage.jsx"));
 const ResultsPage = lazy(() => import("@/features/results/ResultsPage.jsx"));
+const ReportCardsPage = lazy(() => import("@/features/results/ReportCardsPage.jsx"));
+
+// Notices
+const NoticesPage = lazy(() => import("@/features/notices/NoticesPage.jsx"));
 
 // Reports
 const ReportsPage = lazy(() => import("@/features/reports/ReportsPage.jsx"));
@@ -72,6 +77,7 @@ const ROLE = {
   TEACHER: "TEACHER",
   BURSAR: "BURSAR",
   STUDENT: "STUDENT",
+  PARENT: "PARENT",
 };
 
 const R = ROLE;
@@ -83,6 +89,7 @@ const ADMIN_OR_TEACHER = [R.ADMIN, R.TEACHER];
 const ADMIN_TEACHER_STUDENT = [R.ADMIN, R.TEACHER, R.STUDENT];
 const FEES_ACCESS = [R.ADMIN, R.BURSAR, R.STUDENT];
 const REPORTS_ACCESS = [R.ADMIN, R.BURSAR, R.TEACHER];
+const SCHOOL_MEMBERS = [R.ADMIN, R.TEACHER, R.BURSAR, R.STUDENT, R.PARENT];
 const FINANCE_REPORTS_ACCESS = [R.ADMIN, R.BURSAR];
 const ATTENDANCE_REPORTS_ACCESS = [R.ADMIN, R.TEACHER];
 
@@ -133,7 +140,31 @@ export default function App() {
         >
           <Route index element={<Navigate to="dashboard" replace />} />
 
-          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="dashboard" element={<HomeRoute />} />
+          <Route
+            path="notices"
+            element={
+              <RoleGuard allow={SCHOOL_MEMBERS}>
+                <NoticesPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="portal/:studentId/statement"
+            element={
+              <RoleGuard allow={[R.STUDENT, R.PARENT]}>
+                <PortalStatementPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="portal/:studentId/report-card"
+            element={
+              <RoleGuard allow={[R.STUDENT, R.PARENT]}>
+                <ReportCardsPage />
+              </RoleGuard>
+            }
+          />
 
           {/* Students */}
           <Route
@@ -204,7 +235,7 @@ export default function App() {
             path="fees"
             element={
               <RoleGuard allow={FEES_ACCESS}>
-                <FeesPage />
+                <FeesRoute />
               </RoleGuard>
             }
           />
@@ -241,6 +272,14 @@ export default function App() {
             element={
               <RoleGuard allow={ADMIN_TEACHER_STUDENT}>
                 <ResultsPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="report-cards"
+            element={
+              <RoleGuard allow={ADMIN_TEACHER_STUDENT}>
+                <ReportCardsPage />
               </RoleGuard>
             }
           />

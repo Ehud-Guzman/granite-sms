@@ -90,14 +90,10 @@ function safeMetadata(input, category) {
 function parseClientIp(req) {
   if (!req) return null;
 
-  const xf = req.headers?.["x-forwarded-for"];
-  const xr = req.headers?.["x-real-ip"];
-
-  let ip =
-    (typeof xf === "string" ? xf.split(",")[0]?.trim() : null) ||
-    (typeof xr === "string" ? xr.trim() : null) ||
-    req.socket?.remoteAddress ||
-    null;
+  // req.ip honours app.set("trust proxy", 1): it takes the address our own
+  // proxy (Render) saw. Reading X-Forwarded-For directly trusted whatever the
+  // caller wrote there, so audit IPs could be faked (audit M14).
+  let ip = req.ip || req.socket?.remoteAddress || null;
 
   if (!ip) return null;
 
@@ -186,7 +182,13 @@ export async function logAudit(opts = {}) {
       action: actionNorm,
       targetType: clampStr(targetType, MAX_TARGET_TYPE_LENGTH),
       targetId: clampStr(targetId, MAX_TARGET_ID_LENGTH),
-      metadata: safeMetadata(metadata, category),
+      // A SYSTEM_ADMIN impersonating this user did the action: record who.
+      metadata: safeMetadata(
+        req?.auth?.impersonatedBy
+          ? { ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : { value: metadata }), impersonatedBy: req.auth.impersonatedBy }
+          : metadata,
+        category
+      ),
       ip,
       userAgent,
     };

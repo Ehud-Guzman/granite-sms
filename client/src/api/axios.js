@@ -20,16 +20,6 @@ function safeUpper(v) {
   return String(v || "").trim().toUpperCase();
 }
 
-function getStoredUserRole() {
-  try {
-    const raw = localStorage.getItem("user");
-    if (!raw) return "";
-    const u = JSON.parse(raw);
-    return safeUpper(u?.role);
-  } catch {
-    return "";
-  }
-}
 
 // Single source of truth for tenant selection on client
 function getStoredSchoolId() {
@@ -44,7 +34,6 @@ function getStoredSchoolId() {
 // ---------------------------
 api.interceptors.request.use((config) => {
   const token = String(localStorage.getItem("token") || "").trim();
-  const role = getStoredUserRole(); // kept for logging/diagnostics if you need it
   const schoolId = getStoredSchoolId();
 
   config.headers = config.headers ?? {};
@@ -66,8 +55,7 @@ api.interceptors.request.use((config) => {
   else delete config.headers["x-school-id"];
 
   // Optional: useful for debugging server logs (harmless)
-  if (role) config.headers["x-role"] = role;
-  else delete config.headers["x-role"];
+  // (The role is never sent as a header: the server reads it from the database.)
 
   return config;
 });
@@ -107,6 +95,15 @@ api.interceptors.response.use(
 
     // Demo build: the server refuses every save. Say so once, kindly, with a
     // fixed toast id so repeated clicks don't stack messages.
+    // The server refuses everything except changing the password until the
+    // user has replaced their temporary one.
+    if (status === 403 && safeUpper(data?.code) === "PASSWORD_CHANGE_REQUIRED") {
+      if (!window.location.pathname.startsWith("/auth/change-password")) {
+        window.location.assign("/auth/change-password");
+      }
+      return Promise.reject(err);
+    }
+
     if (status === 403 && safeUpper(data?.code) === "DEMO_READ_ONLY") {
       toast.info(data?.message || "This is a read-only demo, so nothing can be saved.", {
         id: "demo-read-only",

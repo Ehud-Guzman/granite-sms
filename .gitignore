@@ -34,3 +34,7 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Uploaded files (logos are stored in the database now)
+uploads/
+server/uploads/

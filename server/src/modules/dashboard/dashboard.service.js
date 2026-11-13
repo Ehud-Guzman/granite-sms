@@ -1,6 +1,7 @@
 // src/modules/dashboard/dashboard.service.js
 import { prisma } from "../../lib/prisma.js";
 import { AttendanceSessionStatus, InvoiceStatus } from "@prisma/client";
+import { getSchoolCalendar, localDayRange } from "../../utils/schoolTime.js";
 
 /* =========================
    Time helpers (UTC-day window)
@@ -88,9 +89,9 @@ function mapAttendanceStatus(st) {
 export async function getSummary(req) {
   const schoolId = requireSchoolOrThrow(req);
 
-  const now = new Date();
-  const from = startOfDayUTC(now);
-  const to = endOfDayUTC(now);
+  // "Today" is the school's local day (Nairobi by default), not the UTC day.
+  const calendar = await getSchoolCalendar(schoolId);
+  const { from, to } = localDayRange(calendar.today, calendar.today, calendar.timezone);
 
   // --- Core counts ---
   const [studentsActive, classesCount, teachersCount] = await Promise.all([
@@ -133,11 +134,15 @@ export async function getSummary(req) {
     else attendanceDraft += 1;
   }
 
+  // School finances are for those who run them (audit finding H6: teachers,
+  // who are blocked from the Fees module, saw collections and arrears here).
+  const canSeeFees = ["ADMIN", "BURSAR", "SYSTEM_ADMIN"].includes(summaryRole);
+
   // --- Fees collected today (use receivedAt + exclude reversals) ---
   let feesCollectedToday = 0;
   let feesReceiptsToday = 0;
 
-  try {
+  if (canSeeFees) try {
     const agg = await prisma.feePayment.aggregate({
       where: {
         schoolId,
@@ -160,7 +165,7 @@ export async function getSummary(req) {
   let feeOutstandingTotal = 0;
   let feeInvoicesCount = 0;
 
-  try {
+  if (canSeeFees) try {
     const agg = await prisma.feeInvoice.aggregate({
       where: {
         schoolId,
@@ -214,8 +219,9 @@ export async function getSummary(req) {
   // --- Alerts (simple + useful) ---
   const alerts = {
     attendanceDraftSessionsToday: attendanceDraft,
-    feesOutstandingTotal: feeOutstandingTotal,
-    feesOutstandingInvoices: feeInvoicesCount,
+    ...(canSeeFees
+      ? { feesOutstandingTotal: feeOutstandingTotal, feesOutstandingInvoices: feeInvoicesCount }
+      : {}),
   };
 
   return {
@@ -235,12 +241,14 @@ export async function getSummary(req) {
       locked: attendanceLocked,
       recentSessions: sessionsToday.slice(0, 5),
     },
-    fees: {
-      collectedToday: feesCollectedToday,
-      receiptsToday: feesReceiptsToday,
-      outstandingTotal: feeOutstandingTotal,
-      invoicesCount: feeInvoicesCount,
-    },
+    fees: canSeeFees
+      ? {
+          collectedToday: feesCollectedToday,
+          receiptsToday: feesReceiptsToday,
+          outstandingTotal: feeOutstandingTotal,
+          invoicesCount: feeInvoicesCount,
+        }
+      : null,
     exams: {
       latestSession: latestExamSession,
     },

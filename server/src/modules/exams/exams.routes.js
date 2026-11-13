@@ -2,9 +2,9 @@
 import { Router } from "express";
 import * as ctrl from "./exams.controllers.js";
 
-import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { requireRole } from "../../middleware/auth.js";
 import { requireEntitlement } from "../../middleware/entitlements.js";
-import { tenantContext, requireTenant } from "../../middleware/tenant.js";
+import { requireTenant } from "../../middleware/tenant.js";
 
 const router = Router();
 
@@ -23,8 +23,7 @@ const router = Router();
  */
 
 
-router.use(requireAuth);
-router.use(tenantContext);
+// requireAuth + tenantContext already run for every /api route (app.js).
 router.use(requireTenant);
 
 // ------------------------
@@ -111,6 +110,26 @@ router.post(
   ctrl.publishResults
 );
 
+// Take published results back to draft to correct them (ADMIN, reason required)
+router.post(
+  "/sessions/:id/unpublish",
+  requireRole("ADMIN"),
+  requireEntitlement("EXAMS_WRITE"),
+  ctrl.unpublishResults
+);
+
+// ------------------------
+// Term report cards (published exams of a term, combined by weight)
+// ------------------------
+router.get("/report-cards", requireRole("ADMIN", "TEACHER"), requireEntitlement("EXAMS_READ"), ctrl.getClassReportCards);
+router.get(
+  "/report-cards/students/:studentId",
+  requireRole("ADMIN", "TEACHER", "STUDENT", "PARENT"),
+  requireEntitlement("EXAMS_READ"),
+  ctrl.getStudentReportCard
+);
+router.put("/report-cards/comments", requireRole("ADMIN", "TEACHER"), requireEntitlement("EXAMS_WRITE"), ctrl.saveReportComment);
+
 // ------------------------
 // Results read
 // ------------------------
@@ -123,7 +142,7 @@ router.get(
 
 router.get(
   "/sessions/:id/results/students/:studentId",
-  requireRole("ADMIN", "TEACHER", "STUDENT"),
+  requireRole("ADMIN", "TEACHER", "STUDENT", "PARENT"),
   requireEntitlement("EXAMS_READ"),
   ctrl.getStudentResults
 );

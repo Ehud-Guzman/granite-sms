@@ -64,6 +64,8 @@ jobs:
         if: env.DATABASE_URL != ''
         run: |
           npm run seed:demo -- --confirm-write --reset | tee ../seed.txt
+          # Published results are shown from frozen copies; make them for the seed.
+          npm run results:freeze -- --write | tail -n 1 | tee -a ../seed.txt
           {
             echo '### Demo refreshed'
             echo '```'

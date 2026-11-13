@@ -23,6 +23,12 @@ import {
   assertRecordsPayload,
   assertMinAbsences,
 } from "./attendance.validators.js";
+import { getSchoolCalendar, termForDate } from "../../utils/schoolTime.js";
+import { notifyAbsences } from "../sms/notify.js";
+
+// Teachers can fill in a missed register for up to this many days back;
+// older ones need an admin (audit M2).
+const TEACHER_BACKDATE_DAYS = Number(process.env.ATTENDANCE_TEACHER_BACKDATE_DAYS || 7);
 
 /**
  * Normalize user id across token shapes.
@@ -47,8 +53,47 @@ export async function createOrOpenSession(req, res) {
     if (!classId) return res.status(400).json({ message: "classId is required" });
 
     const d = parseISODateOnly(date);
-    const y = assertYear(year);
-    assertTerm(term);
+    const dateStr = String(date);
+    const cal = await getSchoolCalendar(schoolId);
+
+    if (dateStr > cal.today) {
+      return res.status(400).json({ message: "You can't take a register for a future date.", code: "ATTENDANCE_FUTURE_DATE" });
+    }
+    if (role === "TEACHER") {
+      const oldest = new Date(`${cal.today}T00:00:00Z`);
+      oldest.setUTCDate(oldest.getUTCDate() - TEACHER_BACKDATE_DAYS);
+      if (dateStr < oldest.toISOString().slice(0, 10)) {
+        return res.status(403).json({
+          message: `Registers older than ${TEACHER_BACKDATE_DAYS} days can only be entered by an admin.`,
+          code: "ATTENDANCE_TOO_OLD",
+        });
+      }
+    }
+
+    // With term dates set, the date decides the year and term (and must be
+    // inside a term). Without them, the year must match the date.
+    let y;
+    let t;
+    const dateYear = Number(dateStr.slice(0, 4));
+    const yearHasTermDates = cal.termDates.some((td) => td.year === dateYear);
+    if (yearHasTermDates) {
+      const inTerm = termForDate(cal.termDates, dateStr);
+      if (!inTerm) {
+        return res.status(400).json({
+          message: "That date is outside term time (see term dates in Settings).",
+          code: "ATTENDANCE_OUTSIDE_TERM",
+        });
+      }
+      y = inTerm.year;
+      t = inTerm.term;
+    } else {
+      y = assertYear(year ?? dateYear);
+      if (y !== dateYear) {
+        return res.status(400).json({ message: `The year (${y}) doesn't match the date (${dateStr}).` });
+      }
+      assertTerm(term);
+      t = term;
+    }
 
     // Teacher class access enforcement (ADMIN bypass)
     if (role === "TEACHER") {
@@ -60,7 +105,7 @@ export async function createOrOpenSession(req, res) {
       classId,
       date: d,
       year: y,
-      term,
+      term: t,
       takenByUserId: userId,
       role,
     });
@@ -147,6 +192,8 @@ export async function submit(req, res) {
     if (!editorUserId) return res.status(401).json({ message: "Missing user id in token" });
 
     const updated = await submitSession({ schoolId, sessionId, editorUserId, role });
+    // Absence alerts to parents, if the school has them on (never blocks the submit).
+    notifyAbsences({ schoolId, sessionId, actorId: editorUserId });
     return res.json(updated);
   } catch (err) {
     return res.status(err.statusCode || 400).json({ message: err.message });

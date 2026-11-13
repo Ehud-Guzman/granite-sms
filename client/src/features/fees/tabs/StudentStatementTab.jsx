@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input";
 import StudentLookupByAdmission from "../components/StudentLookupByAdmission";
 import QueryBlock from "../components/QueryBlock";
 import { money } from "../components/FeeMoney";
+import { useCurrentTermState, useCurrentYearState, dateIn, useSchoolCalendar } from "@/lib/schoolCalendar";
 
 export default function StudentStatementTab() {
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [term, setTerm] = useState("TERM1");
+  const { timezone } = useSchoolCalendar();
+  const [year, setYear] = useCurrentYearState();
+  const [term, setTerm] = useCurrentTermState();
 
   // Store student object once selected by admissionNo
   const [student, setStudent] = useState(null);
@@ -127,6 +129,23 @@ export default function StudentStatementTab() {
             </CardContent>
           </Card>
 
+          {/* WHOLE ACCOUNT (all terms) */}
+          {statementQ.data?.account && (
+            <Card>
+              <CardContent className="pt-4 flex flex-wrap gap-4 text-sm">
+                <div>
+                  Owed across all terms: <b>{money(statementQ.data.account.owed)}</b>
+                </div>
+                <div>
+                  Credit on account: <b>{money(statementQ.data.account.credit)}</b>
+                </div>
+                <div>
+                  {statementQ.data.account.net > 0 ? "Balance due" : "In credit"}: <b>{money(Math.abs(statementQ.data.account.net))}</b>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* TIMELINE */}
           <Card>
             <CardHeader className="pb-2">
@@ -147,15 +166,21 @@ export default function StudentStatementTab() {
                       <div className="font-medium">{t.type}</div>
 
                       <div className="text-xs text-muted-foreground">
-                        {t.at ? new Date(t.at).toISOString().slice(0, 10) : "—"} •{" "}
+                        {t.at ? dateIn(t.at, timezone) : "—"} •{" "}
                         {t.type === "PAYMENT"
                           ? `Receipt ${t.receiptNo || "—"}`
-                          : `Invoice ${t.ref ? String(t.ref).slice(0, 8) + "…" : "—"}`}
+                          : `Invoice ${t.year || ""} ${t.term || ""}`}
                       </div>
 
                       <div className="text-xs">
                         Amount: <b>{money(t.amount ?? 0)}</b>
                       </div>
+                      {t.type === "PAYMENT" && (t.appliedTo?.length > 0 || t.toCredit > 0) && (
+                        <div className="text-xs text-muted-foreground">
+                          {(t.appliedTo || []).map((a) => `${money(a.amount)} to ${a.invoiceNo || "invoice"}`).join(", ")}
+                          {t.toCredit > 0 ? `${t.appliedTo?.length ? ", " : ""}${money(t.toCredit)} kept as credit` : ""}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

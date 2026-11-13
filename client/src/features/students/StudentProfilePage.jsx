@@ -1,3 +1,4 @@
+import { useState } from "react";
 // src/features/students/StudentProfilePage.jsx
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,6 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { confirmAction } from "@/lib/confirm-store";
+import GuardiansCard from "./GuardiansCard";
+import PrivacyCard from "./PrivacyCard";
+import RecordLeavingDialog from "./RecordLeavingDialog";
+import { EXIT_LABELS } from "./exitLabels";
+import { downloadFromApi } from "@/lib/download";
 
 const fullName = (s) => `${s?.firstName || ""} ${s?.lastName || ""}`.trim();
 
@@ -30,6 +36,7 @@ function fmtDate(d) {
 export default function StudentProfilePage() {
   const { id } = useParams();
   const qc = useQueryClient();
+  const [leavingOpen, setLeavingOpen] = useState(false);
 
   const { data: meData, isLoading: meLoading } = useMe();
   const role = meData?.role ?? meData?.user?.role;
@@ -108,9 +115,16 @@ export default function StudentProfilePage() {
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-2xl font-semibold">{fullName(s)}</h1>
             <Badge variant={s?.isActive ? "default" : "secondary"}>
-              {s?.isActive ? "Active" : "Inactive"}
+              {s?.isActive ? "Active" : EXIT_LABELS[s?.exitStatus] || "Inactive"}
             </Badge>
           </div>
+          {!s?.isActive && s?.exitStatus && (
+            <div className="text-sm text-muted-foreground">
+              {EXIT_LABELS[s.exitStatus]}
+              {s.exitDate ? ` on ${fmtDate(s.exitDate)}` : ""}
+              {s.exitNote ? ` · ${s.exitNote}` : ""}
+            </div>
+          )}
           <div className="text-muted-foreground">
             Admission No: <span className="font-medium text-foreground">{s.admissionNo}</span>
           </div>
@@ -120,6 +134,30 @@ export default function StudentProfilePage() {
           <Button variant="outline" asChild size="sm">
             <Link to="/app/students">Back to List</Link>
           </Button>
+
+          {role === "ADMIN" && (
+            <Button
+              variant="outline"
+              size="sm"
+              title="Everything held about this learner (for a parent's data request)"
+              onClick={() =>
+                downloadFromApi(`/api/settings/export/student/${s.id}`, `learner-${s.admissionNo}.json`).catch(() =>
+                  toast.error("Export failed")
+                )
+              }
+            >
+              Export data
+            </Button>
+          )}
+
+          {role === "ADMIN" && s?.isActive && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setLeavingOpen(true)}>
+                Record leaving
+              </Button>
+              <RecordLeavingDialog student={s} open={leavingOpen} onOpenChange={setLeavingOpen} />
+            </>
+          )}
 
           {role === "ADMIN" && s?.isActive && (
             <Button
@@ -191,6 +229,10 @@ export default function StudentProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <GuardiansCard studentId={s.id} canEdit={role === "ADMIN"} />
+
+      {role === "ADMIN" && <PrivacyCard key={`${s.id}-${s.consentAt}-${s.anonymisedAt}`} student={s} />}
 
       {/* Status & Additional Info */}
       <Card>

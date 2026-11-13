@@ -149,7 +149,7 @@ const SURNAMES = [
 const rows = {
   school: [], schoolSettings: [], subscription: [], user: [], teacher: [], class: [], student: [],
   subject: [], classTeacher: [], teachingAssignment: [], feeItem: [], feePlan: [], feePlanItem: [],
-  feeInvoice: [], feeInvoiceLine: [], feePayment: [], attendanceSession: [], attendanceRecord: [],
+  feeInvoice: [], feeInvoiceLine: [], feePayment: [], feePaymentAllocation: [], attendanceSession: [], attendanceRecord: [],
   attendanceEditLog: [], examType: [], examSession: [], markSheet: [], mark: [], examAuditLog: [],
   auditLog: [],
 };
@@ -403,11 +403,13 @@ function build() {
     const method = r < 0.62 ? "MPESA" : r < 0.87 ? "BANK" : "CASH";
     const reference = method === "MPESA" ? randCode(10) : method === "BANK" ? `EQB-${randInt(100000, 999999)}` : null;
     const p = {
-      id: newId(), schoolId: S, invoiceId: invoice.id, clientTxnId: null, amount, method, reference,
+      id: newId(), schoolId: S, studentId: invoice.studentId, invoiceId: invoice.id, clientTxnId: null, amount, method, reference,
       receivedAt: at, receivedBy: BURSAR_NAME, receiptNo: receiptNo(at), receiptIssuedAt: at, createdAt: at,
       isReversed: false, ...extra,
     };
     rows.feePayment.push(p);
+    // The whole payment goes to this invoice (see FeePaymentAllocation).
+    rows.feePaymentAllocation.push({ id: newId(), schoolId: S, paymentId: p.id, invoiceId: invoice.id, amount, createdAt: at });
     if (!p.isReversed) {
       rows.auditLog.push({
         id: newId(), actorId: bursar.id, actorRole: "BURSAR", actorEmail: bursar.email, schoolId: S,
@@ -726,7 +728,7 @@ function build() {
 const ORDER = [
   "school", "schoolSettings", "subscription", "user", "teacher", "class", "student", "subject",
   "classTeacher", "teachingAssignment", "feeItem", "feePlan", "feePlanItem", "feeInvoice",
-  "feeInvoiceLine", "feePayment", "attendanceSession", "attendanceRecord", "attendanceEditLog",
+  "feeInvoiceLine", "feePayment", "feePaymentAllocation", "attendanceSession", "attendanceRecord", "attendanceEditLog",
   "examType", "examSession", "markSheet", "mark", "examAuditLog", "auditLog",
 ];
 

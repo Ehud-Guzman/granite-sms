@@ -5,6 +5,9 @@ import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
 import { loadSubscription, requireLimit, effectiveCap, capHit } from "../middleware/subscription.js";
 import { logAudit, actorCtx } from "../utils/audit.js";
+import { teacherClassIds } from "../utils/teacherScope.js";
+import { parseGender, parseDob, checkNames } from "../utils/studentFields.js";
+import { anonymiseStudent } from "../modules/privacy/privacy.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -20,6 +23,7 @@ const toDateOrNull = (value) => {
 };
 
 const cleanStr = (v) => (v == null ? null : String(v).trim());
+
 
 const pickStudentUpdate = (body) => {
   const allowed = [
@@ -55,6 +59,8 @@ const pickStudentUpdate = (body) => {
   return data;
 };
 
+
+
 // --------------------
 // STUDENTS
 // Base path: /api/students
@@ -72,8 +78,6 @@ router.post(
       const admissionNo = cleanStr(req.body?.admissionNo);
       const firstName = cleanStr(req.body?.firstName);
       const lastName = cleanStr(req.body?.lastName);
-      const gender = cleanStr(req.body?.gender);
-      const dob = req.body?.dob ? toDateOrNull(req.body.dob) : null;
       const classId = req.body?.classId
         ? String(req.body.classId).trim()
         : null;
@@ -82,6 +86,12 @@ router.post(
         return res
           .status(400)
           .json({ message: "admissionNo, firstName, lastName are required" });
+      }
+      const g = parseGender(req.body?.gender);
+      const birth = parseDob(req.body?.dob);
+      const nameErr = checkNames({ admissionNo, firstName, lastName });
+      if (g.error || birth.error || nameErr) {
+        return res.status(400).json({ message: g.error || birth.error || nameErr });
       }
 
       // Validate class belongs to school (if provided)
@@ -103,8 +113,8 @@ router.post(
           admissionNo,
           firstName,
           lastName,
-          gender: gender || null,
-          dob,
+          gender: g.value,
+          dob: birth.value,
           classId: classRow ? classRow.id : null,
           isActive: true,
         },
@@ -159,16 +169,7 @@ router.get("/lookup", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res
       const teacherId = req.user?.teacherId;
       if (!teacherId) return res.status(403).json({ message: "Forbidden" });
 
-      const isAssigned = await prisma.classTeacher.findFirst({
-        where: {
-          teacherId: String(teacherId),
-          isActive: true,
-          classId: student.classId ?? "__none__",
-          class: { schoolId },
-          teacher: { schoolId },
-        },
-        select: { id: true },
-      });
+      const isAssigned = (await teacherClassIds(schoolId, teacherId)).includes(student.classId);
 
       if (!isAssigned)
         return res
@@ -221,17 +222,7 @@ router.get("/", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
       const teacherId = req.user?.teacherId;
       if (!teacherId) return res.json([]);
 
-      const assigned = await prisma.classTeacher.findMany({
-        where: {
-          teacherId: String(teacherId),
-          isActive: true,
-          class: { schoolId },
-          teacher: { schoolId },
-        },
-        select: { classId: true },
-      });
-
-      const allowedClassIds = assigned.map((x) => x.classId);
+      const allowedClassIds = await teacherClassIds(schoolId, teacherId);
       if (allowedClassIds.length === 0) return res.json([]);
 
       if (where.classId && !allowedClassIds.includes(where.classId)) {
@@ -243,10 +234,56 @@ router.get("/", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
       if (!where.classId) where.classId = { in: allowedClassIds };
     }
 
+    // Optional search over name / admission number.
+    const q = String(req.query.q || "").trim().slice(0, 80);
+    if (q) {
+      where.OR = [
+        { admissionNo: { contains: q, mode: "insensitive" } },
+        { firstName: { contains: q, mode: "insensitive" } },
+        { lastName: { contains: q, mode: "insensitive" } },
+      ];
+    }
+    // Only the class fields the lists show (was the whole class row each time).
+    const select = {
+      id: true,
+      schoolId: true,
+      userId: true,
+      admissionNo: true,
+      firstName: true,
+      lastName: true,
+      gender: true,
+      dob: true,
+      classId: true,
+      isActive: true,
+      exitStatus: true,
+      exitDate: true,
+      exitNote: true,
+      createdAt: true,
+      updatedAt: true,
+      class: { select: { id: true, name: true, stream: true, year: true } },
+    };
+
+    // ?page=N: { items, total, page, pageSize }. Without it: the full array.
+    if (req.query.page !== undefined) {
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 100, 1), 500);
+      const [items, total] = await Promise.all([
+        prisma.student.findMany({
+          where,
+          orderBy: [{ admissionNo: "asc" }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          select,
+        }),
+        prisma.student.count({ where }),
+      ]);
+      return res.json({ items, total, page, pageSize });
+    }
+
     const students = await prisma.student.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      include: { class: true },
+      select,
     });
 
     return res.json(students);
@@ -273,16 +310,7 @@ router.get("/:id", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) =
       const teacherId = req.user?.teacherId;
       if (!teacherId) return res.status(403).json({ message: "Forbidden" });
 
-      const isAssigned = await prisma.classTeacher.findFirst({
-        where: {
-          teacherId: String(teacherId),
-          isActive: true,
-          classId: student.classId ?? "__none__",
-          class: { schoolId },
-          teacher: { schoolId },
-        },
-        select: { id: true },
-      });
+      const isAssigned = (await teacherClassIds(schoolId, teacherId)).includes(student.classId);
 
       if (!isAssigned) return res.status(403).json({ message: "Forbidden" });
     }
@@ -312,6 +340,18 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
     if ("lastName" in data && !data.lastName) {
       return res.status(400).json({ message: "lastName cannot be empty" });
     }
+    if ("gender" in (req.body || {})) {
+      const g = parseGender(req.body.gender);
+      if (g.error) return res.status(400).json({ message: g.error });
+      data.gender = g.value;
+    }
+    if ("dob" in (req.body || {})) {
+      const birth = parseDob(req.body.dob);
+      if (birth.error) return res.status(400).json({ message: birth.error });
+      data.dob = birth.value;
+    }
+    const nameErr = checkNames(data);
+    if (nameErr) return res.status(400).json({ message: nameErr });
 
     if ("classId" in data) {
       if (data.classId) {
@@ -333,6 +373,8 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
     });
     if (!before)
       return res.status(404).json({ message: "Student not found" });
+    if (before.anonymisedAt)
+      return res.status(409).json({ message: "This learner has been anonymised and can't be edited." });
 
     // Reactivation (isActive false -> true) bypasses requireLimit(), which
     // only ever runs on POST — enforce the same student cap here so an
@@ -351,6 +393,11 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
           limit: cap,
         });
       }
+    }
+
+    // Coming back clears the record of why they left.
+    if (data.isActive === true && before.isActive === false) {
+      Object.assign(data, { exitStatus: null, exitDate: null, exitNote: null });
     }
 
     await prisma.student.updateMany({
@@ -381,6 +428,110 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
         .json({ message: "Admission number already exists in this school" });
     }
     console.error("UPDATE STUDENT ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ADMIN: record that a learner has left: graduated, transferred or left.
+// They become inactive (frees a plan slot); their records are kept.
+// Body: { status: "GRADUATED"|"TRANSFERRED"|"LEFT", date?: "YYYY-MM-DD", note? }
+router.patch("/:id/exit", requireRole("ADMIN"), async (req, res) => {
+  const schoolId = req.schoolId;
+  const status = String(req.body?.status || "").toUpperCase();
+  if (!["GRADUATED", "TRANSFERRED", "LEFT"].includes(status)) {
+    return res.status(400).json({ message: "status must be GRADUATED, TRANSFERRED or LEFT" });
+  }
+  const date = req.body?.date ? new Date(`${req.body.date}T00:00:00Z`) : new Date();
+  if (Number.isNaN(date.getTime()) || date > new Date(Date.now() + 86400000)) {
+    return res.status(400).json({ message: "date must be a past or current date (YYYY-MM-DD)" });
+  }
+  const note = req.body?.note ? String(req.body.note).trim().slice(0, 300) : null;
+
+  const before = await prisma.student.findFirst({ where: { id: String(req.params.id), schoolId } });
+  if (!before) return res.status(404).json({ message: "Student not found" });
+  if (before.anonymisedAt) return res.status(409).json({ message: "This learner has been anonymised." });
+
+  await prisma.student.updateMany({
+    where: { id: before.id, schoolId },
+    data: { isActive: false, exitStatus: status, exitDate: date, exitNote: note },
+  });
+  const updated = await prisma.student.findFirst({ where: { id: before.id, schoolId }, include: { class: true } });
+
+  await logAudit({
+    req,
+    ...actorCtx(req),
+    schoolId,
+    action: "STUDENT_EXITED",
+    targetType: "STUDENT",
+    targetId: before.id,
+    metadata: { status, date: date.toISOString().slice(0, 10), note },
+  });
+  return res.json({ student: updated });
+});
+
+// ADMIN: record (or withdraw) a parent's consent to keep the child's data.
+// Body: { given: boolean, by?: "Mary W (mother)", date?: "YYYY-MM-DD", photo?: boolean }
+router.patch("/:id/consent", requireRole("ADMIN"), async (req, res) => {
+  const schoolId = req.schoolId;
+  const st = await prisma.student.findFirst({ where: { id: String(req.params.id), schoolId }, select: { id: true, anonymisedAt: true } });
+  if (!st) return res.status(404).json({ message: "Student not found" });
+  if (st.anonymisedAt) return res.status(409).json({ message: "This learner has been anonymised." });
+
+  const given = req.body?.given === true;
+  const data = { photoConsent: given && req.body?.photo === true };
+  if (given) {
+    const by = String(req.body?.by || "").trim().slice(0, 120);
+    if (by.length < 2) return res.status(400).json({ message: "Say who gave consent (e.g. the parent's name)." });
+    const date = req.body?.date ? new Date(`${req.body.date}T00:00:00Z`) : new Date();
+    if (Number.isNaN(date.getTime()) || date > new Date(Date.now() + 86400000)) {
+      return res.status(400).json({ message: "date must be a past or current date (YYYY-MM-DD)" });
+    }
+    Object.assign(data, { consentAt: date, consentBy: by });
+  } else {
+    Object.assign(data, { consentAt: null, consentBy: null });
+  }
+  const updated = await prisma.student.update({
+    where: { id: st.id },
+    data,
+    select: { id: true, consentAt: true, consentBy: true, photoConsent: true },
+  });
+  await logAudit({
+    req,
+    ...actorCtx(req),
+    schoolId,
+    action: given ? "STUDENT_CONSENT_RECORDED" : "STUDENT_CONSENT_WITHDRAWN",
+    targetType: "STUDENT",
+    targetId: st.id,
+    metadata: { photo: data.photoConsent },
+  });
+  return res.json({ consent: updated });
+});
+
+// ADMIN: remove a former learner's personal details (Data Protection Act).
+// Body: { confirm: "<admission number>" }. Fee and academic records stay,
+// without anything that identifies the child or their parents.
+router.post("/:id/anonymise", requireRole("ADMIN"), async (req, res) => {
+  const schoolId = req.schoolId;
+  const st = await prisma.student.findFirst({ where: { id: String(req.params.id), schoolId }, select: { id: true, admissionNo: true } });
+  if (!st) return res.status(404).json({ message: "Student not found" });
+  if (String(req.body?.confirm || "").trim() !== st.admissionNo) {
+    return res.status(400).json({ message: "Type the learner's admission number to confirm. This can't be undone." });
+  }
+  try {
+    const result = await anonymiseStudent({ schoolId, studentId: st.id });
+    await logAudit({
+      req,
+      ...actorCtx(req),
+      schoolId,
+      action: "STUDENT_ANONYMISED",
+      targetType: "STUDENT",
+      targetId: st.id,
+      metadata: { anonymised: true, guardiansRemoved: result.guardiansRemoved },
+    });
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    if (err?.status) return res.status(err.status).json({ message: err.message });
+    console.error("ANONYMISE STUDENT ERROR:", err);
     return res.status(500).json({ message: "Server error" });
   }
 });

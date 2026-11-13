@@ -12,7 +12,14 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
     "prisma:studio": "prisma studio",
-    "seed:demo": "node prisma/seedDemo.js"
+    "seed:demo": "node prisma/seedDemo.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "fees:reconcile": "node scripts/reconcileFees.js",
+    "privacy:retention": "node scripts/privacyRetention.js",
+    "db:orphans": "node scripts/findOrphans.js",
+    "db:drift": "node scripts/checkDrift.js",
+    "results:freeze": "node scripts/freezePublishedResults.js"
   },
   "keywords": [],
   "author": "",
@@ -33,6 +40,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.11",
-    "prisma": "^6.19.1"
+    "prisma": "^6.19.1",
+    "supertest": "^7.1.4",
+    "vitest": "^4.1.12"
   }
 }

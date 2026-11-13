@@ -268,10 +268,12 @@ async function applyPayment({
   isReversal = false,
   reversalReason = null,
 }) {
-  // create payment
+  const inv = await prisma.feeInvoice.findUnique({ where: { id: invoiceId }, select: { studentId: true } });
+  // create payment (owned by the learner, allocated to this invoice)
   const payment = await prisma.feePayment.create({
     data: {
       schoolId,
+      studentId: inv.studentId,
       invoiceId,
       amount,
       method,
@@ -291,6 +293,8 @@ async function applyPayment({
         : {}),
     },
   });
+
+  await prisma.feePaymentAllocation.create({ data: { schoolId, paymentId: payment.id, invoiceId, amount } });
 
   // recompute invoice totals safely (exclude reversed payments)
   const invoice = await prisma.feeInvoice.findUnique({ where: { id: invoiceId } });
@@ -327,6 +331,20 @@ async function main() {
   if (process.env.NODE_ENV === "production" && process.env.SEED_ALLOW_PROD !== "true") {
     throw new Error(
       "Refusing to seed in production. Set SEED_ALLOW_PROD=true only if you truly mean it."
+    );
+  }
+  // NODE_ENV is often unset on a laptop whose .env points at a cloud database
+  // (audit M12). Only seed local databases unless explicitly allowed.
+  let host = "";
+  try {
+    host = new URL(process.env.DATABASE_URL || "").hostname;
+  } catch {
+    host = "";
+  }
+  const local = ["localhost", "127.0.0.1", "db", "host.docker.internal"].includes(host);
+  if (!local && process.env.SEED_ALLOW_REMOTE !== "true") {
+    throw new Error(
+      `Refusing to seed the database at "${host}": it is not local. Set SEED_ALLOW_REMOTE=true if you mean it.`
     );
   }
 

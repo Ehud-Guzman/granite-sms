@@ -235,8 +235,19 @@ router.post(
       if (!backupId) return sendError(res, 400, "Invalid backup id");
 
       const mode = safeStr(req.body?.mode || "MERGE").toUpperCase();
-      if (!["MERGE", "REPLACE"].includes(mode)) {
-        return sendError(res, 400, "mode must be MERGE or REPLACE");
+      // REPLACE wipes the school first, but snapshots hold no fees, payments,
+      // marks or attendance, so it would destroy them (and it fails anyway
+      // once any exist). Off until snapshots cover every table (audit C2).
+      if (mode === "REPLACE") {
+        return res.status(403).json({
+          message:
+            "Replace restore is switched off: snapshots don't include fees, marks or attendance. " +
+            "Use the database backups for a full rollback.",
+          code: "RESTORE_REPLACE_DISABLED",
+        });
+      }
+      if (mode !== "MERGE") {
+        return sendError(res, 400, "mode must be MERGE");
       }
 
       const targetSchoolIdRaw = req.body?.targetSchoolId ? safeStr(req.body.targetSchoolId) : null;

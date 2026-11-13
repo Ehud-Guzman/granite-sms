@@ -22,12 +22,14 @@ import BackupsRestoreTab from "@/features/settings/backup/BackupsRestoreTab.jsx"
 import AuditLogsTab from "@/features/settings/logs/AuditLogsTab.jsx";
 import BrandingPrintTab from "@/features/settings/branding/BrandingPrintTab.jsx";
 import CurriculumSettingsTab from "@/features/settings/curriculum/CurriculumSettingsTab.jsx";
+import SmsSettingsTab from "@/features/settings/sms/SmsSettingsTab.jsx";
 
 const ALL_TABS = [
   { key: "general", label: "General" },
   { key: "schools", label: "Schools" },
   { key: "users", label: "Users" },
   { key: "curriculum", label: "Curriculum" },
+  { key: "sms", label: "SMS" },
   { key: "security", label: "Security" },
   { key: "subs", label: "Subscriptions" },
   { key: "backup", label: "Backups" },
@@ -74,6 +76,9 @@ function getTabPolicy(tabKey, caps, ctx) {
         return !!caps.canManageSubscriptions;
       case "logs":
         return !!caps.canViewAuditLogs;
+      // School admins run their SMS; the platform owner doesn't.
+      case "sms":
+        return !ctx.isSystemAdmin;
       default:
         return true;
     }
@@ -208,6 +213,8 @@ export default function SettingsPage() {
         return <UsersSettingsTab />;
       case "curriculum":
         return <CurriculumSettingsTab />;
+      case "sms":
+        return <SmsSettingsTab />;
       case "security":
         return <SecuritySettingsTab />;
       case "subs":

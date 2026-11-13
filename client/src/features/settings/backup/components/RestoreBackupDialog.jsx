@@ -109,14 +109,12 @@ export default function RestoreBackupDialog({ backupId, defaultSchoolId, onDone 
             >
               MERGE (Safe)
             </Button>
-            <Button
-              type="button"
-              variant={mode === "REPLACE" ? "destructive" : "outline"}
-              onClick={() => setMode("REPLACE")}
-              disabled={loading}
-            >
-              REPLACE (Rollback)
-            </Button>
+            {/* REPLACE restore is switched off on the server: snapshots don't contain
+                fees, marks or attendance, so a wipe-and-restore would lose them. Full
+                rollbacks use the database backups (docs/BACKUPS.md). */}
+            <span className="text-xs text-muted-foreground self-center">
+              Full rollback is done from the database backups, not here.
+            </span>
           </div>
 
           <DangerNotice mode={mode} />

@@ -33,6 +33,8 @@ import {
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingState, ErrorState, EmptyState, PageSkeleton } from "@/components/ui/state-blocks";
+import { useCurrentYearState } from "@/lib/schoolCalendar";
+import PromotionDialog from "./PromotionDialog";
 
 export default function ClassesListPage() {
   const { data: meData, isLoading: meLoading } = useMe();
@@ -41,7 +43,8 @@ export default function ClassesListPage() {
   const role = String(meData?.user?.role || meData?.role || "").toUpperCase();
   const tenantId = String(meData?.user?.schoolId || meData?.schoolId || "").trim();
 
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useCurrentYearState(true);
+  const [promoOpen, setPromoOpen] = useState(false);
   const [q, setQ] = useState("");
 
   const yearNum = year ? Number(year) : undefined;
@@ -136,6 +139,10 @@ export default function ClassesListPage() {
 
         {role === "ADMIN" && (
           <div className="flex flex-col items-start md:items-end gap-2">
+            <Button variant="outline" onClick={() => setPromoOpen(true)}>
+              End-of-year promotion
+            </Button>
+            <PromotionDialog open={promoOpen} onOpenChange={setPromoOpen} fromYear={Number(year) || new Date().getFullYear()} />
             <ClassFormDrawer defaultYear={Number(year) || new Date().getFullYear()}>
               <Button
                 disabled={!canCreateClass}

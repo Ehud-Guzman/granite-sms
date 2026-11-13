@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { useCurrentTermState, todayIn, useSchoolCalendar } from "@/lib/schoolCalendar";
 
 function fmtClass(c) {
   return `${c.name}${c.stream ? ` ${c.stream}` : ""} (${c.year})`;
@@ -48,6 +49,7 @@ function safeDateLabel(v) {
 }
 
 export default function AttendancePage() {
+  const { timezone, today } = useSchoolCalendar();
   const nav = useNavigate();
   const qc = useQueryClient();
 
@@ -55,8 +57,8 @@ export default function AttendancePage() {
   const role = meData?.role ?? meData?.user?.role;
 
   const [classId, setClassId] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [term, setTerm] = useState("TERM1"); // required by backend
+  const [date, setDate] = useState(() => todayIn(timezone));
+  const [term, setTerm] = useCurrentTermState(); // required by backend
   const [status, setStatus] = useState(""); // optional filter
 
   const year = useMemo(() => new Date(date).getFullYear(), [date]);
@@ -168,7 +170,7 @@ export default function AttendancePage() {
             </select>
 
             {/* Date */}
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} />
 
             {/* Term */}
             <select

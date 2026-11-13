@@ -217,13 +217,14 @@ export default function Login() {
           <CardContent>
             <form onSubmit={onSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                {/* Parents can sign in with their phone number. */}
+                <Label htmlFor="email">Email or phone</Label>
                 <Input
                   id="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@school.ac.ke"
-                  autoComplete="email"
+                  placeholder="name@school.ac.ke or 0712 345 678"
+                  autoComplete="username"
                   disabled={loading}
                 />
               </div>

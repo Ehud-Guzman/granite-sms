@@ -3,6 +3,7 @@ import { Router } from "express";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 
 import { prisma } from "../../lib/prisma.js";
@@ -151,23 +152,21 @@ function brandingResponse(schoolId, s) {
 }
 
 // ---------- multer ----------
-const uploadDir = path.join(SERVER_ROOT, "uploads", "branding");
-ensureDir(uploadDir);
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname || "").toLowerCase() || ".png";
-    const safeExt = [".png", ".jpg", ".jpeg", ".webp"].includes(ext) ? ext : ".png";
+// Held in memory, checked, then stored in the database (SchoolLogo).
+const storage = multer.memoryStorage();
 
-    const schoolId = String(req.query?.schoolId || req.schoolId || "school").replace(
-      /[^a-zA-Z0-9_-]/g,
-      ""
-    );
-
-    cb(null, `logo_${schoolId}_${Date.now()}${safeExt}`);
-  },
-});
+/**
+ * The real type from the file's first bytes. The browser's MIME type is
+ * only a claim (audit L7), so it isn't trusted on its own.
+ */
+function sniffImageType(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  if (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return "image/webp";
+  return null;
+}
 
 const upload = multer({
   storage,
@@ -285,9 +284,12 @@ router.post("/logo", requireAuth, authorizeLogoUpload, async (req, res) => {
     const { schoolId } = resolved;
     if (!req.file) return res.status(400).json({ message: "No logo uploaded" });
 
+    const mime = sniffImageType(req.file.buffer);
+    if (!mime) return res.status(400).json({ message: "That file is not a PNG, JPG or WEBP image." });
+
     const s = await getOrCreateSettings(schoolId);
 
-    // ✅ safe cleanup of old logo
+    // A logo from before logos were stored in the database: remove the file.
     if (s.brandLogoUrl?.startsWith("/uploads/branding/")) {
       const oldPath = toDiskPathFromPublicUrl(s.brandLogoUrl);
       try {
@@ -295,7 +297,14 @@ router.post("/logo", requireAuth, authorizeLogoUpload, async (req, res) => {
       } catch {}
     }
 
-    const url = `/uploads/branding/${req.file.filename}`;
+    const sha256 = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+    await prisma.schoolLogo.upsert({
+      where: { schoolId },
+      create: { schoolId, mime, data: req.file.buffer, size: req.file.size, sha256 },
+      update: { mime, data: req.file.buffer, size: req.file.size, sha256 },
+    });
+    // The version in the path changes with the image, so it can be cached forever.
+    const url = `/api/public/schools/${encodeURIComponent(schoolId)}/logo/${sha256.slice(0, 16)}`;
 
     const updated = await prisma.schoolSettings.update({
       where: { id: s.id },

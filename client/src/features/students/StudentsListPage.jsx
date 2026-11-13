@@ -13,6 +13,7 @@ import {
   listStudents,
 } from "./students.api";
 import StudentFormDrawer from "./StudentFormDrawer.jsx";
+import ImportStudentsDialog from "./ImportStudentsDialog";
 import { listClasses } from "@/api/classes.api";
 
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,7 @@ export default function StudentsListPage() {
   const [active, setActive] = useState(true);
   const [classId, setClassId] = useState("");
   const [search, setSearch] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
 
   // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -216,6 +218,14 @@ const activateMut = useMutation({
     });
   }, [students, search]);
 
+  // Draw rows in batches: a 1,500-learner school would otherwise render
+  // every row at once. Changing filters starts again from the first batch.
+  const BATCH = 100;
+  const [shown, setShown] = useState({ key: "", count: BATCH });
+  const filterKey = `${active}|${classId}|${search}`;
+  const visibleCount = shown.key === filterKey ? shown.count : BATCH;
+  const visibleStudents = filteredStudents.slice(0, visibleCount);
+
   const openCreate = () => {
     if (role === "ADMIN" && !canCreateStudent) {
       toast.error(createBlockedMsg || "Cannot create student right now.");
@@ -315,14 +325,20 @@ const activateMut = useMutation({
 
         {role === "ADMIN" && (
           <div className="flex flex-col items-start sm:items-end gap-2">
-            <Button 
-              onClick={openCreate} 
-              disabled={!canCreateStudent}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Add Student
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!canCreateStudent}>
+                Import from Excel
+              </Button>
+              <Button 
+                onClick={openCreate} 
+                disabled={!canCreateStudent}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Student
+              </Button>
+            </div>
+            <ImportStudentsDialog open={importOpen} onOpenChange={setImportOpen} />
 
             {!canCreateStudent && (
               <div className="text-xs text-muted-foreground text-left sm:text-right max-w-xs">
@@ -508,7 +524,7 @@ const activateMut = useMutation({
                   </TableHeader>
 
                   <TableBody>
-                    {filteredStudents.map((s) => (
+                    {visibleStudents.map((s) => (
                       <TableRow key={s.id} className="hover:bg-muted/30">
                         <TableCell className="font-medium">
                           <div className="font-mono">{s.admissionNo}</div>
@@ -616,6 +632,13 @@ const activateMut = useMutation({
                   </TableBody>
                 </Table>
               </div>
+              {filteredStudents.length > visibleCount && (
+                <div className="flex justify-center pt-3">
+                  <Button variant="outline" onClick={() => setShown({ key: filterKey, count: visibleCount + BATCH })}>
+                    Show more ({filteredStudents.length - visibleCount} left)
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { confirmAction } from "@/lib/confirm-store";
+import GradeScalesCard from "./GradeScalesCard";
 
 function niceFromEmail(email) {
   const raw = String(email || "").split("@")[0] || "";
@@ -161,6 +162,7 @@ export default function CurriculumSettingsTab() {
 
   return (
     <div className="space-y-6">
+      <GradeScalesCard />
       <div>
         <h2 className="text-lg font-semibold">Curriculum</h2>
         <p className="text-sm text-muted-foreground mt-1">

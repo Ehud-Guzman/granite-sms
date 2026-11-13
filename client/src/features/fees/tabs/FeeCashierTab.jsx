@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { api } from "@/api/axios";
 
 import { me } from "@/api/auth.api";
 import {
@@ -12,6 +13,7 @@ import {
   createFeePayment,
   getPaymentReceiptJson,
   reverseFeePayment,
+  requestPaymentReversal,
   voidFeeInvoice,
 } from "@/api/fees.api";
 
@@ -24,6 +26,8 @@ import StudentLookupByAdmission from "../components/StudentLookupByAdmission";
 import QueryBlock from "../components/QueryBlock";
 import SimpleModal from "../components/SimpleModal";
 import { money, toNumberOrZero } from "../components/FeeMoney";
+import { useCurrentTermState, useCurrentYearState } from "@/lib/schoolCalendar";
+import { confirmAction } from "@/lib/confirm-store";
 
 const PAYMENT_METHODS = ["CASH", "MPESA", "BANK", "CHEQUE", "OTHER"];
 const TERMS = ["TERM1", "TERM2", "TERM3"];
@@ -49,8 +53,8 @@ export default function FeeCashierTab({ onReceiptReady }) {
   const qc = useQueryClient();
 
   // filters (cashier context)
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [term, setTerm] = useState("TERM1");
+  const [year, setYear] = useCurrentYearState();
+  const [term, setTerm] = useCurrentTermState();
 
   // student selection
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -114,7 +118,9 @@ export default function FeeCashierTab({ onReceiptReady }) {
 
   // Capabilities (single truth)
   const canPostPayment = isAdmin || isBursar;
-  const canReversePayment = isAdmin || isBursar; // realistic school flow
+  // Admins reverse directly; a bursar can only ask an admin to (server-enforced).
+  const canReversePayment = isAdmin || isBursar;
+  const reversalNeedsApproval = !isAdmin;
   const canGenerateInvoice = isAdmin; // admin only
   const canVoidInvoice = isAdmin; // admin only
 
@@ -257,6 +263,12 @@ export default function FeeCashierTab({ onReceiptReady }) {
     },
   });
 
+  const stkMut = useMutation({
+    mutationFn: () => api.post("/api/mpesa/stk", { studentId, amount: toNumberOrZero(amount) }).then((r) => r.data),
+    onSuccess: () => toast.success("Prompt sent to the parent's phone. The payment appears once they enter their PIN."),
+    onError: (e) => toast.error(e?.response?.data?.message || "Could not send the prompt"),
+  });
+
   const payMut = useMutation({
     mutationFn: createFeePayment,
     onSuccess: async (res) => {
@@ -283,7 +295,8 @@ export default function FeeCashierTab({ onReceiptReady }) {
         createdAt: payment.createdAt || null,
       });
 
-      toast.success("Payment posted");
+      const credit = toNumberOrZero(res?.account?.credit);
+      toast.success(credit > 0 ? `Payment posted. Account credit now ${money(credit)}` : "Payment posted");
 
       // print
       await printPaymentId(payment.id);
@@ -295,13 +308,17 @@ export default function FeeCashierTab({ onReceiptReady }) {
   });
 
   const reverseMut = useMutation({
-    mutationFn: async ({ paymentId, reason }) => reverseFeePayment(paymentId, { reason }),
+    mutationFn: async ({ paymentId, reason }) =>
+      reversalNeedsApproval
+        ? requestPaymentReversal(paymentId, { reason })
+        : reverseFeePayment(paymentId, { reason }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["feeInvoices", { studentId, year, term }] });
+      await qc.invalidateQueries({ queryKey: ["feeReversalRequests"] });
       setReverseReason("");
       setReverseOpen(false);
       setSelectedPaymentForReverse(null);
-      toast.success("Payment reversed");
+      toast.success(reversalNeedsApproval ? "Reversal requested. An admin must approve it." : "Payment reversed");
     },
     onError: (err) => {
       console.error("REVERSE ERROR:", err?.response?.data || err);
@@ -354,7 +371,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
     setTimeout(() => amountRef.current?.focus(), 50);
   };
 
-  const submitPayment = () => {
+  const submitPayment = async () => {
     // Guard against double-submit: the "Post Payment" button already disables
     // itself while payMut.isPending, but the Enter-key shortcut below calls
     // this function directly and isn't gated by that disabled attribute, so
@@ -368,7 +385,16 @@ export default function FeeCashierTab({ onReceiptReady }) {
     const amt = toNumberOrZero(amount);
     if (amt <= 0) return toast.error("Enter a valid amount");
     if (!Number.isInteger(amt)) return toast.error("Amount must be a whole number");
-    if (amt > activeInvoiceBalance) return toast.error("Overpayment is not allowed");
+    // More than this invoice owes is allowed: the rest pays the learner's
+    // other unpaid invoices (oldest first), then stays on the account as credit.
+    if (amt > activeInvoiceBalance) {
+      const ok = await confirmAction({
+        title: "More than this invoice owes",
+        description: `This invoice owes ${money(activeInvoiceBalance)}. The extra ${money(amt - activeInvoiceBalance)} will pay the learner's other unpaid invoices first, and anything left stays as credit for next term. Continue?`,
+        confirmLabel: "Post payment",
+      });
+      if (!ok) return;
+    }
 
     payMut.mutate({
       invoiceId: activeInvoiceId,
@@ -720,6 +746,15 @@ export default function FeeCashierTab({ onReceiptReady }) {
                 >
                   {payMut.isPending ? "Posting…" : "Post Payment"}
                 </Button>
+                {/* Sends "enter your M-Pesa PIN" to the primary parent's phone;
+                    the payment is recorded when Safaricom confirms it. */}
+                <Button
+                  variant="outline"
+                  disabled={stkMut.isPending || isReadOnly || !studentId || toNumberOrZero(amount) <= 0}
+                  onClick={() => stkMut.mutate()}
+                >
+                  {stkMut.isPending ? "Sending…" : "Send M-Pesa prompt"}
+                </Button>
               </div>
 
               {!activeInvoiceId && (
@@ -764,7 +799,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
                             onClick={() => askReverse(p)}
                             title={p.isReversed ? "Already reversed" : undefined}
                           >
-                            Reverse
+                            {reversalNeedsApproval ? "Request reversal" : "Reverse"}
                           </Button>
                         )}
                       </div>
@@ -779,7 +814,7 @@ export default function FeeCashierTab({ onReceiptReady }) {
 
       {/* Reverse modal */}
       <SimpleModal
-        title="Reverse payment"
+        title={reversalNeedsApproval ? "Request a reversal" : "Reverse payment"}
         open={reverseOpen}
         onClose={() => {
           setReverseOpen(false);
@@ -796,14 +831,20 @@ export default function FeeCashierTab({ onReceiptReady }) {
               disabled={reverseMut.isPending || isReadOnly || !reverseReason.trim()}
               onClick={confirmReverse}
             >
-              {reverseMut.isPending ? "Reversing…" : "Confirm Reverse"}
+              {reverseMut.isPending
+                ? "Sending…"
+                : reversalNeedsApproval
+                  ? "Send request"
+                  : "Confirm Reverse"}
             </Button>
           </div>
         }
       >
         <div className="space-y-2">
           <div className="text-sm text-muted-foreground">
-            This will mark the payment as reversed and restore balances.
+            {reversalNeedsApproval
+              ? "An admin will review this request. The payment stays on the invoice until it is approved."
+              : "This will mark the payment as reversed and restore balances."}
           </div>
           <Input
             value={reverseReason}

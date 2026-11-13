@@ -16,6 +16,11 @@ export default function UnlockReasonDialog({
   onOpenChange,
   onConfirm,
   loading,
+  title = "Unlock marksheet",
+  hint = "Give a clear reason. This is audit logged.",
+  placeholder = "e.g. Wrong entry on Student ADM0007",
+  confirmLabel = "Unlock",
+  busyLabel = "Unlocking...",
 }) {
   const [reason, setReason] = useState("");
 
@@ -25,15 +30,15 @@ export default function UnlockReasonDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Unlock marksheet</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-2">
           <div className="text-sm opacity-70">
-            Give a clear reason. This is audit logged.
+            {hint}
           </div>
           <Input
-            placeholder="e.g. Wrong entry on Student ADM0007"
+            placeholder={placeholder}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
           />
@@ -54,7 +59,7 @@ export default function UnlockReasonDialog({
             onClick={() => onConfirm(reason.trim())}
             disabled={!canConfirm}
           >
-            {loading ? "Unlocking..." : "Unlock"}
+            {loading ? busyLabel : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

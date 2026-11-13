@@ -57,6 +57,12 @@ export async function listFeeInvoices(params = {}) {
   const { data } = await api.get("/api/fees/invoices", { params });
   return asArray(data);
 }
+/** One page of invoices: { items, total, page, pageSize, totals }. */
+export async function listFeeInvoicesPage(params = {}) {
+  const { data } = await api.get("/api/fees/invoices", { params: { page: 1, pageSize: 50, ...params } });
+  return data;
+}
+
 export async function getFeeInvoice(id) {
   const { data } = await api.get(`/api/fees/invoices/${id}`);
   return data;
@@ -109,6 +115,22 @@ export async function openReceiptPdf(paymentId) {
 
 export async function reverseFeePayment(paymentId, payload) {
   const { data } = await api.post(`/api/fees/payments/${paymentId}/reverse`, payload);
+  return data;
+}
+
+/** BURSAR (or ADMIN): ask an admin to reverse a payment. */
+export async function requestPaymentReversal(paymentId, payload) {
+  const { data } = await api.post(`/api/fees/payments/${paymentId}/reversal-requests`, payload);
+  return data;
+}
+
+export async function listReversalRequests(params = {}) {
+  const { data } = await api.get("/api/fees/reversal-requests", { params });
+  return data?.requests || [];
+}
+
+export async function decideReversalRequest(requestId, decision, payload = {}) {
+  const { data } = await api.post(`/api/fees/reversal-requests/${requestId}/${decision}`, payload);
   return data;
 }
 

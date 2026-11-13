@@ -14,6 +14,8 @@ enum Role {
   TEACHER
   BURSAR
   STUDENT
+  // A parent or guardian's own login (Guardian.userId): sees only their children.
+  PARENT
 }
 
 model User {
@@ -28,8 +30,9 @@ model User {
   school   School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
 
   // Relations
-  teacher Teacher?
-  student Student?
+  teacher  Teacher?
+  student  Student?
+  guardian Guardian?
 
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -41,6 +44,11 @@ model User {
   failedLoginAttempts Int       @default(0)
   lockUntil           DateTime?
   lastLoginAt         DateTime?
+
+  // Bumped on password change/reset, deactivation and role/email/school
+  // changes. Tokens carry the version they were issued with; an older one
+  // is rejected, which signs that user out everywhere.
+  tokenVersion Int @default(0)
 
   @@index([role])
   @@index([schoolId])
@@ -83,6 +91,10 @@ model Class {
 
   isActive Boolean @default(true) // ✅ add this
 
+  // Grading used for this class's results; null = the school default.
+  gradeScaleId String?
+  gradeScale   GradeScale? @relation(fields: [gradeScaleId], references: [id], onDelete: SetNull)
+
   students Student[]
 
   classTeacherOf     ClassTeacher[]
@@ -100,6 +112,12 @@ model Class {
   @@unique([schoolId, name, stream, year])
   @@index([schoolId, year])
   @@index([schoolId, isActive]) // ✅ optional but recommended
+}
+
+enum StudentExit {
+  GRADUATED
+  TRANSFERRED
+  LEFT
 }
 
 model Student {
@@ -120,6 +138,20 @@ model Student {
 
   isActive Boolean @default(true)
 
+  // Why and when a learner left (they are then inactive). Cleared if they
+  // are reactivated.
+  exitStatus StudentExit?
+  exitDate   DateTime?    @db.Date
+  exitNote   String?
+
+  // Data Protection Act (s.33): a parent's consent to keep the child's data,
+  // who gave it and when; photos/publication are a separate yes or no.
+  consentAt    DateTime?
+  consentBy    String?   @db.VarChar(120)
+  photoConsent Boolean   @default(false)
+  // Set when a former learner's personal details were removed.
+  anonymisedAt DateTime?
+
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
@@ -128,6 +160,9 @@ model Student {
 
   feeInvoices       FeeInvoice[]
   attendanceRecords AttendanceRecord[]
+  guardianLinks     StudentGuardian[]
+  reportComments    ReportCardComment[]
+  feePayments       FeePayment[]
 
   @@unique([schoolId, admissionNo])
   @@index([schoolId, classId])
@@ -145,9 +180,24 @@ model SchoolSettings {
   enableSubjectAssignments Boolean @default(true)
 
   currentAcademicYear String?
-  term1Label          String  @default("Term 1")
-  term2Label          String  @default("Term 2")
-  term3Label          String  @default("Term 3")
+  // The term the school is in now: every screen defaults its term filter to it.
+  currentTerm         Term?
+  // Grading for classes that don't name their own (null = built-in A-E).
+  defaultGradeScaleId String?
+
+  // SMS to parents (missing feature 2). Everything is off until the school
+  // turns it on, and nothing is sent until a provider is configured.
+  smsEnabled             Boolean @default(false)
+  smsOnPayment           Boolean @default(true)
+  smsOnAbsence           Boolean @default(false)
+  smsOnResults           Boolean @default(true)
+  // Appended to fee reminders, e.g. "Pay via M-Pesa Paybill 123456, account = admission no."
+  smsPaymentInstructions String?
+  // IANA zone used for "today", day boundaries in reports and receipt dates.
+  timezone               String  @default("Africa/Nairobi")
+  term1Label             String  @default("Term 1")
+  term2Label             String  @default("Term 2")
+  term3Label             String  @default("Term 3")
 
   // Branding
   brandLogoUrl        String?
@@ -314,9 +364,237 @@ model School {
   feePlans            FeePlan[]
   feeInvoices         FeeInvoice[]
   feePayments         FeePayment[]
+  feeReversalRequests FeeReversalRequest[]
+  termDates           TermDate[]
+  documentCounters    DocumentCounter[]
+  logo                SchoolLogo?
+  guardians           Guardian[]
+  reportComments      ReportCardComment[]
+  smsMessages         SmsMessage[]
+  mpesaConfig         MpesaConfig?
+  mpesaTransactions   MpesaTransaction[]
+  mpesaStkRequests    MpesaStkRequest[]
+  notices             Notice[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
+}
+
+// A parent or guardian. One record per person per school (keyed by phone),
+// linked to each of their children through StudentGuardian, so siblings
+// share it. Feature 1 of the audit's missing-features list.
+model Guardian {
+  id         String  @id @default(cuid())
+  schoolId   String
+  firstName  String
+  lastName   String
+  // Stored as +2547XXXXXXXX (see utils/phone.js).
+  phone      String
+  email      String?
+  nationalId String? @db.VarChar(20)
+  occupation String?
+
+  // Their parent-portal login, if the school gave them one.
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  school   School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  students StudentGuardian[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, phone])
+  @@index([schoolId, lastName])
+}
+
+model StudentGuardian {
+  id         String @id @default(cuid())
+  schoolId   String
+  studentId  String
+  guardianId String
+
+  // MOTHER | FATHER | GUARDIAN | SPONSOR | OTHER
+  relationship String  @db.VarChar(20)
+  // The first person to call; one per student.
+  isPrimary    Boolean @default(false)
+  // Gets fee, attendance and results messages once SMS is added.
+  receivesSms  Boolean @default(true)
+
+  student  Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, guardianId])
+  @@index([schoolId, guardianId])
+}
+
+// A school's M-Pesa (Daraja) set-up (missing feature 3). Secrets are stored
+// encrypted with MPESA_ENC_KEY (utils/secretBox.js), never returned by the API.
+model MpesaConfig {
+  id                String    @id @default(cuid())
+  schoolId          String    @unique
+  shortcode         String    @db.VarChar(12)
+  // PAYBILL | TILL
+  kind              String    @default("PAYBILL") @db.VarChar(8)
+  // sandbox | production
+  environment       String    @default("sandbox") @db.VarChar(12)
+  consumerKeyEnc    String?
+  consumerSecretEnc String?
+  passkeyEnc        String?
+  // Secret part of this school's callback URLs.
+  callbackToken     String    @unique
+  isActive          Boolean   @default(true)
+  urlsRegisteredAt  DateTime?
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MpesaTxnStatus {
+  MATCHED
+  UNMATCHED
+  ASSIGNED
+  IGNORED
+}
+
+// Each M-Pesa payment Safaricom tells us about, matched or not.
+model MpesaTransaction {
+  id        String         @id @default(cuid())
+  schoolId  String
+  transId   String         @unique // M-Pesa receipt, e.g. SGK3XYZ12
+  amount    Int
+  billRef   String? // account number the payer typed
+  msisdn    String? // payer phone
+  payerName String?
+  transTime DateTime?
+  source    String         @default("C2B") @db.VarChar(8) // C2B | STK
+  status    MpesaTxnStatus
+  paymentId String?        @unique
+  studentId String?
+  note      String?
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, status, createdAt])
+}
+
+// Pending STK push requests, so the callback can find the learner.
+model MpesaStkRequest {
+  id                String   @id @default(cuid())
+  schoolId          String
+  checkoutRequestId String   @unique
+  studentId         String
+  amount            Int
+  phone             String
+  status            String   @default("PENDING") @db.VarChar(12) // PENDING | PAID | FAILED
+  resultDesc        String?
+  requestedById     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, createdAt])
+}
+
+enum SmsStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// Every SMS the system sends or would send: the outbox and its history.
+model SmsMessage {
+  id          String    @id @default(cuid())
+  schoolId    String
+  to          String // +2547XXXXXXXX
+  body        String
+  // PAYMENT | ABSENCE | RESULTS | FEE_REMINDER | BROADCAST | NOTICE
+  kind        String    @db.VarChar(20)
+  status      SmsStatus @default(QUEUED)
+  attempts    Int       @default(0)
+  error       String?
+  providerId  String?
+  studentId   String?
+  guardianId  String?
+  createdById String?
+
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, createdAt])
+  @@index([status, createdAt])
+}
+
+enum NoticeAudience {
+  EVERYONE
+  STAFF
+  FAMILIES // learners and parents
+}
+
+// The school noticeboard (audit missing feature 10). FAMILIES notices can be
+// limited to some classes (empty classIds = the whole school) and texted to
+// parents when posted.
+model Notice {
+  id          String         @id @default(cuid())
+  schoolId    String
+  title       String         @db.VarChar(120)
+  body        String
+  audience    NoticeAudience @default(EVERYONE)
+  classIds    String[]       @default([])
+  pinned      Boolean        @default(false)
+  expiresAt   DateTime?
+  smsQueued   Int            @default(0)
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, createdAt])
+}
+
+// The school's logo, stored in the database so it survives redeploys (the
+// server's disk on Render is wiped each deploy) and is in the backups
+// (audit M16). Served at /api/public/schools/:schoolId/logo/:version.
+model SchoolLogo {
+  schoolId  String   @id
+  mime      String
+  data      Bytes
+  size      Int
+  sha256    String
+  updatedAt DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+}
+
+// Opening and closing dates of each term. Used to work out which term a date
+// belongs to (attendance) and to stop registers being taken outside term.
+model TermDate {
+  id       String   @id @default(cuid())
+  schoolId String
+  year     Int
+  term     Term
+  startsOn DateTime @db.Date
+  endsOn   DateTime @db.Date
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, year, term])
 }
 
 model Subscription {
@@ -465,16 +743,19 @@ model FeeInvoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  school   School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  student  Student          @relation(fields: [studentId], references: [id], onDelete: Restrict)
-  class    Class            @relation(fields: [classId], references: [id], onDelete: Restrict)
-  lines    FeeInvoiceLine[]
-  payments FeePayment[]
+  school      School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student     Student                @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  class       Class                  @relation(fields: [classId], references: [id], onDelete: Restrict)
+  lines       FeeInvoiceLine[]
+  payments    FeePayment[]
+  allocations FeePaymentAllocation[]
 
   @@unique([schoolId, studentId, year, term])
   @@unique([schoolId, invoiceNo]) // ✅ IMPORTANT
   @@index([schoolId, classId, year, term])
   @@index([schoolId, studentId])
+  // Paged invoice list: newest first within a school / year / term.
+  @@index([schoolId, year, term, createdAt])
 }
 
 model FeeInvoiceLine {
@@ -492,9 +773,13 @@ model FeeInvoiceLine {
 }
 
 model FeePayment {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   schoolId  String
-  invoiceId String
+  // Whose money this is. A payment can be spread over several invoices
+  // (FeePaymentAllocation); what isn't allocated is the learner's credit.
+  studentId String
+  // The invoice the cashier took it against, if any (shown on the receipt).
+  invoiceId String?
 
   // ✅ idempotency key from client
   clientTxnId String?
@@ -515,24 +800,92 @@ model FeePayment {
 
   createdAt DateTime @default(now())
 
-  school  School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  invoice FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  school  School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  invoice FeeInvoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  reversalRequests FeeReversalRequest[]
+  allocations      FeePaymentAllocation[]
 
   @@unique([schoolId, receiptNo])
   @@unique([schoolId, clientTxnId])
   @@index([schoolId, invoiceId])
   @@index([schoolId, receivedAt])
+  @@index([schoolId, studentId])
+}
+
+// How much of a payment went to which invoice (audit M5). An invoice's paid
+// amount = its allocations from payments that aren't reversed.
+model FeePaymentAllocation {
+  id        String   @id @default(cuid())
+  schoolId  String
+  paymentId String
+  invoiceId String
+  amount    Int
+  createdAt DateTime @default(now())
+
+  payment FeePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([schoolId, invoiceId])
 }
 
 // =====================
 // ATTENDANCE MODULE
 // =====================
 
+// Next sequential number per school, document kind and year (receipts and
+// invoices: RCPT-2026-000123). Taken inside the same transaction as the
+// document, so a failed payment doesn't leave a gap (audit M6).
+model DocumentCounter {
+  schoolId String
+  kind     String // "RECEIPT" | "INVOICE"
+  year     Int
+  next     Int    @default(0)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@id([schoolId, kind, year])
+}
+
+enum ReversalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A bursar asks for a payment to be reversed; an admin approves or rejects.
+// Keeps whoever handled the cash from silently undoing their own receipt.
+model FeeReversalRequest {
+  id        String @id @default(cuid())
+  schoolId  String
+  paymentId String
+
+  status      ReversalRequestStatus @default(PENDING)
+  reason      String
+  requestedBy String
+  requestedAt DateTime              @default(now())
+
+  decidedBy    String?
+  decidedAt    DateTime?
+  decisionNote String?
+
+  school  School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  payment FeePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, status, requestedAt])
+  @@index([paymentId])
+}
+
 enum AttendanceStatus {
   PRESENT
   ABSENT
   LATE
   EXCUSED
+  // Register opened but this learner not marked yet. A register can't be
+  // submitted while any remain (audit M2: everyone used to start PRESENT).
+  UNMARKED
 }
 
 enum AttendanceSessionStatus {
@@ -579,7 +932,7 @@ model AttendanceRecord {
   sessionId String
   studentId String
 
-  status      AttendanceStatus @default(PRESENT)
+  status      AttendanceStatus @default(UNMARKED)
   minutesLate Int?
   comment     String?
 
@@ -646,6 +999,7 @@ enum ExamAuditAction {
   SUBMIT
   UNLOCK
   PUBLISH
+  UNPUBLISH
 }
 
 model ExamType {
@@ -768,14 +1122,18 @@ model GradeScale {
   id       String @id @default(cuid())
   schoolId String
 
-  name   String
-  status GradeScaleStatus @default(ACTIVE)
+  name      String
+  status    GradeScaleStatus @default(ACTIVE)
+  // How the overall grade is found: "AVERAGE" = band of the average mark;
+  // "POINTS" = band of the mean subject points (KCSE practice).
+  overallBy String           @default("AVERAGE")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  school School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  bands  GradeBand[]
+  school  School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  bands   GradeBand[]
+  classes Class[]
 
   @@unique([schoolId, name])
   @@index([schoolId, status])
@@ -831,6 +1189,13 @@ model StudentResult {
   overallGrade  String?
   overallRemark String?
 
+  // Frozen at publish (audit H9): later edits to students, classes or marks
+  // don't change a result slip that has already gone home.
+  position     Int?
+  missingCount Int     @default(0)
+  studentName  String?
+  admissionNo  String?
+
   createdAt DateTime @default(now())
 
   school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
@@ -849,15 +1214,37 @@ model SubjectResult {
   studentResultId String
   subjectId       String
 
-  score  Float
-  grade  String?
-  remark String?
+  score       Float?
+  grade       String?
+  remark      String?
+  subjectName String?
 
   school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   studentResult StudentResult @relation(fields: [studentResultId], references: [id], onDelete: Cascade)
 
   @@unique([schoolId, studentResultId, subjectId])
   @@index([schoolId, subjectId])
+}
+
+// Comments printed on a learner's term report card.
+model ReportCardComment {
+  id        String @id @default(cuid())
+  schoolId  String
+  studentId String
+  year      Int
+  term      Term
+
+  classTeacherComment String?
+  headComment         String?
+  updatedById         String?
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, studentId, year, term])
 }
 
 model ExamAuditLog {

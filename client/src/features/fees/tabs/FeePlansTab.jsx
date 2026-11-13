@@ -20,13 +20,14 @@ import { confirmAction } from "@/lib/confirm-store";
 import QueryBlock from "../components/QueryBlock";
 import SimpleModal from "../components/SimpleModal";
 import { money, toNumberOrZero } from "../components/FeeMoney";
+import { useCurrentTermState, useCurrentYearState } from "@/lib/schoolCalendar";
 
 export default function FeePlansTab() {
   const qc = useQueryClient();
 
   const [classId, setClassId] = useState("");
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [term, setTerm] = useState("TERM1");
+  const [year, setYear] = useCurrentYearState();
+  const [term, setTerm] = useCurrentTermState();
   const [title, setTitle] = useState("");
 
   const classesQ = useQuery({ queryKey: ["classes"], queryFn: () => listClasses({}) });

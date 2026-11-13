@@ -1,5 +1,6 @@
 // src/middleware/tenant.js
 import { prisma } from "../lib/prisma.js";
+import { sessionProblem } from "./session.js";
 
 function normalizeHeader(v) {
   if (Array.isArray(v)) return v[0];
@@ -43,12 +44,29 @@ async function getUserDb(userId) {
       schoolId: true,
       email: true,
       isActive: true,
+      tokenVersion: true,
+      mustChangePassword: true,
       teacher: { select: { id: true, schoolId: true } },
       student: { select: { id: true, schoolId: true } },
+      guardian: { select: { id: true, schoolId: true } },
     },
   });
 
   return cacheSet(USER_CACHE, id, u);
+}
+
+/**
+ * Drop a user from the cache so a change (deactivation, role, password,
+ * session revocation) applies on their very next request instead of up to
+ * 30s later. Call after any write to that user.
+ */
+export function invalidateUserCache(userId) {
+  if (userId) USER_CACHE.delete(String(userId));
+}
+
+/** Call after a school is suspended/reactivated or renamed (cache is keyed by id and code). */
+export function invalidateSchoolCache() {
+  SCHOOL_CACHE.clear();
 }
 
 async function resolveSchoolByIdOrCodeCached(key) {
@@ -76,9 +94,8 @@ export async function tenantContext(req, res, next) {
 
     const userDb = await getUserDb(userId);
 
-    if (!userDb || !userDb.isActive) {
-      return res.status(401).json({ message: "User not found or inactive" });
-    }
+    const problem = sessionProblem(req, userDb);
+    if (problem) return res.status(problem.status).json(problem.body);
 
     req.role = userDb.role;
     req.userEmail = userDb.email;
@@ -90,6 +107,8 @@ export async function tenantContext(req, res, next) {
       schoolId: userDb.schoolId ?? null,
       teacherId: userDb.teacher?.id ?? null,
       studentId: userDb.student?.id ?? null,
+      guardianId: userDb.guardian?.id ?? null,
+      mustChangePassword: !!userDb.mustChangePassword,
     };
 
     req.teacherId = req.user.teacherId;
@@ -147,6 +166,9 @@ export async function tenantContext(req, res, next) {
     }
     if (userDb.student && userDb.student.schoolId !== school.id) {
       return res.status(403).json({ message: "Student profile mismatch (wrong school)" });
+    }
+    if (userDb.guardian && userDb.guardian.schoolId !== school.id) {
+      return res.status(403).json({ message: "Parent profile mismatch (wrong school)" });
     }
 
     req.schoolId = school.id;

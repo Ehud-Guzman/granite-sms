@@ -183,6 +183,17 @@ export async function unlockMarkSheet(marksheetId, payload) {
  * -------------------------
  */
 
+/** ADMIN: take published results back to draft to correct them. */
+export async function unpublishResults(sessionId, reason) {
+  if (!sessionId) throw new Error("sessionId is required");
+  try {
+    const { data } = await api.post(`/api/exams/sessions/${sessionId}/unpublish`, { reason });
+    return asObject(data) ?? unwrap(data);
+  } catch (err) {
+    throw new Error(getErrorMessage(err, "Failed to unpublish results"));
+  }
+}
+
 export async function publishResults(sessionId) {
   if (!sessionId) throw new Error("sessionId is required");
   try {

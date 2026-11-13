@@ -152,6 +152,111 @@ router.get("/", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
 });
 
 // ADMIN + TEACHER: get one class (tenant scoped)
+/**
+ * POST /api/classes/promote  (ADMIN)
+ * End-of-year promotion in one step.
+ * Body: {
+ *   moves: [{ fromClassId, toClassId }],   // toClassId null = the class graduates (leaves)
+ *   exitDate?: "YYYY-MM-DD",               // for graduates; default today
+ *   dryRun?: true                          // count only, change nothing
+ * }
+ * Moves every ACTIVE learner in each "from" class. All moves happen in one
+ * transaction: either the whole promotion is applied or none of it.
+ */
+router.post("/promote", requireRole("ADMIN"), async (req, res) => {
+  const schoolId = req.schoolId;
+  const moves = Array.isArray(req.body?.moves) ? req.body.moves : null;
+  const dryRun = req.body?.dryRun === true;
+  if (!moves || moves.length === 0) return res.status(400).json({ message: "moves[] is required" });
+  if (moves.length > 200) return res.status(400).json({ message: "Too many classes in one promotion (max 200)" });
+
+  const exitDate = req.body?.exitDate ? new Date(`${req.body.exitDate}T00:00:00Z`) : new Date();
+  if (Number.isNaN(exitDate.getTime())) return res.status(400).json({ message: "exitDate must be YYYY-MM-DD" });
+
+  // Every class must belong to this school; a class can only be moved once.
+  const fromIds = moves.map((m) => String(m?.fromClassId || ""));
+  if (fromIds.some((id) => !id)) return res.status(400).json({ message: "Each move needs fromClassId" });
+  if (new Set(fromIds).size !== fromIds.length) return res.status(400).json({ message: "A class appears twice as a source" });
+  const toIds = moves.map((m) => (m?.toClassId ? String(m.toClassId) : null)).filter(Boolean);
+  const classes = await prisma.class.findMany({
+    where: { schoolId, id: { in: [...new Set([...fromIds, ...toIds])] } },
+    select: { id: true, name: true, stream: true, year: true, isActive: true },
+  });
+  const byId = new Map(classes.map((c) => [c.id, c]));
+  for (const m of moves) {
+    const from = byId.get(String(m.fromClassId));
+    if (!from) return res.status(400).json({ message: `Unknown class ${m.fromClassId}` });
+    if (m.toClassId) {
+      const to = byId.get(String(m.toClassId));
+      if (!to) return res.status(400).json({ message: `Unknown class ${m.toClassId}` });
+      if (to.id === from.id) return res.status(400).json({ message: `${from.name} can't be promoted into itself` });
+      if (!to.isActive) return res.status(400).json({ message: `${to.name} ${to.stream || ""} (${to.year}) is inactive` });
+      if (to.year < from.year) {
+        return res.status(400).json({ message: `${from.name} (${from.year}) can't move back to a ${to.year} class` });
+      }
+    }
+  }
+
+  const counts = await prisma.student.groupBy({
+    by: ["classId"],
+    where: { schoolId, isActive: true, classId: { in: fromIds } },
+    _count: { _all: true },
+  });
+  const countOf = new Map(counts.map((c) => [c.classId, c._count._all]));
+  const label = (c) => `${c.name}${c.stream ? ` ${c.stream}` : ""} (${c.year})`;
+  const summary = moves.map((m) => ({
+    fromClassId: String(m.fromClassId),
+    from: label(byId.get(String(m.fromClassId))),
+    toClassId: m.toClassId ? String(m.toClassId) : null,
+    to: m.toClassId ? label(byId.get(String(m.toClassId))) : "Graduated (leaves the school)",
+    learners: countOf.get(String(m.fromClassId)) || 0,
+  }));
+  const totals = {
+    moved: summary.filter((x) => x.toClassId).reduce((a, x) => a + x.learners, 0),
+    graduated: summary.filter((x) => !x.toClassId).reduce((a, x) => a + x.learners, 0),
+  };
+  if (dryRun) return res.json({ dryRun: true, summary, totals });
+
+  // Snapshot who is in each source class first, so a class that is both a
+  // destination and a source (7E -> 8E while 8E -> 9E) moves the right people.
+  const members = await prisma.student.findMany({
+    where: { schoolId, isActive: true, classId: { in: fromIds } },
+    select: { id: true, classId: true },
+  });
+  const idsByClass = new Map();
+  for (const st of members) {
+    if (!idsByClass.has(st.classId)) idsByClass.set(st.classId, []);
+    idsByClass.get(st.classId).push(st.id);
+  }
+
+  await prisma.$transaction(
+    async (tx) => {
+      for (const m of moves) {
+        const ids = idsByClass.get(String(m.fromClassId)) || [];
+        if (!ids.length) continue;
+        await tx.student.updateMany({
+          where: { schoolId, id: { in: ids } },
+          data: m.toClassId
+            ? { classId: String(m.toClassId) }
+            : { isActive: false, exitStatus: "GRADUATED", exitDate, exitNote: `Graduated from ${label(byId.get(String(m.fromClassId)))}` },
+        });
+      }
+    },
+    { maxWait: 10_000, timeout: 60_000 }
+  );
+
+  await logAudit({
+    req,
+    ...actorCtx(req),
+    schoolId,
+    action: "STUDENTS_PROMOTED",
+    targetType: "SCHOOL",
+    targetId: schoolId,
+    metadata: { summary, totals },
+  });
+  return res.json({ dryRun: false, summary, totals });
+});
+
 router.get("/:id", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
   try {
     const schoolId = req.schoolId;

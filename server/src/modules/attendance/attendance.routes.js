@@ -1,7 +1,7 @@
 // src/modules/attendance/attendance.routes.js
 import { Router } from "express";
-import { requireAuth, requireRole } from "../../middleware/auth.js";
-import { tenantContext, requireTenant } from "../../middleware/tenant.js";
+import { requireRole } from "../../middleware/auth.js";
+import { requireTenant } from "../../middleware/tenant.js";
 import { loadSubscription, requireEntitlement, requireEntitlementRead } from "../../middleware/subscription.js";
 
 import {
@@ -21,7 +21,8 @@ const router = Router();
 
 // Must be authenticated + DB-verified tenant context (active user, active school).
 // tenantContext sets req.schoolId (DB truth); requireTenant enforces its presence.
-router.use(requireAuth, tenantContext, requireTenant);
+// requireAuth + tenantContext already run for every /api route (app.js).
+router.use(requireTenant);
 router.use(loadSubscription);
 
 // READ endpoints (allow ADMIN/TEACHER)

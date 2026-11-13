@@ -5,12 +5,11 @@ import { feesCollections, getStudentFeesSummary } from "@/api/fees.api";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { money } from "../components/FeeMoney";
+import ReversalRequestsCard from "../components/ReversalRequestsCard";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
 
 const norm = (v) => String(v || "").trim().toUpperCase();
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default function FeesDashboardTab() {
   const { data: meData } = useMe();
@@ -20,7 +19,8 @@ export default function FeesDashboardTab() {
   const isStaff = role === "ADMIN" || role === "BURSAR";
   const isStudent = role === "STUDENT";
 
-  const today = todayStr();
+  // The school's local day, so "today's collections" matches the cash-up.
+  const { today } = useSchoolCalendar();
 
   const collectionsQ = useQuery({
     queryKey: ["feesDashboardCollections", today],
@@ -36,6 +36,8 @@ export default function FeesDashboardTab() {
 
   return (
     <div className="grid gap-3">
+      {isStaff && <ReversalRequestsCard isAdmin={role === "ADMIN"} />}
+
       {isStaff && (
         <Card>
           <CardHeader className="pb-2">

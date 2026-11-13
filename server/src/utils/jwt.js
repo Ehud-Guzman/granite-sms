@@ -67,7 +67,8 @@ export function signToken(payload = {}, opts = {}) {
   const issuer = process.env.JWT_ISSUER || "sms-api";
   const audience = process.env.JWT_AUDIENCE || "sms-client";
   const algorithm = process.env.JWT_ALGORITHM || "HS256";
-  const expiresIn = opts.expiresIn || process.env.JWT_EXPIRES_IN || "7d";
+  // 12h ≈ one school day: a stolen token stops working by the next morning.
+  const expiresIn = opts.expiresIn || process.env.JWT_EXPIRES_IN || "12h";
 
   // Normalize payload
   const sub = normalizeId(payload.sub ?? payload.id);
@@ -83,7 +84,11 @@ export function signToken(payload = {}, opts = {}) {
     // Custom claims
     role,
     schoolId: schoolId ?? null,
+    // Session version: must equal User.tokenVersion or the token is refused.
+    tv: Number.isInteger(payload.tokenVersion) ? payload.tokenVersion : 0,
   };
+  // Set when a SYSTEM_ADMIN impersonates someone, so audit logs show who really acted.
+  if (payload.impersonatedBy) claims.imp = String(payload.impersonatedBy);
 
   return jwt.sign(claims, secret, {
     expiresIn,

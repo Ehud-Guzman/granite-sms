@@ -4,10 +4,12 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { signToken } from "../utils/jwt.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { tenantContext } from "../middleware/tenant.js";
+import { tenantContext, invalidateUserCache } from "../middleware/tenant.js";
+import { sessionProblem } from "../middleware/session.js";
 import { logAudit } from "../utils/audit.js";
 import { upper } from "../utils/validate.js";
 import { isDemo, DEMO_ACCOUNTS } from "../config/demo.js";
+import { normalizePhone } from "../utils/phone.js";
 
 const router = Router();
 
@@ -20,6 +22,18 @@ const validatePassword = (password) => {
   const p = String(password || "");
   return p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
 };
+
+// One message for every failed sign-in (wrong password, unknown email,
+// inactive or locked account), so the response never reveals whether an
+// email has an account or is locked.
+const LOGIN_FAILED = {
+  message: "Incorrect email or password. After repeated failures, sign-in is paused for 15 minutes.",
+  code: "AUTH_INVALID",
+};
+
+// Compared against when the email is unknown, so the response takes as long
+// as a real password check (no timing hint that the account doesn't exist).
+const DUMMY_HASH = bcrypt.hashSync("dummy-password-for-timing", 10);
 
 const normalizeId = (v) => {
   const s = String(v || "").trim();
@@ -141,10 +155,16 @@ router.post("/signup", async (req, res) => {
  */
 router.post("/login", async (req, res) => {
   try {
-    const MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS || 5);
-    const LOCK_MINUTES = Number(process.env.AUTH_LOCK_MINUTES || 30);
+    // Per-network limits (middleware/rateLimits.js) stop guessing from one
+    // place; this account lock is the backstop against guessing spread over
+    // many networks, so it is deliberately higher and shorter.
+    const MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS || 10);
+    const LOCK_MINUTES = Number(process.env.AUTH_LOCK_MINUTES || 15);
 
-    const email = cleanEmail(req.body?.email);
+    // Parents may sign in with their phone number: their login id is the
+    // number in +2547... form (see POST /api/guardians/:id/login).
+    const rawLogin = String(req.body?.email || "").trim();
+    const email = rawLogin.includes("@") ? cleanEmail(rawLogin) : normalizePhone(rawLogin) || cleanEmail(rawLogin);
     const password = String(req.body?.password || "");
     const schoolKey = normalizeId(req.body?.schoolId); // may be id or code (optional)
 
@@ -164,11 +184,13 @@ router.post("/login", async (req, res) => {
         mustChangePassword: true,
         failedLoginAttempts: true,
         lockUntil: true,
+        tokenVersion: true,
       },
     });
 
     // Generic fail (avoid enumeration)
     if (!user || !user.isActive) {
+      await bcrypt.compare(password, DUMMY_HASH);
       await logAudit({
         req,
         actorEmail: email,
@@ -176,11 +198,22 @@ router.post("/login", async (req, res) => {
         action: "AUTH_LOGIN_FAILED",
         metadata: { reason: "invalid_credentials" },
       });
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json(LOGIN_FAILED);
+    }
+
+    // A lock that has run out starts a fresh count. Without this the counter
+    // stayed at the limit, so one more mistake locked the account again.
+    const now = new Date();
+    if (user.lockUntil && user.lockUntil <= now) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockUntil: null },
+      });
+      user.failedLoginAttempts = 0;
+      user.lockUntil = null;
     }
 
     // Locked check
-    const now = new Date();
     if (user.lockUntil && user.lockUntil > now) {
       await logAudit({
         req,
@@ -190,10 +223,7 @@ router.post("/login", async (req, res) => {
         metadata: { lockUntil: user.lockUntil },
       });
 
-      return res.status(403).json({
-        message: "Account temporarily locked. Try again later.",
-        code: "ACCOUNT_LOCKED",
-      });
+      return res.status(401).json(LOGIN_FAILED);
     }
 
     // Password check
@@ -226,7 +256,7 @@ router.post("/login", async (req, res) => {
         metadata: { attempts: nextAttempts, max: MAX_ATTEMPTS },
       });
 
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json(LOGIN_FAILED);
     }
 
     // Tenant rule for non-system users:
@@ -287,6 +317,7 @@ router.post("/login", async (req, res) => {
       sub: user.id,
       role: user.role,
       schoolId: upper(user.role) === "SYSTEM_ADMIN" ? null : (user.schoolId ?? null),
+      tokenVersion: user.tokenVersion,
     });
 
     return res.json({
@@ -329,7 +360,7 @@ router.post("/demo-login", async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { email },
-      select: { id: true, email: true, role: true, schoolId: true, isActive: true },
+      select: { id: true, email: true, role: true, schoolId: true, isActive: true, tokenVersion: true },
     });
     if (!user || !user.isActive || user.role !== role) {
       return res.status(503).json({ message: "The demo is being set up. Please try again in a minute." });
@@ -340,6 +371,7 @@ router.post("/demo-login", async (req, res) => {
       sub: user.id,
       role: user.role,
       schoolId: isSystem ? null : user.schoolId ?? null,
+      tokenVersion: user.tokenVersion,
     });
 
     await logAudit({
@@ -392,10 +424,20 @@ router.post("/change-password", requireAuth, async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id: String(userId) },
-      select: { id: true, email: true, role: true, schoolId: true, password: true, isActive: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        schoolId: true,
+        password: true,
+        isActive: true,
+        tokenVersion: true,
+        mustChangePassword: true,
+      },
     });
 
-    if (!user || !user.isActive) return res.status(401).json({ message: "Invalid credentials" });
+    const problem = sessionProblem(req, user, { enforcePasswordChange: false });
+    if (problem) return res.status(problem.status).json(problem.body);
 
     const ok = await bcrypt.compare(currentPassword, user.password);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
@@ -409,8 +451,12 @@ router.post("/change-password", requireAuth, async (req, res) => {
         mustChangePassword: false,
         failedLoginAttempts: 0,
         lockUntil: null,
+        // Ends every existing session, including this one (the client sends
+        // the user back to sign in with the new password).
+        tokenVersion: { increment: 1 },
       },
     });
+    invalidateUserCache(user.id);
 
     await logAudit({
       req,
@@ -457,6 +503,7 @@ router.post("/impersonate", requireAuth, tenantContext, requireRole("SYSTEM_ADMI
         schoolId: true,
         isActive: true,
         mustChangePassword: true,
+        tokenVersion: true,
       },
     });
 
@@ -468,6 +515,8 @@ router.post("/impersonate", requireAuth, tenantContext, requireRole("SYSTEM_ADMI
       sub: target.id,
       role: target.role,
       schoolId: target.schoolId ?? null,
+      tokenVersion: target.tokenVersion,
+      impersonatedBy: req.user.id,
     });
 
     await logAudit({
@@ -521,6 +570,8 @@ router.post("/select-school", requireAuth, tenantContext, requireRole("SYSTEM_AD
       sub: req.user.id,
       role: "SYSTEM_ADMIN",
       schoolId: school.id, // normalize to real id
+      // tenantContext already confirmed this matches the database.
+      tokenVersion: req.auth?.tokenVersion ?? 0,
     });
 
     await logAudit({

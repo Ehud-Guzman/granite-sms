@@ -112,6 +112,9 @@ export function requireAuth(req, res, next) {
       userId,
       role,
       schoolId,
+      // Tokens issued before tokenVersion existed have no `tv`: treat as 0.
+      tokenVersion: Number.isInteger(payload?.tv) ? payload.tv : 0,
+      impersonatedBy: payload?.imp ? safeStr(payload.imp, 80) : null,
       iat: payload?.iat ?? null,
       exp: payload?.exp ?? null,
       issuer: payload?.iss ?? null,

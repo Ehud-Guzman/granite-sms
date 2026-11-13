@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import Pager from "@/components/ui/pager";
 import { Panel } from "@/components/insights/Insights";
+import { ChartCard, ColumnsChart } from "@/components/insights/Charts";
 
 import { money } from "../components/FeeMoney";
 
@@ -80,6 +81,16 @@ export default function PaymentsTab() {
   const items = q.data?.items || [];
   const total = q.data?.total || 0;
   const totals = q.data?.totals;
+  // Money in per day (or month) for the chart, labelled the way people say it.
+  const periodPoints = (totals?.series || []).map((x) => ({
+    key: x.period,
+    label:
+      totals.bucket === "month"
+        ? new Date(`${x.period}-01T00:00:00Z`).toLocaleDateString("en-KE", { timeZone: "UTC", month: "short", year: "numeric" })
+        : new Date(`${x.period}T00:00:00Z`).toLocaleDateString("en-KE", { timeZone: "UTC", day: "numeric", month: "short" }),
+    value: x.amount,
+    display: money(x.amount),
+  }));
   // Imported or M-Pesa payments have no cashier; drop the column when none do.
   const showBy = items.some((p) => p.receivedByName);
 
@@ -149,15 +160,27 @@ export default function PaymentsTab() {
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border bg-card p-4 shadow-sm sm:col-span-2 lg:col-span-1">
-          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Collected</div>
-          <div className="mt-1 text-2xl font-bold tabular-nums">{totals ? money(totals.amount) : "—"}</div>
-          <div className="text-xs text-muted-foreground">
-            {totals ? `${totals.count.toLocaleString()} receipt${totals.count === 1 ? "" : "s"}` : " "}
-            {totals?.reversed ? ` · ${totals.reversed} reversed (not counted)` : ""}
-          </div>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <ChartCard
+          className="sm:col-span-2"
+          title="Collected"
+          value={totals ? money(totals.amount) : "—"}
+          caption={
+            totals
+              ? `${totals.count.toLocaleString()} receipt${totals.count === 1 ? "" : "s"}${totals.reversed ? ` · ${totals.reversed} reversed (not counted)` : ""}`
+              : " "
+          }
+          chart={(size) => (
+            <ColumnsChart
+              points={periodPoints}
+              compact={size === "compact"}
+              height={size === "compact" ? 64 : 260}
+              ariaLabel={`Money collected per ${totals?.bucket || "day"}`}
+            />
+          )}
+          table={{ columns: [totals?.bucket === "month" ? "Month" : "Day", "Collected"], rows: periodPoints.map((p) => [p.label, p.display]) }}
+          note={totals?.bucket === "month" ? "Shown by month because the period is longer than three months." : "Days with no payments show as zero."}
+        />
         <div className="rounded-2xl border bg-card p-4 shadow-sm sm:col-span-2 lg:col-span-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">By method</div>
           <div className="mt-2 flex flex-wrap gap-2">

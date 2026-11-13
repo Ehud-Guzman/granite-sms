@@ -27,6 +27,11 @@ describe("payments ledger", () => {
     expect(r.body.items[0].student).toHaveProperty("admissionNo");
     expect(r.body.totals.amount).toBe(6000 + 2500 + 700);
     expect(r.body.totals.byMethod[0]).toMatchObject({ method: "CASH", amount: 6000, count: 6 });
+    // The chart series covers the same money: by month here (2025 to now).
+    expect(r.body.totals.bucket).toBe("month");
+    expect(r.body.totals.series.reduce((n, x) => n + x.amount, 0)).toBe(r.body.totals.amount);
+    const today = await as(s.bursar).get(`/api/fees/payments?from=${localDateString(new Date(), "Africa/Nairobi")}`);
+    expect(today.body.totals).toMatchObject({ bucket: "day", series: [{ amount: 8500 }] });
   });
 
   it("filters by day, method and search", async () => {

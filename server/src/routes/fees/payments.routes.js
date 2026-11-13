@@ -33,9 +33,9 @@ router.get("/payments", requireRole("ADMIN", "BURSAR"), async (req, res) => {
     return res.status(400).json({ message: "from and to must be dates (YYYY-MM-DD)." });
   }
 
+  const { timezone } = await getSchoolCalendar(req.schoolId);
   let receivedAt;
   if (from || to) {
-    const { timezone } = await getSchoolCalendar(req.schoolId);
     const range = localDayRange(from || "2000-01-01", to || "2100-12-31", timezone);
     receivedAt = { gte: range.from, lte: range.to };
   }
@@ -81,6 +81,45 @@ router.get("/payments", requireRole("ADMIN", "BURSAR"), async (req, res) => {
     prisma.feePayment.count({ where: { ...where, isReversed: true } }),
   ]);
 
+  // Money in per day (per month when the filter spans more than ~3 months),
+  // in the school's time zone, for the chart. Reversed payments don't count.
+  const amounts = await prisma.feePayment.findMany({
+    where: { ...where, isReversed: false },
+    select: { receivedAt: true, amount: true },
+    orderBy: { receivedAt: "asc" },
+    take: 50000,
+  });
+  const firstDay = amounts.length ? localDateString(amounts[0].receivedAt, timezone) : null;
+  const lastDay = amounts.length ? localDateString(amounts[amounts.length - 1].receivedAt, timezone) : null;
+  const spanDays = firstDay ? (Date.parse(lastDay) - Date.parse(firstDay)) / 86400000 : 0;
+  const bucket = spanDays > 92 ? "month" : "day";
+  const sums = new Map();
+  for (const a of amounts) {
+    const d = localDateString(a.receivedAt, timezone);
+    const k = bucket === "month" ? d.slice(0, 7) : d;
+    sums.set(k, (sums.get(k) || 0) + a.amount);
+  }
+  // Every day (or month) in the span, so quiet days show as zero, not as a gap.
+  const series = [];
+  if (firstDay) {
+    if (bucket === "day") {
+      for (let t = Date.parse(firstDay); t <= Date.parse(lastDay); t += 86400000) {
+        const k = new Date(t).toISOString().slice(0, 10);
+        series.push({ period: k, amount: sums.get(k) || 0 });
+      }
+    } else {
+      let [y, m] = firstDay.slice(0, 7).split("-").map(Number);
+      const end = lastDay.slice(0, 7);
+      for (;;) {
+        const k = `${y}-${String(m).padStart(2, "0")}`;
+        series.push({ period: k, amount: sums.get(k) || 0 });
+        if (k >= end) break;
+        m += 1;
+        if (m > 12) (m = 1), (y += 1);
+      }
+    }
+  }
+
   const names = await staffNames(req.schoolId, items.map((p) => p.receivedBy));
   return res.json({
     items: items.map((p) => ({ ...p, receivedByName: names.get(String(p.receivedBy)) || null })),
@@ -94,6 +133,8 @@ router.get("/payments", requireRole("ADMIN", "BURSAR"), async (req, res) => {
       byMethod: byMethod
         .map((m) => ({ method: m.method, amount: m._sum.amount || 0, count: m._count }))
         .sort((a, b) => b.amount - a.amount),
+      bucket,
+      series,
     },
   });
 });

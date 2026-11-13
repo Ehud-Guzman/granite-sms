@@ -14,6 +14,7 @@ import { useCurrentTermState, useSchoolCalendar } from "@/lib/schoolCalendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader, Panel, Meter } from "@/components/insights/Insights";
+import { ChartCard, ColumnsChart, RankBars, TrendChart } from "@/components/insights/Charts";
 
 const WEEKS_STEP = 4;
 const STATUS_TABS = [
@@ -118,6 +119,46 @@ export default function AttendancePage() {
 
   const anything = weeksList.some((w) => w.days.length);
 
+  // For the charts: present rate per school day, and per class, over the
+  // registers shown (same class and status filters as the list).
+  const stats = useMemo(() => {
+    const byDay = new Map();
+    const byClass = new Map();
+    for (const s of sessions) {
+      const p = presence(s.counts);
+      if (!p.total) continue;
+      const d = String(s.date).slice(0, 10);
+      const day = byDay.get(d) || { present: 0, total: 0 };
+      day.present += p.present;
+      day.total += p.total;
+      byDay.set(d, day);
+      const k = s.classId;
+      const c = byClass.get(k) || { label: classLabel(s.class), present: 0, total: 0, n: 0 };
+      c.present += p.present;
+      c.total += p.total;
+      c.n += 1;
+      byClass.set(k, c);
+    }
+    const days = [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([d, v]) => {
+        const pct = Math.round((v.present / v.total) * 1000) / 10;
+        return { key: d, label: fmtDay(d, { day: "numeric", month: "short" }), value: pct, display: `${pct}%`, present: v.present, total: v.total };
+      });
+    const classes = [...byClass.entries()]
+      .map(([k, v]) => {
+        const pct = Math.round((v.present / v.total) * 1000) / 10;
+        return { key: k, label: v.label, value: pct, display: `${pct}%`, n: v.n, present: v.present, total: v.total };
+      })
+      .sort((a, b) => a.value - b.value);
+    const present = days.reduce((n, d) => n + d.present, 0);
+    const total = days.reduce((n, d) => n + d.total, 0);
+    // Zoom the line to where the days are (attendance sits in the 90s), never above the 90% target line.
+    const low = days.length ? Math.min(...days.map((d) => d.value)) : 0;
+    const floor = Math.max(0, Math.min(80, Math.floor((low - 5) / 10) * 10));
+    return { days, classes, floor, overall: total ? Math.round((present / total) * 1000) / 10 : null };
+  }, [sessions]);
+
   // This week is open; earlier weeks show as one summary line until opened.
   const [shownWeeks, setShownWeeks] = useState(() => new Set([mondayOf(today)]));
   const toggleWeek = (monday) =>
@@ -186,6 +227,63 @@ export default function AttendancePage() {
           <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">{getErrorMessage(open.error, "Couldn't open the register.")}</div>
         )}
       </section>
+
+      {/* The numbers at a glance; each opens big with a table. */}
+      {stats.days.length > 1 && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <ChartCard
+            title="Present rate by school day"
+            value={stats.overall != null ? `${stats.overall}%` : "—"}
+            caption={`Since ${fmtDay(from, { day: "numeric", month: "short" })}${filterClass ? " · this class" : " · all classes"} · present or late`}
+            chart={(size) => (
+              <TrendChart
+                points={stats.days}
+                compact={size === "compact"}
+                height={size === "compact" ? 70 : 260}
+                yMax={100}
+                yMin={stats.floor}
+                target={90}
+                format={(v) => `${Math.round(v)}%`}
+                ariaLabel="Present rate by school day"
+              />
+            )}
+            table={{ columns: ["Day", "Present", "On the registers", "Rate"], rows: stats.days.map((d) => [d.label, d.present, d.total, d.display]) }}
+            note="The dashed line is a 90% attendance target."
+          />
+          {!filterClass && stats.classes.length > 1 ? (
+            <ChartCard
+              title="Classes, lowest attendance first"
+              value={stats.classes[0] ? `${stats.classes[0].label} ${stats.classes[0].display}` : "—"}
+              caption="Present rate over the same days"
+              chart={(size) => <RankBars items={stats.classes} max={100} compact={size === "compact"} limit={size === "compact" ? 3 : undefined} />}
+              table={{ columns: ["Class", "Registers", "Present", "Rate"], rows: stats.classes.map((c) => [c.label, c.n, `${c.present} of ${c.total}`, c.display]) }}
+            />
+          ) : (
+            <ChartCard
+              title="Registers by rate"
+              value={`${stats.days.length} days`}
+              caption="How many days were 95%+, 90-95%, 75-90% and below 75%"
+              chart={(size) => (
+                <ColumnsChart
+                  compact={size === "compact"}
+                  height={size === "compact" ? 70 : 240}
+                  format={(v) => String(Math.round(v))}
+                  ariaLabel="School days by present rate"
+                  points={[
+                    ["below 75%", (v) => v < 75],
+                    ["75-90%", (v) => v >= 75 && v < 90],
+                    ["90-95%", (v) => v >= 90 && v < 95],
+                    ["95%+", (v) => v >= 95],
+                  ].map(([label, test]) => {
+                    const n = stats.days.filter((d) => test(d.value)).length;
+                    return { key: label, label, value: n, display: `${n} day${n === 1 ? "" : "s"}` };
+                  })}
+                />
+              )}
+            />
+          )}
+        </div>
+      )}
 
       {/* Looking back */}
       <Panel

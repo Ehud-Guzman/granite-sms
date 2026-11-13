@@ -16,6 +16,7 @@ import ResultsFilters from "./components/ResultsFilters";
 import SessionsList from "./components/SessionsList";
 import ClassResultsCard from "./components/ClassResultsCard";
 import ClassResultsTable from "./components/ClassResultsTable";
+import ClassResultsCharts from "./components/ClassResultsCharts";
 import StudentSlipPanel from "./components/StudentSlipPanel";
 
 import { fmtClass } from "./utils/format";
@@ -427,6 +428,7 @@ export default function ResultsPage() {
                     </div>
                   )}
 
+                  <ClassResultsCharts classPayload={classPayload} showGrades={showGrades} />
                   <ClassResultsTable
                     classPayload={classPayload}
                     showGrades={showGrades}

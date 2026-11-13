@@ -1,13 +1,28 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  BarChart3,
+  CalendarCheck,
+  ClipboardList,
+  FileText,
+  GraduationCap,
+  LayoutDashboard,
+  LogOut,
+  Megaphone,
+  Menu,
+  PieChart,
+  School,
+  Settings,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { Outlet, NavLink, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { NAV_BY_ROLE } from "../config/nav.config";
+import { NAV_BY_ROLE, NAV_GROUP_ORDER } from "../config/nav.config";
 import { capsFor } from "../config/capabilities";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -19,6 +34,7 @@ import {
 import { useMe } from "@/hooks/useMe";
 import { logout as doLogout, getToken, getSelectedSchool } from "@/api/auth.api";
 import { getBranding } from "@/api/settingsBranding.api";
+import { api } from "@/api/axios";
 
 import { applyAppearance } from "@/lib/appearance";
 
@@ -129,68 +145,36 @@ export default function AppShell() {
     }
   }
 
+  const logoSrc = toAbsUrl(brandingQ.data?.brandLogoUrl);
+  const who = user?.teacher?.name || user?.student?.name || user?.email || "";
+
   return (
     <div className="min-h-screen bg-background">
       <div className="flex min-h-screen">
-        {/* Desktop sidebar */}
-        <aside className="hidden lg:flex w-64 flex-col border-r bg-card">
-          <div className="ui-pad">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="text-lg font-semibold">SMS</div>
-              <Badge variant="outline" className="text-xs font-normal">
-                {role}
-              </Badge>
-            </div>
-            <div className="text-sm text-muted-foreground truncate">{schoolName}</div>
-          </div>
-
-          <Separator />
-
-          <nav className="ui-pad flex-1 space-y-1">
-            {navItems.map((item) => (
-              <NavItem key={item.to} to={item.to} label={item.label} />
-            ))}
+        {/* Desktop sidebar: pinned to the screen; only its link list scrolls. */}
+        <aside className="hidden lg:flex sticky top-0 h-screen w-64 shrink-0 flex-col border-r bg-card">
+          <SchoolHeader logoSrc={logoSrc} schoolName={schoolName} role={role} />
+          <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
+            <GroupedNav items={navItems} />
           </nav>
-
-          <div className="ui-pad border-t">
-            <Button variant="ghost" className="w-full justify-start" onClick={logout}>
-              Logout
-            </Button>
-          </div>
+          <AccountFooter who={who} role={role} logout={logout} />
         </aside>
 
         {/* Main */}
         <div className="flex-1 min-w-0 flex flex-col">
-          {/* Topbar */}
-          <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
             <div className="h-12 ui-pad flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="lg:hidden">
-                  <MobileNav
-                    navItems={navItems}
-                    role={role}
-                    schoolName={schoolName}
-                    logout={logout}
-                  />
+                  <MobileNav navItems={navItems} role={role} schoolName={schoolName} logoSrc={logoSrc} who={who} logout={logout} />
                 </div>
-                <div className="text-base font-semibold">{title}</div>
+                <div className="text-base font-semibold truncate">{title}</div>
               </div>
-
               <div className="flex items-center gap-2">
-                <div className="hidden sm:block text-sm text-muted-foreground truncate max-w-[200px]">
-                  {schoolName}
-                </div>
+                <div className="hidden sm:block text-sm text-muted-foreground truncate max-w-[200px]">{schoolName}</div>
                 <Badge variant="outline" className="text-xs font-normal">
-                  {role}
+                  {ROLE_NAME[role] || role}
                 </Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={logout}
-                  className="hidden sm:inline-flex"
-                >
-                  Logout
-                </Button>
               </div>
             </div>
           </header>
@@ -205,23 +189,112 @@ export default function AppShell() {
 }
 
 /* =========================
-   Nav Item
+   Sidebar parts
 ========================= */
 
-function NavItem({ to, label }) {
+const ROLE_NAME = {
+  SYSTEM_ADMIN: "Platform owner",
+  ADMIN: "Admin",
+  TEACHER: "Teacher",
+  BURSAR: "Bursar",
+  STUDENT: "Learner",
+  PARENT: "Parent",
+};
+
+const ICONS = {
+  home: LayoutDashboard,
+  notices: Megaphone,
+  students: Users,
+  classes: School,
+  teachers: GraduationCap,
+  attendance: CalendarCheck,
+  exams: ClipboardList,
+  results: BarChart3,
+  reportCards: FileText,
+  fees: Wallet,
+  reports: PieChart,
+  settings: Settings,
+};
+
+function SchoolHeader({ logoSrc, schoolName, role }) {
+  return (
+    <div className="flex items-center gap-3 border-b px-4 py-4">
+      {logoSrc ? (
+        <img src={logoSrc} alt="" className="h-10 w-10 shrink-0 rounded-lg object-contain bg-muted" />
+      ) : (
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground" aria-hidden="true">
+          {initials(schoolName)}
+        </div>
+      )}
+      <div className="min-w-0">
+        <div className="truncate font-semibold leading-tight">{schoolName}</div>
+        <div className="text-xs text-muted-foreground">{ROLE_NAME[role] || role}</div>
+      </div>
+    </div>
+  );
+}
+
+function AccountFooter({ who, role, logout }) {
+  return (
+    <div className="border-t p-3">
+      <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold" aria-hidden="true">
+          {initials(who || role)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium">{who || ROLE_NAME[role]}</div>
+          <div className="text-xs text-muted-foreground">{ROLE_NAME[role] || role}</div>
+        </div>
+        <Button variant="ghost" size="icon" onClick={logout} title="Log out" aria-label="Log out">
+          <LogOut className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function initials(name) {
+  const parts = String(name || "").replace(/@.*$/, "").split(/[\s._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "S";
+}
+
+/** Links under small group headings; a group heading only shows when there is more than one group. */
+function GroupedNav({ items, onNavigate }) {
+  const groups = NAV_GROUP_ORDER.map((g) => [g, items.filter((i) => (i.group || "Overview") === g)]).filter(([, list]) => list.length);
+  const showHeadings = groups.length > 1;
+  return (
+    <div className="space-y-4">
+      {groups.map(([group, list]) => (
+        <div key={group}>
+          {showHeadings && group !== "Overview" && (
+            <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/80">{group}</div>
+          )}
+          <div className="space-y-0.5">
+            {list.map((item) => (
+              <NavItem key={item.to} item={item} onNavigate={onNavigate} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NavItem({ item, onNavigate }) {
+  const Icon = ICONS[item.icon] || LayoutDashboard;
   return (
     <NavLink
-      to={to}
+      to={item.to}
+      onClick={onNavigate}
       className={({ isActive }) =>
         [
-          "flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors",
-          isActive
-            ? "bg-primary text-primary-foreground font-medium"
-            : "text-muted-foreground hover:text-foreground hover:bg-muted",
+          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+          isActive ? "bg-primary text-primary-foreground font-medium shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted",
         ].join(" ")
       }
     >
-      <span>{label}</span>
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="truncate">{item.label}</span>
     </NavLink>
   );
 }
@@ -230,64 +303,35 @@ function NavItem({ to, label }) {
    Mobile Nav
 ========================= */
 
-function MobileNav({ navItems, role, schoolName, logout }) {
+function MobileNav({ navItems, role, schoolName, logoSrc, who, logout }) {
+  const [open, setOpen] = useState(false);
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="sm" className="px-3">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M2 4H14M2 8H14M2 12H14"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
+        <Button variant="ghost" size="sm" className="px-3" aria-label="Open menu">
+          <Menu className="h-4 w-4" />
         </Button>
       </SheetTrigger>
 
-      <SheetContent side="left" className="w-72 p-0">
-        <SheetHeader className="px-5 pt-5 pb-3 border-b">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="text-lg font-semibold">SMS</SheetTitle>
-            <Badge variant="outline" className="text-xs font-normal">
-              {role}
-            </Badge>
-          </div>
-          <div className="text-sm text-muted-foreground truncate">{schoolName}</div>
+      <SheetContent side="left" className="flex w-72 flex-col p-0">
+        <SheetHeader className="sr-only">
+          <SheetTitle>Menu</SheetTitle>
         </SheetHeader>
-
-        <nav className="p-3 space-y-1">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors",
-                  isActive
-                    ? "bg-primary text-primary-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                ].join(" ")
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
+        <SchoolHeader logoSrc={logoSrc} schoolName={schoolName} role={role} />
+        <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
+          <GroupedNav items={navItems} onNavigate={() => setOpen(false)} />
         </nav>
-
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t">
-          <Button variant="ghost" className="w-full justify-start" onClick={logout}>
-            Logout
-          </Button>
-        </div>
+        <AccountFooter who={who} role={role} logout={logout} />
       </SheetContent>
     </Sheet>
   );
+}
+
+// The logo is served by the API; turn its relative path into a full URL.
+function toAbsUrl(path) {
+  if (!path) return null;
+  const v = String(path);
+  if (/^https?:\/\//.test(v)) return v;
+  const origin = String(api?.defaults?.baseURL || "").replace(/\/api\/?$/, "").replace(/\/$/, "");
+  return `${origin}${v.startsWith("/") ? "" : "/"}${v}`;
 }

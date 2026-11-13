@@ -2,13 +2,41 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { fmtClass } from "../utils/format";
+import ExamGroups from "@/features/exams/components/ExamGroups";
 
-// The exam list. When `detail` is given, the opened exam's content shows right
-// under its own card (an accordion), so it is obvious what opened.
+// The exam list. Once an exam is open the list folds down to that one exam
+// (with a way back), so its results sit right under it instead of below every
+// other exam. When `detail` is given it shows inside the opened card.
 export default function SessionsList({ sessions, activeSessionId, onOpen, onClose, classLabelById, termLabels, detail }) {
+  const open = activeSessionId && sessions.some((s) => s.id === activeSessionId);
+  const shown = open ? sessions.filter((s) => s.id === activeSessionId) : sessions;
+  const labelOf = (s) => classLabelById.get(s.classId) || (s.class ? fmtClass(s.class) : "Class");
+
+  // Nothing open: exams grouped by term, each class inside its exam.
+  if (!open) {
+    return (
+      <ExamGroups
+        sessions={sessions}
+        termLabels={termLabels}
+        classLabelOf={labelOf}
+        emptyText="No published exams for these filters."
+        renderAction={(s) => (
+          <Button size="sm" variant="secondary" onClick={() => onOpen(s.id)}>
+            Open
+          </Button>
+        )}
+      />
+    );
+  }
+
   return (
     <div className="grid gap-3">
-      {sessions.map((s) => {
+      {open && onClose && (
+        <button type="button" onClick={onClose} className="justify-self-start text-sm font-medium text-primary hover:underline">
+          ← All exams ({sessions.length})
+        </button>
+      )}
+      {shown.map((s) => {
         const isActive = s.id === activeSessionId;
         const cls = classLabelById.get(s.classId) || (s.class ? fmtClass(s.class) : "");
 

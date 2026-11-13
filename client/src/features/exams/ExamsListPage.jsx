@@ -9,27 +9,19 @@ import { useMe } from "@/hooks/useMe";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { getErrorMessage as errMsg } from "@/lib/errors";
 import { useCurrentTermState, useSchoolCalendar } from "@/lib/schoolCalendar";
 
 import ExamCreateDrawer from "./ExamCreateDrawer";
+import ExamGroups from "./components/ExamGroups";
 
 const TERMS = ["ALL", "TERM1", "TERM2", "TERM3"];
 
 
 function currentYear() {
   return new Date().getFullYear();
-}
-
-function statusBadgeVariant(status) {
-  if (status === "PUBLISHED") return "default";
-  if (status === "SUBMITTED") return "secondary";
-  if (status === "UNLOCKED") return "secondary";
-  if (status === "DRAFT") return "outline";
-  return "secondary";
 }
 
 function fmtClass(c) {
@@ -112,9 +104,9 @@ const filters = useMemo(() => {
 
 const activeFiltersText = useMemo(() => {
   const y = yearNum ? String(yearNum) : "—";
-  const t = term === "ALL" ? "All terms" : (term || "—");
+  const t = term === "ALL" ? "All terms" : termLabels?.[term] || term || "—";
   return `Year ${y} • ${t}`;
-}, [yearNum, term]);
+}, [yearNum, term, termLabels]);
 
 
   return (
@@ -161,7 +153,7 @@ const activeFiltersText = useMemo(() => {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name / exam type / class…"
+                placeholder="Find an exam or class, e.g. Grade 7"
               />
             </div>
 
@@ -212,46 +204,19 @@ const activeFiltersText = useMemo(() => {
             </div>
           )}
 
-          {/* Sessions list */}
-          <div className="grid gap-3">
-            {filtered.map((s) => {
-              const clsLabel = classLabelById.get(String(s.classId)) || String(s.classId);
-
-              return (
-                <Card key={s.id}>
-                  <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="font-medium">{s.name || "Untitled Session"}</div>
-
-                      <div className="text-sm opacity-70 flex flex-wrap gap-2 items-center">
-                        <Badge variant={statusBadgeVariant(s.status)}>{s.status}</Badge>
-                        <span className="font-medium text-foreground">{clsLabel}</span>
-                        <span>
-                          {termLabels?.[s.term] || s.term} {s.year}
-                        </span>
-
-                        {s.examType?.name && (
-                          <span>
-                            Type: {s.examType.name}
-                            {s.examType?.code ? ` (${s.examType.code})` : ""}
-                          </span>
-                        )}
-                        {typeof s.examType?.weight === "number" && (
-                          <span>Weight: {s.examType.weight}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Button asChild variant="secondary">
-                        <Link to={`/app/exams/sessions/${s.id}/marksheets`}>Open</Link>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          {/* Exams, grouped: one card per exam in a term, its classes inside */}
+          {!sessionsQ.isLoading && !sessionsQ.isError && filtered.length > 0 && (
+            <ExamGroups
+              sessions={filtered}
+              termLabels={termLabels}
+              classLabelOf={(x) => classLabelById.get(String(x.classId)) || (x.class ? fmtClass(x.class) : "Class")}
+              renderAction={(x) => (
+                <Button asChild size="sm" variant="secondary">
+                  <Link to={`/app/exams/sessions/${x.id}/marksheets`}>Open</Link>
+                </Button>
+              )}
+            />
+          )}
         </CardContent>
       </Card>
     </div>

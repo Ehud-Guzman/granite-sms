@@ -1,6 +1,7 @@
 // src/features/results/components/ResultsFilters.jsx
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
 
 const TERMS = ["ALL", "TERM1", "TERM2", "TERM3"];
 
@@ -14,6 +15,7 @@ export default function ResultsFilters({
   showGrades,
   setShowGrades,
 }) {
+  const { termLabels } = useSchoolCalendar();
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-center">
@@ -39,7 +41,7 @@ export default function ResultsFilters({
           >
             {TERMS.map((t) => (
               <option key={t} value={t}>
-                {t === "ALL" ? "All Terms" : t}
+                {t === "ALL" ? "All terms" : termLabels?.[t] || t}
               </option>
             ))}
           </select>

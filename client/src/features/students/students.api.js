@@ -12,6 +12,21 @@ export async function listStudents({ active = true, classId } = {}) {
   return Array.isArray(data) ? data : [];
 }
 
+// One page of learners (server-side paging and search):
+// { items, total, page, pageSize }.
+export async function listStudentsPage({ active = true, classId, q, page = 1, pageSize = 25 } = {}) {
+  const params = { active: String(active), page, pageSize };
+  if (classId) params.classId = String(classId);
+  if (q) params.q = q;
+  const { data } = await api.get("/api/students", { params });
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    total: Number(data?.total || 0),
+    page: Number(data?.page || page),
+    pageSize: Number(data?.pageSize || pageSize),
+  };
+}
+
 export async function getStudent(id) {
   const { data } = await api.get(`/api/students/${id}`);
   return data;

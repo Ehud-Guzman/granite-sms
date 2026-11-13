@@ -1,5 +1,5 @@
 // src/features/results/ResultsPage.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 
 import { useMe } from "@/hooks/useMe";
@@ -21,7 +21,7 @@ import StudentSlipPanel from "./components/StudentSlipPanel";
 import { fmtClass } from "./utils/format";
 import { printSection } from "@/lib/print";
 import { getErrorMessage as errMsg } from "@/lib/errors";
-import { useSchoolCalendar } from "@/lib/schoolCalendar";
+import { useCurrentTermState, useSchoolCalendar } from "@/lib/schoolCalendar";
 
 function currentYear() {
   return new Date().getFullYear();
@@ -38,7 +38,8 @@ export default function ResultsPage() {
 
   /* ================= STATE ================= */
   const [year, setYear] = useState(String(currentYear()));
-  const [term, setTerm] = useState("ALL");
+  // Opens on the current term; "All terms" is one click away.
+  const [term, setTerm] = useCurrentTermState("ALL");
   const [search, setSearch] = useState("");
 
   const [activeSessionId, setActiveSessionId] = useState(null);
@@ -219,10 +220,11 @@ export default function ResultsPage() {
     !publishMut.isPending;
 
   const { termLabels } = useSchoolCalendar();
-  const staffResultsRef = useRef(null);
+  // The list folds to the opened exam, so start from the top of the page,
+  // where that exam and its results now are.
   useEffect(() => {
-    if (activeSessionId && !isStudent) staffResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [activeSessionId, isStudent]);
+    if (activeSessionId) window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activeSessionId]);
 
   /* ================= HANDLERS ================= */
   const onOpenSession = (id) => {
@@ -312,7 +314,7 @@ export default function ResultsPage() {
                 sessions={filteredSessions}
                 activeSessionId={activeSessionId}
                 onOpen={onOpenSession}
-                onClose={isStudent ? onCloseSession : undefined}
+                onClose={onCloseSession}
                 classLabelById={classLabelById}
                 termLabels={termLabels}
                 detail={isStudent ? <div className="space-y-3">
@@ -366,8 +368,7 @@ export default function ResultsPage() {
             />
           )}
 
-          {/* Class results (Admin/Teacher); the page scrolls here when an exam opens */}
-          <div ref={staffResultsRef} className="scroll-mt-4" />
+          {/* Class results (Admin/Teacher), right under the opened exam */}
           {role !== "STUDENT" && activeSessionId && (
             <ClassResultsCard
               schoolName={schoolName}

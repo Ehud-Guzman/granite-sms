@@ -10,7 +10,7 @@ import {
   deactivateStudent,
  updateStudent,
   getTeacherAssignedClasses,
-  listStudents,
+  listStudentsPage,
 } from "./students.api";
 import StudentFormDrawer from "./StudentFormDrawer.jsx";
 import ImportStudentsDialog from "./ImportStudentsDialog";
@@ -169,15 +169,31 @@ export default function StudentsListPage() {
   // Teacher must pick a class; Admin can do "all"
   const effectiveClassId = role === "TEACHER" ? classId : classId || undefined;
 
+  // Search runs on the server, a moment after typing stops.
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // A page of learners at a time; changing a filter starts again at page 1.
+  const PAGE_SIZE = 25;
+  const filterKey = `${active}|${effectiveClassId || ""}|${query}`;
+  const [pageState, setPageState] = useState({ key: "", page: 1 });
+  const page = pageState.key === filterKey ? pageState.page : 1;
+  const goTo = (n) => setPageState({ key: filterKey, page: n });
+
   const {
-    data: students = [],
+    data: pageData,
     isLoading,
+    isFetching,
     isError,
     error,
     refetch,
   } = useQuery({
-    queryKey: ["students", { active, classId: effectiveClassId || null }],
-    queryFn: () => listStudents({ active, classId: effectiveClassId }),
+    queryKey: ["students", { active, classId: effectiveClassId || null, q: query, page, pageSize: PAGE_SIZE }],
+    queryFn: () => listStudentsPage({ active, classId: effectiveClassId, q: query, page, pageSize: PAGE_SIZE }),
+    placeholderData: (prev) => prev,
     enabled:
       role === "ADMIN"
         ? true
@@ -207,24 +223,11 @@ const activateMut = useMutation({
     toast.error(err?.response?.data?.message || "Failed to reactivate"),
 });
 
-  const filteredStudents = useMemo(() => {
-    const qq = search.trim().toLowerCase();
-    if (!qq) return students;
-
-    return students.filter((s) => {
-      const name = fullName(s).toLowerCase();
-      const adm = String(s.admissionNo || "").toLowerCase();
-      return name.includes(qq) || adm.includes(qq);
-    });
-  }, [students, search]);
-
-  // Draw rows in batches: a 1,500-learner school would otherwise render
-  // every row at once. Changing filters starts again from the first batch.
-  const BATCH = 100;
-  const [shown, setShown] = useState({ key: "", count: BATCH });
-  const filterKey = `${active}|${classId}|${search}`;
-  const visibleCount = shown.key === filterKey ? shown.count : BATCH;
-  const visibleStudents = filteredStudents.slice(0, visibleCount);
+  const visibleStudents = pageData?.items || [];
+  const total = pageData?.total || 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const from = total ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const to = Math.min(page * PAGE_SIZE, total);
 
   const openCreate = () => {
     if (role === "ADMIN" && !canCreateStudent) {
@@ -455,11 +458,11 @@ const activateMut = useMutation({
                     Loading...
                   </span>
                 ) : (
-                  `${filteredStudents.length} student${filteredStudents.length !== 1 ? 's' : ''} found`
+                  `${total.toLocaleString()} learner${total !== 1 ? "s" : ""}${query ? ` matching "${query}"` : ""}`
                 )}
               </CardDescription>
             </div>
-            {!isLoading && filteredStudents.length > 0 && (
+            {!isLoading && total > 0 && (
               <Badge variant="outline">
                 {active ? "Active" : "Inactive"} Students
               </Badge>
@@ -491,7 +494,7 @@ const activateMut = useMutation({
           )}
 
           {/* Empty State */}
-          {!isLoading && !isError && filteredStudents.length === 0 && (
+          {!isLoading && !isError && total === 0 && (
             <EmptyState
               bare
               size="sm"
@@ -508,7 +511,7 @@ const activateMut = useMutation({
           )}
 
           {/* Table */}
-          {!isLoading && !isError && filteredStudents.length > 0 && (
+          {!isLoading && !isError && total > 0 && (
             <div className="rounded-lg border overflow-hidden">
               <div className="overflow-x-auto">
                 <Table>
@@ -632,13 +635,7 @@ const activateMut = useMutation({
                   </TableBody>
                 </Table>
               </div>
-              {filteredStudents.length > visibleCount && (
-                <div className="flex justify-center pt-3">
-                  <Button variant="outline" onClick={() => setShown({ key: filterKey, count: visibleCount + BATCH })}>
-                    Show more ({filteredStudents.length - visibleCount} left)
-                  </Button>
-                </div>
-              )}
+              <Pager page={page} pages={pages} from={from} to={to} total={total} busy={isFetching} onGo={goTo} />
             </div>
           )}
         </CardContent>
@@ -652,6 +649,37 @@ const activateMut = useMutation({
           initialStudent={editingStudent}
           onClose={() => setDrawerOpen(false)}
         />
+      )}
+    </div>
+  );
+}
+/** "Showing 26–50 of 210" with previous/next and a few page numbers. */
+function Pager({ page, pages, from, to, total, busy, onGo }) {
+  if (total === 0) return null;
+  const nums = [];
+  for (let n = Math.max(1, page - 2); n <= Math.min(pages, page + 2); n++) nums.push(n);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3 text-sm">
+      <div className="text-muted-foreground">
+        Showing <b className="text-foreground">{from}–{to}</b> of <b className="text-foreground">{total.toLocaleString()}</b>
+        {busy && <Loader2 className="ml-2 inline h-3.5 w-3.5 animate-spin" />}
+      </div>
+      {pages > 1 && (
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onGo(page - 1)}>
+            Previous
+          </Button>
+          {nums[0] > 1 && <span className="px-1 text-muted-foreground">…</span>}
+          {nums.map((n) => (
+            <Button key={n} variant={n === page ? "default" : "ghost"} size="sm" className="w-9 px-0" onClick={() => onGo(n)} aria-current={n === page ? "page" : undefined}>
+              {n}
+            </Button>
+          ))}
+          {nums[nums.length - 1] < pages && <span className="px-1 text-muted-foreground">…</span>}
+          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => onGo(page + 1)}>
+            Next
+          </Button>
+        </div>
       )}
     </div>
   );

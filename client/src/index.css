@@ -216,6 +216,19 @@ body,
   display: none;
 }
 
+/* Reports are both screen and print view (PrintDocument screen): show them,
+   but keep the letterhead and footer for paper. When printing, the base
+   rule above hides them again unless they are the one being printed. */
+@media screen {
+  .print-only.print-screen {
+    display: block;
+  }
+  .print-only.print-screen .print-letterhead,
+  .print-only.print-screen .print-footer {
+    display: none;
+  }
+}
+
 /* Multi-line support */
 .print-letterhead__headerText,
 .print-footer {

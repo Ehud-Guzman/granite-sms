@@ -55,7 +55,8 @@ export default function FeesDashboardTab() {
                   <b>{money(collectionsQ.data?.totalCollected ?? 0)}</b>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Payments: {collectionsQ.data?.count ?? 0}
+                  {/* The collections report returns the payments list, not a count. */}
+                  Payments: {collectionsQ.data?.payments?.length ?? 0}
                 </div>
               </div>
             )}

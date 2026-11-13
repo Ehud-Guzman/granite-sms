@@ -162,7 +162,7 @@ export default function FeesCollectionsReport() {
       )}
 
       {report && (
-        <PrintDocument
+        <PrintDocument screen
           id="print-fees-collections"
           className="space-y-3 bg-white"
         >

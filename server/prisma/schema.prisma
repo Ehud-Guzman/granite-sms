@@ -366,6 +366,7 @@ model School {
   mpesaConfig         MpesaConfig?
   mpesaTransactions   MpesaTransaction[]
   mpesaStkRequests    MpesaStkRequest[]
+  notices             Notice[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
   onboardingCompleted Boolean              @default(false)
@@ -508,7 +509,7 @@ model SmsMessage {
   schoolId    String
   to          String // +2547XXXXXXXX
   body        String
-  // PAYMENT | ABSENCE | RESULTS | FEE_REMINDER | BROADCAST
+  // PAYMENT | ABSENCE | RESULTS | FEE_REMINDER | BROADCAST | NOTICE
   kind        String    @db.VarChar(20)
   status      SmsStatus @default(QUEUED)
   attempts    Int       @default(0)
@@ -525,6 +526,35 @@ model SmsMessage {
 
   @@index([schoolId, createdAt])
   @@index([status, createdAt])
+}
+
+enum NoticeAudience {
+  EVERYONE
+  STAFF
+  FAMILIES // learners and parents
+}
+
+// The school noticeboard (audit missing feature 10). FAMILIES notices can be
+// limited to some classes (empty classIds = the whole school) and texted to
+// parents when posted.
+model Notice {
+  id          String         @id @default(cuid())
+  schoolId    String
+  title       String         @db.VarChar(120)
+  body        String
+  audience    NoticeAudience @default(EVERYONE)
+  classIds    String[]       @default([])
+  pinned      Boolean        @default(false)
+  expiresAt   DateTime?
+  smsQueued   Int            @default(0)
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, createdAt])
 }
 
 // The school's logo, stored in the database so it survives redeploys (the

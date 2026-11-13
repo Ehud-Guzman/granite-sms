@@ -65,6 +65,24 @@ export async function recipientsFor(db, { schoolId, studentId, all = false }) {
   return links.map((l) => ({ guardianId: l.guardian.id, phone: l.guardian.phone }));
 }
 
+/**
+ * Every guardian who receives SMS for active learners in these classes (all
+ * classes when empty), one entry per phone number, in one query.
+ */
+export async function familyRecipients(db, { schoolId, classIds = [] }) {
+  const links = await db.studentGuardian.findMany({
+    where: {
+      schoolId,
+      receivesSms: true,
+      student: { isActive: true, ...(classIds.length ? { classId: { in: classIds } } : {}) },
+    },
+    select: { guardian: { select: { id: true, phone: true } } },
+  });
+  const byPhone = new Map();
+  for (const l of links) if (l.guardian.phone && !byPhone.has(l.guardian.phone)) byPhone.set(l.guardian.phone, l.guardian.id);
+  return [...byPhone].map(([phone, guardianId]) => ({ phone, guardianId }));
+}
+
 /** The school's SMS switches; null when SMS is off for the school. */
 export async function smsSettings(db, schoolId) {
   const s = await db.schoolSettings.findUnique({

@@ -13,6 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import NoticeItem from "@/features/notices/NoticeItem";
+import { useNotices } from "@/features/notices/notices.api";
 
 const kes = (n) => `KES ${Math.round(Number(n) || 0).toLocaleString("en-KE")}`;
 
@@ -36,7 +38,8 @@ function PayBox({ studentId, suggested }) {
 export default function PortalHome() {
   const meQ = useMe();
   const role = meQ.data?.user?.role;
-  const { termLabels } = useSchoolCalendar();
+  const { termLabels, timezone } = useSchoolCalendar();
+  const noticesQ = useNotices({ limit: 3 });
   const q = useQuery({ queryKey: ["portalLearners"], queryFn: () => api.get("/api/portal/learners").then((r) => r.data), enabled: !!role });
   const learners = q.data?.learners || [];
   const isParent = role === "PARENT";
@@ -47,6 +50,22 @@ export default function PortalHome() {
         <h1 className="text-2xl font-semibold">{isParent ? "Your children" : "Your school summary"}</h1>
         <p className="text-sm text-muted-foreground">Fees, results and attendance in one place.</p>
       </div>
+
+      {noticesQ.data?.length > 0 && (
+        <Card>
+          <CardHeader className="pb-0 flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-base">Notices</CardTitle>
+            <Button asChild size="sm" variant="ghost">
+              <Link to="/app/notices">See all</Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {noticesQ.data.map((n) => (
+              <NoticeItem key={n.id} n={n} timezone={timezone} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {q.isLoading && <div className="text-sm text-muted-foreground">Loading…</div>}
       {q.isError && <div className="text-sm text-destructive">Couldn&apos;t load this page.</div>}

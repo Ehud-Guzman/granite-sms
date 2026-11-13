@@ -39,6 +39,9 @@ const SessionMarkSheetsPage = lazy(() => import("@/features/exams/SessionMarkShe
 const ResultsPage = lazy(() => import("@/features/results/ResultsPage.jsx"));
 const ReportCardsPage = lazy(() => import("@/features/results/ReportCardsPage.jsx"));
 
+// Notices
+const NoticesPage = lazy(() => import("@/features/notices/NoticesPage.jsx"));
+
 // Reports
 const ReportsPage = lazy(() => import("@/features/reports/ReportsPage.jsx"));
 const ClassPerformanceReport = lazy(() => import("@/features/reports/academic/ClassPerformanceReport.jsx"));
@@ -86,6 +89,7 @@ const ADMIN_OR_TEACHER = [R.ADMIN, R.TEACHER];
 const ADMIN_TEACHER_STUDENT = [R.ADMIN, R.TEACHER, R.STUDENT];
 const FEES_ACCESS = [R.ADMIN, R.BURSAR, R.STUDENT];
 const REPORTS_ACCESS = [R.ADMIN, R.BURSAR, R.TEACHER];
+const SCHOOL_MEMBERS = [R.ADMIN, R.TEACHER, R.BURSAR, R.STUDENT, R.PARENT];
 const FINANCE_REPORTS_ACCESS = [R.ADMIN, R.BURSAR];
 const ATTENDANCE_REPORTS_ACCESS = [R.ADMIN, R.TEACHER];
 
@@ -137,6 +141,14 @@ export default function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
 
           <Route path="dashboard" element={<HomeRoute />} />
+          <Route
+            path="notices"
+            element={
+              <RoleGuard allow={SCHOOL_MEMBERS}>
+                <NoticesPage />
+              </RoleGuard>
+            }
+          />
           <Route
             path="portal/:studentId/statement"
             element={

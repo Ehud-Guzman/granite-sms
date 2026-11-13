@@ -26,6 +26,7 @@ import gradeScaleRoutes from "./routes/gradeScales.js";
 import smsRoutes from "./routes/sms.js";
 import mpesaRoutes, { publicRouter as mpesaPublicRoutes } from "./routes/mpesa.js";
 import portalRoutes from "./routes/portal.js";
+import noticeRoutes from "./routes/notices.js";
 import studentImportRoutes from "./routes/studentImport.js";
 
 // Feature modules
@@ -235,6 +236,7 @@ app.use("/api/grade-scales", gradeScaleRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/mpesa", mpesaRoutes);
 app.use("/api/portal", portalRoutes);
+app.use("/api/notices", noticeRoutes);
 
 // Features
 app.use("/api/attendance", attendanceRoutes);

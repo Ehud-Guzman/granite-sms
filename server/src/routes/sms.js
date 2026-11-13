@@ -12,7 +12,7 @@ import { requireRole } from "../middleware/auth.js";
 import { requireTenant } from "../middleware/tenant.js";
 import { logAudit, actorCtx } from "../utils/audit.js";
 import { accountSummary } from "../modules/fees/ledger.js";
-import { queueSms, recipientsFor, smsConfigured, flushSoon, kes } from "../modules/sms/sms.js";
+import { queueSms, recipientsFor, familyRecipients, smsConfigured, flushSoon, kes } from "../modules/sms/sms.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -106,18 +106,13 @@ router.post("/broadcast", requireRole("ADMIN"), async (req, res) => {
 
   const school = await prisma.school.findUnique({ where: { id: req.schoolId }, select: { name: true, shortName: true } });
   const body = `${school?.shortName || school?.name || "School"}: ${text}`;
-  const students = await prisma.student.findMany({
-    where: { schoolId: req.schoolId, isActive: true, ...(classIds.length ? { classId: { in: classIds } } : {}) },
-    select: { id: true },
+  const to = await familyRecipients(prisma, { schoolId: req.schoolId, classIds });
+  if (dryRun) return res.json({ dryRun: true, recipients: to.length, body });
+  const queued = await queueSms(prisma, {
+    schoolId: req.schoolId,
+    createdById: req.user.id,
+    messages: to.map((t) => ({ to: t.phone, guardianId: t.guardianId, kind: "BROADCAST", body })),
   });
-  const byPhone = new Map();
-  for (const st of students) {
-    for (const t of await recipientsFor(prisma, { schoolId: req.schoolId, studentId: st.id, all: true })) {
-      if (!byPhone.has(t.phone)) byPhone.set(t.phone, { to: t.phone, guardianId: t.guardianId, kind: "BROADCAST", body });
-    }
-  }
-  if (dryRun) return res.json({ dryRun: true, recipients: byPhone.size, body });
-  const queued = await queueSms(prisma, { schoolId: req.schoolId, createdById: req.user.id, messages: [...byPhone.values()] });
   await logAudit({ req, ...actorCtx(req), schoolId: req.schoolId, action: "SMS_BROADCAST_SENT", targetType: "SCHOOL", targetId: req.schoolId, metadata: { queued, classIds, length: text.length } });
   flushSoon();
   return res.json({ dryRun: false, queued, providerConfigured: smsConfigured() });

@@ -30,7 +30,7 @@ const AttendancePage = lazy(() => import("@/features/attendance/AttendancePage.j
 const AttendanceSessionPage = lazy(() => import("@/features/attendance/AttendanceSessionPage.jsx"));
 
 // Fees
-const FeesPage = lazy(() => import("@/features/fees/FeesPage.jsx"));
+const FeesRoute = lazy(() => import("@/features/fees/FeesRoute.jsx"));
 
 // Exams / Results
 const MarksEntryPage = lazy(() => import("@/features/exams/marks/MarksEntryPage.jsx"));
@@ -235,7 +235,7 @@ export default function App() {
             path="fees"
             element={
               <RoleGuard allow={FEES_ACCESS}>
-                <FeesPage />
+                <FeesRoute />
               </RoleGuard>
             }
           />

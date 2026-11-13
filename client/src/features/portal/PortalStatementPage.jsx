@@ -10,12 +10,14 @@ import { Button } from "@/components/ui/button";
 
 const kes = (n) => `KES ${Math.round(Number(n) || 0).toLocaleString("en-KE")}`;
 
-export default function PortalStatementPage() {
-  const { studentId } = useParams();
+export default function PortalStatementPage({ studentId: studentIdProp }) {
+  const params = useParams();
+  const studentId = studentIdProp || params.studentId;
   const { timezone, termLabels } = useSchoolCalendar();
   const q = useQuery({
     queryKey: ["portalStatement", studentId],
     queryFn: () => api.get(`/api/fees/students/${studentId}/statement`).then((r) => r.data),
+    enabled: !!studentId,
     retry: false,
   });
   const d = q.data;

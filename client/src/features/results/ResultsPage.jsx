@@ -90,8 +90,10 @@ export default function ResultsPage() {
     [sessionsQ.data]
   );
 
+  const isStudent = role === "STUDENT";
   const classesQ = useQuery({
-    enabled: !!yearNum,
+    // Class names are for staff; a learner's sessions carry their own class.
+    enabled: !!yearNum && !!role && !isStudent,
     queryKey: ["classes", { year: yearNum }],
     queryFn: () => listClasses({ year: yearNum }),
   });
@@ -246,7 +248,9 @@ export default function ResultsPage() {
                 <div>
                   <CardTitle>Results</CardTitle>
                   <div className="text-sm opacity-70">
-                    Select an exam session, then view class results or a student’s results.
+                    {isStudent
+                      ? "Your published exams. Open one to see your result slip; Report cards combine a whole term."
+                      : "Select an exam session, then view class results or a student’s results."}
                   </div>
                 </div>
 

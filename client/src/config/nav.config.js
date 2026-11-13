@@ -35,7 +35,7 @@ export const NAV_BY_ROLE = {
   ],
 
   STUDENT: [
-    { label: "Dashboard", to: "/app/dashboard" },
+    { label: "Home", to: "/app/dashboard" },
     { label: "Notices", to: "/app/notices" },
     { label: "Results", to: "/app/results" },
     { label: "Report cards", to: "/app/report-cards" },

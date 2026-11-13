@@ -7,6 +7,7 @@ import { loadSubscription, requireLimit, effectiveCap, capHit } from "../middlew
 import { logAudit, actorCtx } from "../utils/audit.js";
 import { teacherClassIds } from "../utils/teacherScope.js";
 import { parseGender, parseDob, checkNames } from "../utils/studentFields.js";
+import { anonymiseStudent } from "../modules/privacy/privacy.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -372,6 +373,8 @@ router.patch("/:id", requireRole("ADMIN"), async (req, res) => {
     });
     if (!before)
       return res.status(404).json({ message: "Student not found" });
+    if (before.anonymisedAt)
+      return res.status(409).json({ message: "This learner has been anonymised and can't be edited." });
 
     // Reactivation (isActive false -> true) bypasses requireLimit(), which
     // only ever runs on POST — enforce the same student cap here so an
@@ -446,6 +449,7 @@ router.patch("/:id/exit", requireRole("ADMIN"), async (req, res) => {
 
   const before = await prisma.student.findFirst({ where: { id: String(req.params.id), schoolId } });
   if (!before) return res.status(404).json({ message: "Student not found" });
+  if (before.anonymisedAt) return res.status(409).json({ message: "This learner has been anonymised." });
 
   await prisma.student.updateMany({
     where: { id: before.id, schoolId },
@@ -463,6 +467,73 @@ router.patch("/:id/exit", requireRole("ADMIN"), async (req, res) => {
     metadata: { status, date: date.toISOString().slice(0, 10), note },
   });
   return res.json({ student: updated });
+});
+
+// ADMIN: record (or withdraw) a parent's consent to keep the child's data.
+// Body: { given: boolean, by?: "Mary W (mother)", date?: "YYYY-MM-DD", photo?: boolean }
+router.patch("/:id/consent", requireRole("ADMIN"), async (req, res) => {
+  const schoolId = req.schoolId;
+  const st = await prisma.student.findFirst({ where: { id: String(req.params.id), schoolId }, select: { id: true, anonymisedAt: true } });
+  if (!st) return res.status(404).json({ message: "Student not found" });
+  if (st.anonymisedAt) return res.status(409).json({ message: "This learner has been anonymised." });
+
+  const given = req.body?.given === true;
+  const data = { photoConsent: given && req.body?.photo === true };
+  if (given) {
+    const by = String(req.body?.by || "").trim().slice(0, 120);
+    if (by.length < 2) return res.status(400).json({ message: "Say who gave consent (e.g. the parent's name)." });
+    const date = req.body?.date ? new Date(`${req.body.date}T00:00:00Z`) : new Date();
+    if (Number.isNaN(date.getTime()) || date > new Date(Date.now() + 86400000)) {
+      return res.status(400).json({ message: "date must be a past or current date (YYYY-MM-DD)" });
+    }
+    Object.assign(data, { consentAt: date, consentBy: by });
+  } else {
+    Object.assign(data, { consentAt: null, consentBy: null });
+  }
+  const updated = await prisma.student.update({
+    where: { id: st.id },
+    data,
+    select: { id: true, consentAt: true, consentBy: true, photoConsent: true },
+  });
+  await logAudit({
+    req,
+    ...actorCtx(req),
+    schoolId,
+    action: given ? "STUDENT_CONSENT_RECORDED" : "STUDENT_CONSENT_WITHDRAWN",
+    targetType: "STUDENT",
+    targetId: st.id,
+    metadata: { photo: data.photoConsent },
+  });
+  return res.json({ consent: updated });
+});
+
+// ADMIN: remove a former learner's personal details (Data Protection Act).
+// Body: { confirm: "<admission number>" }. Fee and academic records stay,
+// without anything that identifies the child or their parents.
+router.post("/:id/anonymise", requireRole("ADMIN"), async (req, res) => {
+  const schoolId = req.schoolId;
+  const st = await prisma.student.findFirst({ where: { id: String(req.params.id), schoolId }, select: { id: true, admissionNo: true } });
+  if (!st) return res.status(404).json({ message: "Student not found" });
+  if (String(req.body?.confirm || "").trim() !== st.admissionNo) {
+    return res.status(400).json({ message: "Type the learner's admission number to confirm. This can't be undone." });
+  }
+  try {
+    const result = await anonymiseStudent({ schoolId, studentId: st.id });
+    await logAudit({
+      req,
+      ...actorCtx(req),
+      schoolId,
+      action: "STUDENT_ANONYMISED",
+      targetType: "STUDENT",
+      targetId: st.id,
+      metadata: { anonymised: true, guardiansRemoved: result.guardiansRemoved },
+    });
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    if (err?.status) return res.status(err.status).json({ message: err.message });
+    console.error("ANONYMISE STUDENT ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
 });
 
 // ADMIN: Deactivate student (frees slot)

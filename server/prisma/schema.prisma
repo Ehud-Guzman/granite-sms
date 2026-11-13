@@ -144,6 +144,14 @@ model Student {
   exitDate   DateTime?    @db.Date
   exitNote   String?
 
+  // Data Protection Act (s.33): a parent's consent to keep the child's data,
+  // who gave it and when; photos/publication are a separate yes or no.
+  consentAt    DateTime?
+  consentBy    String?   @db.VarChar(120)
+  photoConsent Boolean   @default(false)
+  // Set when a former learner's personal details were removed.
+  anonymisedAt DateTime?
+
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())

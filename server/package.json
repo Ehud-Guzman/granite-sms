@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "fees:reconcile": "node scripts/reconcileFees.js",
+    "privacy:retention": "node scripts/privacyRetention.js",
     "db:orphans": "node scripts/findOrphans.js",
     "db:drift": "node scripts/checkDrift.js",
     "results:freeze": "node scripts/freezePublishedResults.js"

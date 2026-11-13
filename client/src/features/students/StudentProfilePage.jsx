@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { confirmAction } from "@/lib/confirm-store";
 import GuardiansCard from "./GuardiansCard";
+import PrivacyCard from "./PrivacyCard";
 import RecordLeavingDialog from "./RecordLeavingDialog";
 import { EXIT_LABELS } from "./exitLabels";
 import { downloadFromApi } from "@/lib/download";
@@ -230,6 +231,8 @@ export default function StudentProfilePage() {
       </div>
 
       <GuardiansCard studentId={s.id} canEdit={role === "ADMIN"} />
+
+      {role === "ADMIN" && <PrivacyCard key={`${s.id}-${s.consentAt}-${s.anonymisedAt}`} student={s} />}
 
       {/* Status & Additional Info */}
       <Card>

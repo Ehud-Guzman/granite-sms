@@ -74,6 +74,7 @@ model Teacher {
   classTeacherOf ClassTeacher[]
   assignments    TeachingAssignment[]
   markSheets     MarkSheet[]
+  lessons        Lesson[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -103,6 +104,7 @@ model Class {
   feePlans           FeePlan[]
   feeInvoices        FeeInvoice[]
   attendanceSessions AttendanceSession[]
+  lessons            Lesson[]
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
@@ -198,6 +200,8 @@ model SchoolSettings {
   term1Label             String  @default("Term 1")
   term2Label             String  @default("Term 2")
   term3Label             String  @default("Term 3")
+  // Days the timetable runs, 1 = Monday ... 6 = Saturday.
+  timetableDays          Int[]   @default([1, 2, 3, 4, 5])
 
   // Branding
   brandLogoUrl        String?
@@ -264,6 +268,7 @@ model Subject {
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   assignments TeachingAssignment[]
+  lessons     Lesson[]
 
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
@@ -291,6 +296,10 @@ model TeachingAssignment {
   subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
   isActive Boolean @default(true)
+
+  // How many lessons a week this class has of this subject (timetable target;
+  // null = not set).
+  lessonsPerWeek Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -379,6 +388,8 @@ model School {
   notices             Notice[]
   classTeachers       ClassTeacher[]
   teachingAssignments TeachingAssignment[]
+  timetablePeriods    TimetablePeriod[]
+  lessons             Lesson[]
   onboardingCompleted Boolean              @default(false)
 }
 
@@ -1322,4 +1333,66 @@ model Backup {
   createdAt DateTime @default(now())
 
   @@index([schoolId, createdAt])
+}
+
+// ------------------------------------------------------------------
+// Timetable
+// ------------------------------------------------------------------
+
+enum PeriodKind {
+  LESSON
+  BREAK // tea, lunch, games: no lessons are placed here
+}
+
+// The school day: one row per period, the same on every timetable day.
+// Times are the school's local time ("08:00").
+model TimetablePeriod {
+  id       String     @id @default(cuid())
+  schoolId String
+  position Int // order in the day, from 1
+  label    String     @db.VarChar(30)
+  startsAt String     @db.VarChar(5)
+  endsAt   String     @db.VarChar(5)
+  kind     PeriodKind @default(LESSON)
+
+  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, position])
+  @@index([schoolId])
+}
+
+// One lesson: a class, on a day, in a period. The unique keys are the clash
+// rules, enforced by the database so two people saving at once can't break
+// them: a class has one lesson per slot, a teacher is in one place at a
+// time, and a room holds one class at a time (nulls don't clash). Clashes
+// count within an academic year (the class's year), so last year's
+// timetable stays as history without blocking this year's.
+model Lesson {
+  id        String  @id @default(cuid())
+  schoolId  String
+  classId   String
+  year      Int // the class's academic year
+  day       Int // 1 = Monday ... 6 = Saturday
+  periodId  String
+  subjectId String
+  teacherId String?
+  room      String? @db.VarChar(40) // trimmed and upper-cased, so "lab 1" = "LAB 1"
+
+  school  School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class   Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  period  TimetablePeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  subject Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher Teacher?        @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classId, day, periodId])
+  @@unique([teacherId, year, day, periodId])
+  @@unique([schoolId, room, year, day, periodId])
+  @@index([schoolId, year, day])
 }

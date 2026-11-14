@@ -14,6 +14,7 @@ export const NAV_BY_ROLE = {
     { label: "Students", to: "/app/students", icon: "students", group: "People" },
     { label: "Classes", to: "/app/classes", icon: "classes", group: "People" },
     { label: "Teachers", to: "/app/teachers", icon: "teachers", group: "People" },
+    { label: "Timetable", to: "/app/timetable", icon: "timetable", group: "Teaching" },
     { label: "Attendance", to: "/app/attendance", icon: "attendance", group: "Teaching" },
     { label: "Exams", to: "/app/exams", icon: "exams", group: "Teaching" },
     { label: "Results", to: "/app/results", icon: "results", group: "Teaching" },
@@ -26,6 +27,7 @@ export const NAV_BY_ROLE = {
   TEACHER: [
     home(),
     notices,
+    { label: "Timetable", to: "/app/timetable", icon: "timetable", group: "Teaching" },
     { label: "Attendance", to: "/app/attendance", icon: "attendance", group: "Teaching" },
     { label: "Exams", to: "/app/exams", icon: "exams", group: "Teaching" },
     { label: "Results", to: "/app/results", icon: "results", group: "Teaching" },
@@ -44,10 +46,11 @@ export const NAV_BY_ROLE = {
   STUDENT: [
     home("Home"),
     notices,
+    { label: "Timetable", to: "/app/timetable", icon: "timetable", group: "Learning" },
     { label: "Results", to: "/app/results", icon: "results", group: "Learning" },
     { label: "Report cards", to: "/app/report-cards", icon: "reportCards", group: "Learning" },
     { label: "Fees", to: "/app/fees", icon: "fees", group: "Money" },
   ],
 
-  PARENT: [home("Home"), notices],
+  PARENT: [home("Home"), notices, { label: "Timetable", to: "/app/timetable", icon: "timetable", group: "Learning" }],
 };

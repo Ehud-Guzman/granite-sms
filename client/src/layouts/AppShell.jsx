@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   CalendarCheck,
+  CalendarClock,
   ClipboardList,
   FileText,
   GraduationCap,
@@ -67,6 +68,7 @@ function getPageTitle(pathname, role) {
   if (pathname.includes("/app/classes")) return "Classes";
   if (pathname.includes("/app/teachers")) return "Teachers";
   if (pathname.includes("/app/attendance")) return "Attendance";
+  if (pathname.includes("/app/timetable")) return "Timetable";
   if (pathname.includes("/app/exams")) return "Exams";
   if (pathname.includes("/app/results")) return "Results";
   if (pathname.includes("/app/fees")) return "Fees";
@@ -253,6 +255,7 @@ const ICONS = {
   classes: School,
   teachers: GraduationCap,
   attendance: CalendarCheck,
+  timetable: CalendarClock,
   exams: ClipboardList,
   results: BarChart3,
   reportCards: FileText,

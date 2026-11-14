@@ -2,6 +2,7 @@
 // the latest published result and this term's attendance; links to the
 // statement and report cards; parents can pay by M-Pesa prompt.
 import { useState } from "react";
+import TodayCard from "@/features/timetable/TodayCard";
 import { ALL_ON } from "@/lib/planFeatures";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -89,6 +90,8 @@ export default function PortalHome() {
           </p>
         )}
       </div>
+
+      <TodayCard />
 
       {noticesQ.data?.length > 0 && (
         <Card>

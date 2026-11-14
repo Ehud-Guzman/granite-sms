@@ -45,6 +45,7 @@ import { requireAuth } from "./middleware/auth.js";
 import { tenantContext } from "./middleware/tenant.js";
 import { demoGuard } from "./middleware/demoGuard.js";
 import { ipLimiter, userLimiter, loginPerAccountLimiter, loginPerIpLimiter } from "./middleware/rateLimits.js";
+import timetableRoutes from "./modules/timetable/timetable.routes.js";
 
 
 const app = express();
@@ -238,6 +239,7 @@ app.use("/api/sms", smsRoutes);
 app.use("/api/mpesa", mpesaRoutes);
 app.use("/api/portal", portalRoutes);
 app.use("/api/notices", noticeRoutes);
+app.use("/api/timetable", timetableRoutes);
 
 // Features
 app.use("/api/attendance", attendanceRoutes);

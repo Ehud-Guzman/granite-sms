@@ -15,6 +15,7 @@ import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { DEMO_ACCOUNTS, dbNameOf, isDemoDatabase } from "../src/config/demo.js";
+import { planLessons } from "../src/modules/timetable/timetable.rules.js";
 
 dotenv.config();
 
@@ -149,6 +150,7 @@ const SURNAMES = [
 const rows = {
   school: [], schoolSettings: [], subscription: [], user: [], teacher: [], class: [], student: [],
   subject: [], classTeacher: [], teachingAssignment: [], feeItem: [], feePlan: [], feePlanItem: [],
+  timetablePeriod: [], lesson: [],
   feeInvoice: [], feeInvoiceLine: [], feePayment: [], feePaymentAllocation: [], mpesaTransaction: [], attendanceSession: [], attendanceRecord: [],
   attendanceEditLog: [], examType: [], examSession: [], markSheet: [], mark: [], examAuditLog: [],
   auditLog: [], guardian: [], studentGuardian: [], notice: [], termDate: [],
@@ -277,6 +279,10 @@ function build() {
     subjectByCode[code] = s;
   }
   const PRIMARY_SUBJECTS = ["MAT", "ENG", "KIS", "SCI", "SST", "CRE", "CA"];
+  // Lessons a week (about the KICD allocations; the rest of the 40 periods
+  // are PE, life skills, pastoral and clubs, which aren't graded subjects).
+  const PRIMARY_LOAD = { MAT: 5, ENG: 5, KIS: 4, SCI: 4, SST: 3, CRE: 3, CA: 5 };
+  const JUNIOR_LOAD = { MAT: 5, ENG: 5, KIS: 4, SCI: 5, SST: 4, AGR: 4, PTS: 4 };
   const JUNIOR_SUBJECTS = ["MAT", "ENG", "KIS", "SCI", "SST", "AGR", "PTS"];
 
   // Classes, with their class teacher (index into TEACHERS)
@@ -315,9 +321,49 @@ function build() {
       t.load += 1;
     }
     for (const code of c.subjects) {
-      rows.teachingAssignment.push({
+      const a = {
         id: newId(), schoolId: S, teacherId: c.teacherFor[code].id, classId: c.id,
         subjectId: subjectByCode[code].id, isActive: true, createdAt: START_OF_YEAR,
+        lessonsPerWeek: (c.grade <= 6 ? PRIMARY_LOAD : JUNIOR_LOAD)[code],
+      };
+      rows.teachingAssignment.push(a);
+    }
+  }
+
+  /* ---------- Timetable ---------- */
+  // A Kenyan school day: 40-minute lessons from 08:00, a short break, tea,
+  // lunch and games. The week is built by the same planner as the app's
+  // auto-fill, one class after another so no teacher is double-booked.
+  const BELL = [
+    ["1", "08:00", "08:40"], ["2", "08:40", "09:20"], ["Short break", "09:20", "09:30", "BREAK"],
+    ["3", "09:30", "10:10"], ["4", "10:10", "10:50"], ["Tea break", "10:50", "11:20", "BREAK"],
+    ["5", "11:20", "12:00"], ["6", "12:00", "12:40"], ["Lunch", "12:40", "14:00", "BREAK"],
+    ["7", "14:00", "14:40"], ["8", "14:40", "15:20"], ["Games", "15:20", "16:30", "BREAK"],
+  ];
+  const bell = BELL.map(([label, startsAt, endsAt, kind = "LESSON"], i) => {
+    const row = { id: newId(), schoolId: S, position: i + 1, label, startsAt, endsAt, kind, createdAt: START_OF_YEAR, updatedAt: START_OF_YEAR };
+    rows.timetablePeriod.push(row);
+    return row;
+  });
+  const lessonPeriods = bell.filter((b) => b.kind === "LESSON").map((b) => ({ id: b.id, position: b.position }));
+  const teacherBusy = new Map();
+  const teacherDayLoad = new Map();
+  for (const c of classes) {
+    const own = rows.teachingAssignment.filter((a) => a.classId === c.id);
+    const { placed } = planLessons({
+      days: [1, 2, 3, 4, 5],
+      periods: lessonPeriods,
+      needs: own.map((a) => ({ subjectId: a.subjectId, teacherId: a.teacherId, count: a.lessonsPerWeek || 0 })),
+      classBusy: new Set(),
+      teacherBusy,
+      subjectDays: new Map(),
+      teacherDayLoad,
+    });
+    // Rooms are left empty: the planner does not book rooms, so naming one here could double-book it.
+    for (const l of placed) {
+      rows.lesson.push({
+        id: newId(), schoolId: S, classId: c.id, year: YEAR, day: l.day, periodId: l.periodId, subjectId: l.subjectId, teacherId: l.teacherId,
+        room: null, createdAt: START_OF_YEAR, updatedAt: START_OF_YEAR,
       });
     }
   }
@@ -875,7 +921,7 @@ function build() {
 // Insert order follows the foreign keys.
 const ORDER = [
   "school", "schoolSettings", "termDate", "subscription", "user", "teacher", "class", "student", "guardian", "studentGuardian", "subject",
-  "classTeacher", "teachingAssignment", "feeItem", "feePlan", "feePlanItem", "feeInvoice",
+  "classTeacher", "teachingAssignment", "timetablePeriod", "lesson", "feeItem", "feePlan", "feePlanItem", "feeInvoice",
   "feeInvoiceLine", "feePayment", "feePaymentAllocation", "mpesaTransaction", "attendanceSession", "attendanceRecord", "attendanceEditLog",
   "examType", "examSession", "markSheet", "mark", "examAuditLog", "auditLog", "notice",
 ];

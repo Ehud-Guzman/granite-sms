@@ -4,6 +4,7 @@
 // doing today, then the trend and the activity feed. Learners and parents get
 // their own home (features/portal), never this.
 import { Link } from "react-router-dom";
+import TodayCard from "@/features/timetable/TodayCard";
 import { ALL_ON, filterByPlan } from "@/lib/planFeatures";
 import { useQuery } from "@tanstack/react-query";
 
@@ -354,6 +355,8 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="space-y-6">
+            {/* A teacher's lessons today (nothing shows on a day without lessons). */}
+            {role === "TEACHER" && <TodayCard />}
             {/* Only when it adds something: other terms' arrears on top of this term's. */}
             {fees && fees.outstandingTotal > 0 && fees.outstandingTotal !== fees.term?.balance && (
               <StatTile label="Owed across all terms" value={compact(fees.outstandingTotal)} hint={`${kes(fees.outstandingTotal)} on ${fees.invoicesCount} invoices`} tone="alert" to="/app/reports/fees/defaulters" />

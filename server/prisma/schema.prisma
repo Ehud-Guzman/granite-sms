@@ -71,10 +71,13 @@ model Teacher {
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
-  classTeacherOf ClassTeacher[]
-  assignments    TeachingAssignment[]
-  markSheets     MarkSheet[]
-  lessons        Lesson[]
+  classTeacherOf   ClassTeacher[]
+  assignments      TeachingAssignment[]
+  markSheets       MarkSheet[]
+  lessons          Lesson[]
+  blocks           TeacherBlock[]
+  // Most lessons this teacher may have in one day (null = no limit).
+  maxLessonsPerDay Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -105,6 +108,10 @@ model Class {
   feeInvoices        FeeInvoice[]
   attendanceSessions AttendanceSession[]
   lessons            Lesson[]
+
+  // Which school day (bell schedule) this class follows; null = the default.
+  timetableScheduleId String?
+  timetableSchedule   TimetableSchedule? @relation(fields: [timetableScheduleId], references: [id], onDelete: SetNull)
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
@@ -300,6 +307,14 @@ model TeachingAssignment {
   // How many lessons a week this class has of this subject (timetable target;
   // null = not set).
   lessonsPerWeek Int?
+  // How many of those come as double lessons (two periods back to back).
+  doublesPerWeek Int?
+  // The room this subject is taught in for this class (e.g. the lab).
+  roomId         String?
+  room           Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  // Subjects with the same block name are taught at the same time to
+  // different groups of the class (e.g. "Religion": CRE and IRE).
+  optionBlock    String? @db.VarChar(30)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -390,6 +405,9 @@ model School {
   teachingAssignments TeachingAssignment[]
   timetablePeriods    TimetablePeriod[]
   lessons             Lesson[]
+  timetableSchedules  TimetableSchedule[]
+  rooms               Room[]
+  teacherBlocks       TeacherBlock[]
   onboardingCompleted Boolean              @default(false)
 }
 
@@ -1347,22 +1365,78 @@ enum PeriodKind {
 // The school day: one row per period, the same on every timetable day.
 // Times are the school's local time ("08:00").
 model TimetablePeriod {
-  id       String     @id @default(cuid())
-  schoolId String
-  position Int // order in the day, from 1
-  label    String     @db.VarChar(30)
-  startsAt String     @db.VarChar(5)
-  endsAt   String     @db.VarChar(5)
-  kind     PeriodKind @default(LESSON)
+  id         String     @id @default(cuid())
+  schoolId   String
+  scheduleId String
+  position   Int // order in the day, from 1
+  label      String     @db.VarChar(30)
+  startsAt   String     @db.VarChar(5)
+  endsAt     String     @db.VarChar(5)
+  kind       PeriodKind @default(LESSON)
+  // The days this period runs (1 = Monday); empty = every school day.
+  days       Int[]      @default([])
 
-  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  lessons Lesson[]
+  school   School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schedule TimetableSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  lessons  Lesson[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([schoolId, position])
+  @@unique([scheduleId, position])
   @@index([schoolId])
+}
+
+// A school day: lower primary and upper school can keep different times.
+model TimetableSchedule {
+  id        String  @id @default(cuid())
+  schoolId  String
+  name      String  @db.VarChar(40)
+  isDefault Boolean @default(false)
+
+  school  School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  periods TimetablePeriod[]
+  classes Class[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, name])
+}
+
+model Room {
+  id       String  @id @default(cuid())
+  schoolId String
+  name     String  @db.VarChar(40)
+  capacity Int?
+  isActive Boolean @default(true)
+
+  school      School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  lessons     Lesson[]
+  assignments TeachingAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, name])
+}
+
+// A time a teacher can't teach (part-time days, a standing meeting).
+model TeacherBlock {
+  id        String  @id @default(cuid())
+  schoolId  String
+  teacherId String
+  day       Int // 1 = Monday ... 6 = Saturday
+  startsAt  String  @db.VarChar(5)
+  endsAt    String  @db.VarChar(5)
+  note      String? @db.VarChar(80)
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([schoolId, teacherId])
 }
 
 // One lesson: a class, on a day, in a period. The unique keys are the clash
@@ -1371,6 +1445,12 @@ model TimetablePeriod {
 // time, and a room holds one class at a time (nulls don't clash). Clashes
 // count within an academic year (the class's year), so last year's
 // timetable stays as history without blocking this year's.
+// One lesson: a class (or a group of it), on a day, in a period. A class can
+// have several lessons in one slot only as separate groups (options taught in
+// parallel); "" is the whole class. Lessons sharing a linkId are one combined
+// lesson taught to several classes at once. Teacher and room clashes are
+// checked by time overlap (classes can follow different bell schedules)
+// inside a transaction holding a per-school lock, so two saves can't race.
 model Lesson {
   id        String  @id @default(cuid())
   schoolId  String
@@ -1380,19 +1460,22 @@ model Lesson {
   periodId  String
   subjectId String
   teacherId String?
-  room      String? @db.VarChar(40) // trimmed and upper-cased, so "lab 1" = "LAB 1"
+  roomId    String?
+  group     String  @default("") @db.VarChar(30)
+  linkId    String? @db.VarChar(40)
 
   school  School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   class   Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
   period  TimetablePeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
   subject Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   teacher Teacher?        @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  room    Room?           @relation(fields: [roomId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([classId, day, periodId])
-  @@unique([teacherId, year, day, periodId])
-  @@unique([schoolId, room, year, day, periodId])
+  @@unique([classId, day, periodId, group])
   @@index([schoolId, year, day])
+  @@index([teacherId])
+  @@index([linkId])
 }

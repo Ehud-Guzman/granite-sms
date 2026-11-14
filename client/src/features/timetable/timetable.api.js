@@ -5,7 +5,17 @@ export const DAY_NAMES = { 1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursd
 export const DAY_SHORT = { 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat" };
 
 export const getSetup = () => api.get("/api/timetable/setup").then((r) => r.data);
-export const saveSetup = (body) => api.put("/api/timetable/setup", body).then((r) => r.data);
+export const saveDays = (days, removeLessons = false) => api.put("/api/timetable/days", { days, removeLessons }).then((r) => r.data);
+export const saveSchedule = (id, body) => (id ? api.put(`/api/timetable/schedules/${id}`, body) : api.post("/api/timetable/schedules", body)).then((r) => r.data);
+export const makeDefaultSchedule = (id) => api.post(`/api/timetable/schedules/${id}/default`).then((r) => r.data);
+export const deleteSchedule = (id, removeLessons = false) => api.delete(`/api/timetable/schedules/${id}`, { params: removeLessons ? { removeLessons: 1 } : {} }).then((r) => r.data);
+export const setClassSchedule = (classId, scheduleId, removeLessons = false) => api.put(`/api/timetable/classes/${classId}/schedule`, { scheduleId, removeLessons }).then((r) => r.data);
+export const moveLesson = (classId, from, to) => api.put(`/api/timetable/classes/${classId}/move`, { from, to }).then((r) => r.data);
+export const saveRoom = (id, body) => (id ? api.put(`/api/timetable/rooms/${id}`, body) : api.post("/api/timetable/rooms", body)).then((r) => r.data);
+export const deleteRoom = (id) => api.delete(`/api/timetable/rooms/${id}`).then((r) => r.data);
+export const getTeacherRules = (teacherId) => api.get(`/api/timetable/teachers/${teacherId}/rules`).then((r) => r.data);
+export const saveTeacherRules = (teacherId, body) => api.put(`/api/timetable/teachers/${teacherId}/rules`, body).then((r) => r.data);
+export const copyForward = (fromYear, toYear) => api.post("/api/timetable/copy", { fromYear, toYear }).then((r) => r.data);
 export const getClassTimetable = (classId) => api.get(`/api/timetable/classes/${classId}`).then((r) => r.data);
 export const setSlot = (classId, body) => api.put(`/api/timetable/classes/${classId}/slot`, body).then((r) => r.data);
 export const setTargets = (classId, items) => api.put(`/api/timetable/classes/${classId}/targets`, { items }).then((r) => r.data);

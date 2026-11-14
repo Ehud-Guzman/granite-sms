@@ -7,15 +7,15 @@ import { CalendarClock } from "lucide-react";
 
 import { getToday, minutes } from "./timetable.api";
 
-function LessonList({ periods, lessons, now, lineOf }) {
-  const byPeriod = new Map(lessons.map((l) => [l.periodId, l]));
-  const rows = periods.filter((p) => p.kind === "LESSON" && byPeriod.has(p.id));
+function LessonList({ lessons, now, lineOf }) {
+  // Lessons carry their own times (classes can keep different school days).
+  const rows = [...lessons].sort((a, b) => minutes(a.startsAt) - minutes(b.startsAt)).map((l) => ({ id: l.id, startsAt: l.startsAt, endsAt: l.endsAt, l }));
   const nowMin = minutes(now);
   const nextId = rows.find((p) => minutes(p.startsAt) > nowMin)?.id;
   return (
     <ol className="space-y-1.5">
       {rows.map((p) => {
-        const l = byPeriod.get(p.id);
+        const l = p.l;
         const live = nowMin >= minutes(p.startsAt) && nowMin < minutes(p.endsAt);
         const done = nowMin >= minutes(p.endsAt);
         return (
@@ -61,7 +61,6 @@ export default function TodayCard({ className = "" }) {
             {g.title && groups.length > 1 && <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.title}</div>}
             {g.lessons.length ? (
               <LessonList
-                periods={t.periods}
                 lessons={g.lessons}
                 now={t.now}
                 lineOf={(l) => (teacher ? [l.class?.label, [l.subject?.name, l.room].filter(Boolean).join(" · ")] : [l.subject?.name, [l.teacher?.name, l.room].filter(Boolean).join(" · ")])}

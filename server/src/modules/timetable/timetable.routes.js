@@ -1,8 +1,15 @@
 // src/modules/timetable/timetable.routes.js
 // /api/timetable
 //
-//   GET  /setup                         everyone in the school   bell times and days
-//   PUT  /setup                         ADMIN   { days, periods, removeLessons? }
+//   GET  /setup                         everyone   days, school days (schedules), rooms, subjects
+//   PUT  /days                          ADMIN   { days, removeLessons? }
+//   POST /schedules, PUT /schedules/:id ADMIN   { name, periods, removeLessons? }
+//   POST /schedules/:id/default, DELETE /schedules/:id?removeLessons=1   ADMIN
+//   PUT  /classes/:classId/schedule     ADMIN   { scheduleId|null, removeLessons? }
+//   PUT  /classes/:classId/move         ADMIN   { from: { day, periodId, group? }, to: { day, periodId } }
+//   POST /rooms, PUT /rooms/:id, DELETE /rooms/:id                         ADMIN
+//   GET/PUT /teachers/:teacherId/rules  ADMIN   { maxLessonsPerDay, blocks: [{ day, startsAt, endsAt, note }] }
+//   POST /copy                          ADMIN   { fromYear, toYear }
 //   GET  /classes/:classId              ADMIN, TEACHER; STUDENT/PARENT their own class
 //   PUT  /classes/:classId/slot         ADMIN   { day, periodId, subjectId|null, teacherId?, room? }
 //   PUT  /classes/:classId/targets      ADMIN   { items: [{ assignmentId, lessonsPerWeek }] }
@@ -82,16 +89,27 @@ function assertCanSeeTeacher(req, teacherId) {
 
 // ---- Bell times ----
 router.get("/setup", handle((req) => svc.getSetup(req.schoolId)));
-router.put(
-  "/setup",
-  requireRole("ADMIN"),
-  requireWritablePlan,
+const admin = [requireRole("ADMIN"), requireWritablePlan];
+const confirmed = (req) => req.body?.removeLessons === true || req.query?.removeLessons === "1";
+const audited = (action, fn) =>
   handle(async (req) => {
-    const out = await svc.saveSetup(req.schoolId, req.body, { removeLessons: req.body?.removeLessons === true });
-    await audit(req, "TIMETABLE_SETUP_SAVED", req.schoolId, { days: out.days, periods: out.periods.length, removedLessons: out.removedLessons });
+    const out = await fn(req);
+    await audit(req, action, req.params.id || req.params.classId || req.params.teacherId || req.schoolId, { ...(out?.removedLessons ? { removedLessons: out.removedLessons } : {}) });
     return out;
-  })
-);
+  });
+router.put("/days", ...admin, audited("TIMETABLE_DAYS_SAVED", (req) => svc.saveDays(req.schoolId, req.body?.days, { removeLessons: confirmed(req) })));
+router.post("/schedules", ...admin, audited("TIMETABLE_SCHEDULE_SAVED", (req) => svc.saveSchedule(req.schoolId, null, req.body, { removeLessons: confirmed(req) })));
+router.put("/schedules/:id", ...admin, audited("TIMETABLE_SCHEDULE_SAVED", (req) => svc.saveSchedule(req.schoolId, req.params.id, req.body, { removeLessons: confirmed(req) })));
+router.post("/schedules/:id/default", ...admin, audited("TIMETABLE_SCHEDULE_DEFAULT", (req) => svc.makeDefaultSchedule(req.schoolId, req.params.id)));
+router.delete("/schedules/:id", ...admin, audited("TIMETABLE_SCHEDULE_DELETED", (req) => svc.deleteSchedule(req.schoolId, req.params.id, { removeLessons: confirmed(req) })));
+router.put("/classes/:classId/schedule", ...admin, audited("TIMETABLE_CLASS_SCHEDULE", (req) => svc.setClassSchedule(req.schoolId, req.params.classId, req.body?.scheduleId || null, { removeLessons: confirmed(req) })));
+router.put("/classes/:classId/move", ...admin, audited("TIMETABLE_LESSON_MOVED", (req) => svc.moveLesson(req.schoolId, req.params.classId, req.body || {})));
+router.post("/rooms", ...admin, handle((req) => svc.saveRoom(req.schoolId, null, req.body)));
+router.put("/rooms/:id", ...admin, handle((req) => svc.saveRoom(req.schoolId, req.params.id, req.body)));
+router.delete("/rooms/:id", ...admin, handle((req) => svc.deleteRoom(req.schoolId, req.params.id)));
+router.get("/teachers/:teacherId/rules", requireRole("ADMIN"), handle((req) => svc.getTeacherRules(req.schoolId, req.params.teacherId)));
+router.put("/teachers/:teacherId/rules", ...admin, audited("TIMETABLE_TEACHER_RULES", (req) => svc.saveTeacherRules(req.schoolId, req.params.teacherId, req.body)));
+router.post("/copy", ...admin, audited("TIMETABLE_COPIED", (req) => svc.copyForward(req.schoolId, req.body || {})));
 
 // ---- A class's week ----
 router.get(

@@ -18,6 +18,7 @@ import { RowsSkeleton } from "@/components/ui/state-blocks";
 import WeekGrid from "./WeekGrid";
 import ClassTimetable from "./ClassTimetable";
 import BellTimes from "./BellTimes";
+import { RoomsView, TeacherRules } from "./RoomsAndRules";
 import { getMyTimetable, getTeacherTimetable, getToday } from "./timetable.api";
 
 const TABS = {
@@ -25,6 +26,7 @@ const TABS = {
     ["classes", "Classes"],
     ["teachers", "Teachers"],
     ["bell", "Bell times"],
+    ["rooms", "Rooms"],
   ],
   TEACHER: [
     ["mine", "My week"],
@@ -73,6 +75,7 @@ export default function TimetablePage() {
       {active === "classes" && <ClassTimetable canEdit={role === "ADMIN"} today={today} />}
       {active === "bell" && role === "ADMIN" && <BellTimes />}
       {active === "teachers" && role === "ADMIN" && <TeachersView today={today} />}
+      {active === "rooms" && role === "ADMIN" && <RoomsView />}
       {active === "mine" && <MyTimetable today={today} />}
     </div>
   );
@@ -136,6 +139,7 @@ function TeachersView({ today }) {
       {q.isLoading && <RowsSkeleton rows={5} />}
       {q.isError && <p className="text-sm text-destructive">{getErrorMessage(q.error, "Couldn't load that timetable.")}</p>}
       {q.data && <TeacherWeek t={q.data} today={today} />}
+      {q.data && <TeacherRules key={teacherId} teacherId={teacherId} days={q.data.days} />}
     </div>
   );
 }

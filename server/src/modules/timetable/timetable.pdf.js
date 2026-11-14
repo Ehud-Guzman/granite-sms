@@ -67,7 +67,9 @@ export function drawTimetablePdf(res, lh, { filename, title, subtitle, setup, le
   const headH = 30;
   const bottom = PAGE.height - M - 18;
   const rowH = Math.min(78, (bottom - y - headH) / Math.max(1, setup.days.length));
-  const byKey = new Map(lessons.map((l) => [`${l.day}|${l.periodId}`, l]));
+  // Parallel group lessons share a slot: shown together ("CRE / IRE").
+  const byKey = new Map();
+  for (const l of lessons) byKey.set(`${l.day}|${l.periodId}`, [...(byKey.get(`${l.day}|${l.periodId}`) || []), l]);
 
   // Header row: period name and times.
   doc.rect(M, y, W, headH).fill(tint(accent, 0.86));
@@ -86,11 +88,13 @@ export function drawTimetablePdf(res, lh, { filename, title, subtitle, setup, le
     doc.font(F.bold).fontSize(9).fillColor(INK).text(DAY_NAMES[day], M + 6, y + rowH / 2 - 5, { width: dayW - 8 });
     periods.forEach((p, i) => {
       if (p.kind === "BREAK") return;
-      const l = byKey.get(`${day}|${p.id}`);
-      if (!l) return;
+      const ls = byKey.get(`${day}|${p.id}`);
+      if (!ls?.length) return;
       const w = lessonW;
       doc.rect(colX[i] + 2, y + 2, w - 4, rowH - 4).fill(tint(accent, 0.93));
-      const [a, b] = cell(l);
+      const parts = ls.map(cell);
+      const a = parts.map((x) => x[0]).join(" / ");
+      const b = parts.map((x) => x[1]).filter(Boolean).join(" / ");
       const size = lessonW < 60 ? 7 : 8.5;
       doc.fillColor(INK).font(F.bold).fontSize(size).text(a || "", colX[i] + 5, y + 7, { width: w - 10, height: rowH / 2, ellipsis: true });
       if (b) doc.fillColor(MUTED).font(F.regular).fontSize(size - 1.5).text(b, colX[i] + 5, doc.y + 1, { width: w - 10, height: rowH / 2 - 6, ellipsis: true });

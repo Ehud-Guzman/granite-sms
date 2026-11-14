@@ -87,7 +87,7 @@ export default function AutofillDialog({ classId, classLabel, year, onPreview, o
                   </div>
                   {c.unplaced.map((u, i) => (
                     <div key={i} className="mt-1 text-xs text-amber-800 dark:text-amber-300">
-                      {u.subject} ({u.teacher}): {u.missing} not placed. {u.reason}
+                      {u.subject}: {u.missing} not placed. {u.reason}
                     </div>
                   ))}
                   {scope === "class" && c.placed.length > 0 && (

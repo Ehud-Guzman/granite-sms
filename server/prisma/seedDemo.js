@@ -15,7 +15,7 @@ import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { DEMO_ACCOUNTS, dbNameOf, isDemoDatabase } from "../src/config/demo.js";
-import { planLessons } from "../src/modules/timetable/timetable.rules.js";
+import { lessonSlots, overlaps, planLessons } from "../src/modules/timetable/timetable.rules.js";
 
 dotenv.config();
 
@@ -150,7 +150,7 @@ const SURNAMES = [
 const rows = {
   school: [], schoolSettings: [], subscription: [], user: [], teacher: [], class: [], student: [],
   subject: [], classTeacher: [], teachingAssignment: [], feeItem: [], feePlan: [], feePlanItem: [],
-  timetablePeriod: [], lesson: [],
+  timetableSchedule: [], timetablePeriod: [], room: [], lesson: [],
   feeInvoice: [], feeInvoiceLine: [], feePayment: [], feePaymentAllocation: [], mpesaTransaction: [], attendanceSession: [], attendanceRecord: [],
   attendanceEditLog: [], examType: [], examSession: [], markSheet: [], mark: [], examAuditLog: [],
   auditLog: [], guardian: [], studentGuardian: [], notice: [], termDate: [],
@@ -331,39 +331,63 @@ function build() {
   }
 
   /* ---------- Timetable ---------- */
-  // A Kenyan school day: 40-minute lessons from 08:00, a short break, tea,
-  // lunch and games. The week is built by the same planner as the app's
-  // auto-fill, one class after another so no teacher is double-booked.
-  const BELL = [
+  // Two school days: primary, and junior school (Grades 7-9), which starts
+  // later and has games on Wednesday afternoon. Junior Science and
+  // Pre-Technical are in the lab and Science comes as double lessons. The
+  // weeks are built by the app's own planner, one class after another, so no
+  // teacher or room is ever double-booked.
+  const mkSchedule = (name, isDefault, bell) => {
+    const sched = { id: newId(), schoolId: S, name, isDefault, createdAt: START_OF_YEAR, updatedAt: START_OF_YEAR };
+    rows.timetableSchedule.push({ ...sched });
+    sched.periods = bell.map(([label, startsAt, endsAt, kind = "LESSON", days = []], i) => {
+      const row = { id: newId(), schoolId: S, scheduleId: sched.id, position: i + 1, label, startsAt, endsAt, kind, days, createdAt: START_OF_YEAR, updatedAt: START_OF_YEAR };
+      rows.timetablePeriod.push(row);
+      return row;
+    });
+    return sched;
+  };
+  const primaryDay = mkSchedule("Primary", true, [
+    ["1", "08:00", "08:35"], ["2", "08:35", "09:10"], ["Short break", "09:10", "09:20", "BREAK"],
+    ["3", "09:20", "09:55"], ["4", "09:55", "10:30"], ["Tea break", "10:30", "11:00", "BREAK"],
+    ["5", "11:00", "11:35"], ["6", "11:35", "12:10"], ["Lunch", "12:10", "13:30", "BREAK"],
+    ["7", "13:30", "14:05"], ["8", "14:05", "14:40"], ["Games", "14:40", "15:30", "BREAK"],
+  ]);
+  const juniorDay = mkSchedule("Junior school", false, [
     ["1", "08:00", "08:40"], ["2", "08:40", "09:20"], ["Short break", "09:20", "09:30", "BREAK"],
     ["3", "09:30", "10:10"], ["4", "10:10", "10:50"], ["Tea break", "10:50", "11:20", "BREAK"],
     ["5", "11:20", "12:00"], ["6", "12:00", "12:40"], ["Lunch", "12:40", "14:00", "BREAK"],
-    ["7", "14:00", "14:40"], ["8", "14:40", "15:20"], ["Games", "15:20", "16:30", "BREAK"],
-  ];
-  const bell = BELL.map(([label, startsAt, endsAt, kind = "LESSON"], i) => {
-    const row = { id: newId(), schoolId: S, position: i + 1, label, startsAt, endsAt, kind, createdAt: START_OF_YEAR, updatedAt: START_OF_YEAR };
-    rows.timetablePeriod.push(row);
-    return row;
-  });
-  const lessonPeriods = bell.filter((b) => b.kind === "LESSON").map((b) => ({ id: b.id, position: b.position }));
-  const teacherBusy = new Map();
-  const teacherDayLoad = new Map();
+    ["7", "14:00", "14:40"], ["8", "14:40", "15:20", "LESSON", [1, 2, 4, 5]],
+    ["Games", "14:40", "16:00", "BREAK", [3]], ["Clubs", "15:20", "16:30", "BREAK", [1, 2, 4, 5]],
+  ]);
+  const lab = { id: newId(), schoolId: S, name: "Science lab", capacity: 45, isActive: true, createdAt: START_OF_YEAR, updatedAt: START_OF_YEAR };
+  rows.room.push(lab);
   for (const c of classes) {
+    if (c.grade < 7) continue;
+    rows.class.find((x) => x.id === c.id).timetableScheduleId = juniorDay.id;
+    for (const a of rows.teachingAssignment.filter((x) => x.classId === c.id)) {
+      if (a.subjectId === subjectByCode.SCI.id) Object.assign(a, { roomId: lab.id, doublesPerWeek: 1 });
+      if (a.subjectId === subjectByCode.PTS.id) a.roomId = lab.id;
+    }
+  }
+  const booked = []; // { classId, day, startsAt, endsAt, teacherId, roomId }
+  const busy = (pred, s) => booked.some((b) => b.day === s.day && pred(b) && overlaps(b.startsAt, b.endsAt, s.startsAt, s.endsAt));
+  for (const c of classes) {
+    const sched = c.grade >= 7 ? juniorDay : primaryDay;
+    const slots = lessonSlots([1, 2, 3, 4, 5], sched.periods);
     const own = rows.teachingAssignment.filter((a) => a.classId === c.id);
+    const needs = own.map((a) => ({ key: a.id, a, count: a.lessonsPerWeek || 0, doubles: a.doublesPerWeek || 0 }));
     const { placed } = planLessons({
-      days: [1, 2, 3, 4, 5],
-      periods: lessonPeriods,
-      needs: own.map((a) => ({ subjectId: a.subjectId, teacherId: a.teacherId, count: a.lessonsPerWeek || 0 })),
-      classBusy: new Set(),
-      teacherBusy,
-      subjectDays: new Map(),
-      teacherDayLoad,
+      slots,
+      needs,
+      isFree: (n, sl) => !busy((b) => b.classId === c.id, sl) && !busy((b) => b.teacherId === n.a.teacherId, sl) && !(n.a.roomId && busy((b) => b.roomId === n.a.roomId, sl)),
+      take: (n, sl) => booked.push({ classId: c.id, day: sl.day, startsAt: sl.startsAt, endsAt: sl.endsAt, teacherId: n.a.teacherId, roomId: n.a.roomId || null }),
+      load: (n, sl) => booked.filter((b) => b.day === sl.day && (b.classId === c.id || b.teacherId === n.a.teacherId)).length,
     });
-    // Rooms are left empty: the planner does not book rooms, so naming one here could double-book it.
     for (const l of placed) {
+      const a = own.find((x) => x.id === l.key);
       rows.lesson.push({
-        id: newId(), schoolId: S, classId: c.id, year: YEAR, day: l.day, periodId: l.periodId, subjectId: l.subjectId, teacherId: l.teacherId,
-        room: null, createdAt: START_OF_YEAR, updatedAt: START_OF_YEAR,
+        id: newId(), schoolId: S, classId: c.id, year: YEAR, day: l.day, periodId: l.periodId, subjectId: a.subjectId, teacherId: a.teacherId,
+        roomId: a.roomId || null, group: "", linkId: null, createdAt: START_OF_YEAR, updatedAt: START_OF_YEAR,
       });
     }
   }
@@ -920,7 +944,7 @@ function build() {
 /* ------------------------------------------------------------------ */
 // Insert order follows the foreign keys.
 const ORDER = [
-  "school", "schoolSettings", "termDate", "subscription", "user", "teacher", "class", "student", "guardian", "studentGuardian", "subject",
+  "school", "schoolSettings", "termDate", "subscription", "user", "teacher", "timetableSchedule", "room", "class", "student", "guardian", "studentGuardian", "subject",
   "classTeacher", "teachingAssignment", "timetablePeriod", "lesson", "feeItem", "feePlan", "feePlanItem", "feeInvoice",
   "feeInvoiceLine", "feePayment", "feePaymentAllocation", "mpesaTransaction", "attendanceSession", "attendanceRecord", "attendanceEditLog",
   "examType", "examSession", "markSheet", "mark", "examAuditLog", "auditLog", "notice",

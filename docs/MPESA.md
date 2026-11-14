@@ -16,7 +16,11 @@ primary parent's phone from Receive Payment → "Send M-Pesa prompt".
 |---|---|
 | `MPESA_ENC_KEY` | `openssl rand -base64 32`: encrypts schools' Daraja credentials. **Keep a copy**: without it saved credentials can't be read. |
 | `PUBLIC_API_URL` | The API's public https address, e.g. `https://granite-sms.onrender.com`. Safaricom calls back here. |
-| `MPESA_ALLOWED_IPS` | Optional: comma-separated Safaricom callback IPs, to refuse callbacks from anywhere else. |
+| `MPESA_ALLOWED_IPS` | **Required in production.** Comma-separated Safaricom callback IPs; take the current list from Safaricom's Daraja documentation. With `NODE_ENV=production` and this unset, every callback is refused (503) and the log says why. The callback token alone isn't trusted, because a confirmation with the right token posts a payment. Leave it empty in development and tests. |
+
+The callback token is part of each school's callback URL. The request log writes `[redacted]` in its place, so don't add other logging that prints those URLs. There is no button to issue a new token yet: it's set once, when a school's M-Pesa set-up is first saved. If a token has leaked (for example through logs written before the redaction), change `callbackToken` for that school in the database, then click **Connect paybill to Granite** again so Safaricom gets the new URLs.
+
+**Check `trust proxy` before going live.** The allowlist compares Safaricom's address with `req.ip`. `app.set("trust proxy", 1)` is right when Render is the only proxy. If Cloudflare or another proxy sits in front of Render, set it to the number of proxies, or every callback will appear to come from the proxy and be refused.
 
 ## Per school (Fees → M-Pesa → Paybill set-up)
 

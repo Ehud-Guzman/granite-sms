@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-11-14T05:36:58.130Z",
+  "routeCount": 171,
+  "sections": {
+    "getWrites": {
+      "all": [
+        {
+          "as": "ADMIN",
+          "route": "GET /api/fees/payments/:id/receipt",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        },
+        {
+          "as": "ADMIN",
+          "route": "GET /api/fees/payments/:id/receipt.pdf",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        },
+        {
+          "as": "ADMIN",
+          "route": "GET /api/fees/reports/class-summary",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        },
+        {
+          "as": "ADMIN",
+          "route": "GET /api/fees/reports/defaulters",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        },
+        {
+          "as": "ADMIN",
+          "route": "GET /api/settings/export",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        },
+        {
+          "as": "ADMIN",
+          "route": "GET /api/settings/export/student/:id",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        },
+        {
+          "as": "BURSAR",
+          "route": "GET /api/fees/payments/:id/receipt",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        },
+        {
+          "as": "BURSAR",
+          "route": "GET /api/fees/payments/:id/receipt.pdf",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        },
+        {
+          "as": "BURSAR",
+          "route": "GET /api/fees/reports/class-summary",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        },
+        {
+          "as": "BURSAR",
+          "route": "GET /api/fees/reports/defaulters",
+          "status": 200,
+          "wrote": [
+            "INSERT AuditLog"
+          ]
+        }
+      ],
+      "beyondAuditLog": []
+    },
+    "badInput": {
+      "serverErrors": []
+    }
+  },
+  "victim": {
+    "school": "c9c19f9596fa7e75bd30c671c",
+    "missingRecords": [
+      "feeReversalRequest",
+      "gradeScale"
+    ]
+  },
+  "preexistingCrossSchoolLinks": []
+}

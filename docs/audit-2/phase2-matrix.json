@@ -1,0 +1,1465 @@
+{
+  "generatedAt": "2026-11-14T05:42:32.787Z",
+  "routeCount": 171,
+  "sections": {
+    "roleMatrix": [
+      {
+        "route": "GET /api/assignments",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/assignments",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/assignments/:id/deactivate",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/attendance/defaulters",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/attendance/sessions",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/attendance/sessions",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 400",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/attendance/sessions/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/attendance/sessions/:id/lock",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PUT /api/attendance/sessions/:id/records",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 400",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/attendance/sessions/:id/submit",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 409",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/attendance/sessions/:id/unlock",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/attendance/summary/class/:classId",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/attendance/summary/student/:studentId",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/auth/admin/create-user",
+        "PARENT": "yes 410",
+        "STUDENT": "yes 410",
+        "TEACHER": "yes 410",
+        "BURSAR": "yes 410",
+        "ADMIN": "yes 410",
+        "SYSTEM_ADMIN": "yes 410"
+      },
+      {
+        "route": "POST /api/auth/change-password",
+        "PARENT": "yes 400",
+        "STUDENT": "yes 400",
+        "TEACHER": "yes 400",
+        "BURSAR": "yes 400",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "POST /api/auth/impersonate",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/auth/select-school",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "GET /api/class-teachers",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/class-teachers",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/class-teachers/:classId/unassign",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/classes",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/classes",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/classes/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/classes/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/classes/:id/deactivate",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/classes/promote",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/dashboard/activity",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/dashboard/summary",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/exams/marksheets/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PUT /api/exams/marksheets/:id/marks",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 400",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/exams/marksheets/:id/submit",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/exams/marksheets/:id/unlock",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/report-cards",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PUT /api/exams/report-cards/comments",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 400",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/report-cards/pdf",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 404",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/report-cards/students/:studentId",
+        "PARENT": "yes 404",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 404",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 404",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/report-cards/students/:studentId/pdf",
+        "PARENT": "yes 404",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 404",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 404",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/sessions",
+        "PARENT": "no 403",
+        "STUDENT": "yes 200",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/exams/sessions",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/sessions/:id/marksheets",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/exams/sessions/:id/publish",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/sessions/:id/results/class",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/sessions/:id/results/students/:studentId",
+        "PARENT": "yes 200",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/sessions/:id/results/students/:studentId/pdf",
+        "PARENT": "yes 200",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/exams/sessions/:id/unpublish",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/exams/types",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/exams/types",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/invoices",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/invoices/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/invoices/:id/discount",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/invoices/:id/lines",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/invoices/:id/void",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/invoices/generate",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/invoices/generate-bulk",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/items",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/items",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "DELETE /api/fees/items/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/fees/items/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/payments",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/payments",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 400",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/payments/:id/receipt",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/payments/:id/receipt.pdf",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/payments/:id/reversal-requests",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 400",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/payments/:id/reverse",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/plans",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/plans",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "DELETE /api/fees/plans/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/fees/plans/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/reports/class-summary",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/reports/collections",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 400",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/reports/defaulters",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/reversal-requests",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/reversal-requests/:id/approve",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 404",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/fees/reversal-requests/:id/reject",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/students/:studentId/statement",
+        "PARENT": "yes 200",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/students/:studentId/summary",
+        "PARENT": "yes 200",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/fees/subscription",
+        "PARENT": "yes 200",
+        "STUDENT": "yes 200",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/fees/subscription",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "GET /api/grade-scales",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/grade-scales",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "DELETE /api/grade-scales/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 404",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PUT /api/grade-scales/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 404",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PUT /api/grade-scales/assign",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PUT /api/grade-scales/default",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/guardians",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/guardians/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/guardians/:id/login",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 409",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "DELETE /api/guardians/links/:linkId",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/guardians/links/:linkId",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 404",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/guardians/student/:studentId",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/guardians/student/:studentId",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/me",
+        "PARENT": "yes 200",
+        "STUDENT": "yes 200",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/mpesa/config",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PUT /api/mpesa/config",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/mpesa/register-urls",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/mpesa/stk",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 400",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/mpesa/transactions",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/mpesa/transactions/:id/assign",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 400",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/mpesa/transactions/:id/ignore",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/notices",
+        "PARENT": "yes 200",
+        "STUDENT": "yes 200",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/notices",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "DELETE /api/notices/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/notices/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 404",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/portal/learners",
+        "PARENT": "yes 200",
+        "STUDENT": "yes 200",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/portal/learners/:id/pay",
+        "PARENT": "yes 400",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/reports/class-performance",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/schools",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/schools",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "PATCH /api/schools/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "PATCH /api/schools/:id/status",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "GET /api/settings",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/settings",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/settings/academics",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "PATCH /api/settings/academics",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "PUT /api/settings/academics/term-dates",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "GET /api/settings/audit-logs",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/settings/backup",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/settings/backup/:id/download",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/settings/backup/:id/preview",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/settings/backup/:id/restore",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/settings/backup/create",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 201"
+      },
+      {
+        "route": "GET /api/settings/branding",
+        "PARENT": "yes 200",
+        "STUDENT": "yes 200",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "PATCH /api/settings/branding",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/settings/branding/logo",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "GET /api/settings/export",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/settings/export/student/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/settings/print",
+        "PARENT": "yes 200",
+        "STUDENT": "yes 200",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "PATCH /api/settings/print",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/settings/print/preview",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/settings/school",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "PATCH /api/settings/school",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/settings/security",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "GET /api/settings/security/overview",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "PATCH /api/settings/subscription",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "PATCH /api/settings/subscription/entitlements",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "PATCH /api/settings/subscription/limits",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "GET /api/settings/subscription/overview",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/sms/broadcast",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/sms/fee-reminders",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 400",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/sms/messages",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/sms/settings",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/sms/settings",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/students",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/students",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/students/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "yes 200",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/students/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/students/:id/anonymise",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/students/:id/consent",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/students/:id/deactivate",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/students/:id/exit",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/students/import",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/students/lookup",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 400",
+        "BURSAR": "yes 400",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/subjects",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "yes 200",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "POST /api/subjects",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/subjects/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "PATCH /api/subjects/:id/deactivate",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "no 403"
+      },
+      {
+        "route": "GET /api/users",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 200",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/users",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "yes 400",
+        "SYSTEM_ADMIN": "yes 400"
+      },
+      {
+        "route": "PATCH /api/users/:id",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/users/:id/reset-password",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 403",
+        "SYSTEM_ADMIN": "yes 200"
+      },
+      {
+        "route": "POST /api/users/:id/status",
+        "PARENT": "no 403",
+        "STUDENT": "no 403",
+        "TEACHER": "no 403",
+        "BURSAR": "no 403",
+        "ADMIN": "no 401",
+        "SYSTEM_ADMIN": "yes 200"
+      }
+    ]
+  },
+  "victim": {
+    "school": "cf48766e135f0e79f4c6354ad",
+    "missingRecords": [
+      "feeReversalRequest",
+      "gradeScale"
+    ]
+  },
+  "preexistingCrossSchoolLinks": []
+}

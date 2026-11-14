@@ -12,6 +12,7 @@ import crypto from "crypto";
 import { prisma } from "./lib/prisma.js";
 import { getSchoolCalendar } from "./utils/schoolTime.js";
 import { moduleAccess, isLapsed } from "./config/plans.js";
+import { redactPath } from "./utils/logRedact.js";
 
 import authRoutes from "./routes/auth.js";
 
@@ -145,7 +146,7 @@ app.use((req, res, next) => {
           t: new Date().toISOString(),
           id: req.id,
           method: req.method,
-          path: String(req.originalUrl || "").split("?")[0],
+          path: redactPath(req.originalUrl),
           status: res.statusCode,
           ms,
           user: req.user?.id || null,
@@ -153,7 +154,7 @@ app.use((req, res, next) => {
         })
       );
     } else {
-      console.log(`${req.method} ${req.originalUrl} ${res.statusCode} - ${ms}ms`);
+      console.log(`${req.method} ${redactPath(req.originalUrl)} ${res.statusCode} - ${ms}ms`);
     }
   });
   next();

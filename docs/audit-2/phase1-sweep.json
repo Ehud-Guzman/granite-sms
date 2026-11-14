@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-11-14T05:27:39.130Z",
+  "routeCount": 171,
+  "sections": {
+    "crossSchool": {
+      "leaks": [],
+      "victimTablesChanged": [],
+      "victimChangedBy": [],
+      "crossSchoolLinksAfter": [],
+      "writesAcceptedForReview": [
+        {
+          "as": "admin",
+          "route": "PUT /api/grade-scales/default",
+          "query": false,
+          "status": 200,
+          "body": "{\"defaultGradeScaleId\":null}"
+        },
+        {
+          "as": "admin",
+          "route": "POST /api/settings/print/preview",
+          "query": false,
+          "status": 200,
+          "body": ""
+        },
+        {
+          "as": "admin",
+          "route": "PATCH /api/sms/settings",
+          "query": false,
+          "status": 200,
+          "body": "{\"settings\":{\"smsEnabled\":false,\"smsOnPayment\":true,\"smsOnAbsence\":false,\"smsOnResults\":true,\"smsPaymentInstructions\":null},\"providerConfigured\":false}"
+        }
+      ],
+      "serverErrors": [],
+      "routesWithoutVictimRecord": [
+        "POST /api/fees/reversal-requests/:id/approve",
+        "POST /api/fees/reversal-requests/:id/reject",
+        "DELETE /api/grade-scales/:id",
+        "PUT /api/grade-scales/:id"
+      ]
+    }
+  },
+  "victim": {
+    "school": "c4a952fb27af5e4c9b677a72e",
+    "missingRecords": [
+      "feeReversalRequest",
+      "gradeScale"
+    ]
+  },
+  "preexistingCrossSchoolLinks": []
+}

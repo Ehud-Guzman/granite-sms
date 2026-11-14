@@ -56,6 +56,29 @@ function hexToHslTriplet(hex) {
  * - null/""   => clear (revert to CSS defaults)
  * - "#rrggbb" => set and compute HSL vars
  */
+
+// ---- Readable text on school colours (audit 2, A2-UX-02) ----
+// Schools pick their own colours. Buttons use the secondary colour with light
+// text, and accents print the primary colour as text on a light grey. A light
+// colour would make either unreadable, so the text colour is chosen by
+// contrast (WCAG 2.1 relative luminance) instead of being fixed.
+const LIGHT_TEXT = "210 40% 98%";
+const DARK_TEXT = "222 47% 11%";
+function luminance(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+}
+const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+/** "light" or "dark": whichever text colour reads better on this background. */
+export function textOn(hex) {
+  const l = luminance(hex);
+  return contrast(l, luminance("#f8fafc")) >= contrast(l, luminance("#111827")) ? "light" : "dark";
+}
+
 export function applyBrandingVars(branding = {}) {
   const root = document.documentElement;
 
@@ -72,6 +95,9 @@ export function applyBrandingVars(branding = {}) {
       root.style.removeProperty("--brand-primary-hsl");
     } else {
       root.style.setProperty("--brand-primary", p);
+      // Primary is used as text on a light accent background: too light, use the default dark.
+      if (contrast(luminance(p), luminance("#f1f5f9")) < 4.5) root.style.setProperty("--accent-foreground", DARK_TEXT);
+      else root.style.removeProperty("--accent-foreground");
       const hsl = hexToHslTriplet(p);
       if (hsl) root.style.setProperty("--brand-primary-hsl", hsl);
     }
@@ -87,8 +113,10 @@ export function applyBrandingVars(branding = {}) {
       root.style.removeProperty("--brand-secondary-hsl");
       // ring usually tracks secondary
       root.style.removeProperty("--ring");
+      root.style.removeProperty("--primary-foreground");
     } else {
       root.style.setProperty("--brand-secondary", s);
+      root.style.setProperty("--primary-foreground", textOn(s) === "light" ? LIGHT_TEXT : DARK_TEXT);
       const hsl = hexToHslTriplet(s);
       if (hsl) {
         root.style.setProperty("--brand-secondary-hsl", hsl);
@@ -105,4 +133,6 @@ export function resetBrandingVars() {
   root.style.removeProperty("--brand-primary-hsl");
   root.style.removeProperty("--brand-secondary-hsl");
   root.style.removeProperty("--ring");
+  root.style.removeProperty("--primary-foreground");
+  root.style.removeProperty("--accent-foreground");
 }

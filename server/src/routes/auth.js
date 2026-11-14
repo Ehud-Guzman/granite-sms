@@ -510,14 +510,22 @@ router.post("/impersonate", requireAuth, tenantContext, requireRole("SYSTEM_ADMI
     if (!target || !target.isActive) {
       return res.status(404).json({ message: "User not found or inactive" });
     }
+    // One platform owner can't act as another (audit 2, A2-SEC-05).
+    if (upper(target.role) === "SYSTEM_ADMIN") {
+      return res.status(403).json({ message: "Platform owners can't be impersonated." });
+    }
 
-    const token = signToken({
-      sub: target.id,
-      role: target.role,
-      schoolId: target.schoolId ?? null,
-      tokenVersion: target.tokenVersion,
-      impersonatedBy: req.user.id,
-    });
+    // Support sessions are short: an hour, not a full 12-hour day (A2-SEC-06).
+    const token = signToken(
+      {
+        sub: target.id,
+        role: target.role,
+        schoolId: target.schoolId ?? null,
+        tokenVersion: target.tokenVersion,
+        impersonatedBy: req.user.id,
+      },
+      { expiresIn: "1h" }
+    );
 
     await logAudit({
       req,

@@ -21,6 +21,7 @@ import { seal, secretBoxReady } from "../utils/secretBox.js";
 import { normalizeKenyanPhone } from "../utils/phone.js";
 import { registerC2bUrls, stkPush, callbackUrls, parseTransTime } from "../modules/mpesa/daraja.js";
 import { recordMpesaPayment, assignMpesaTransaction } from "../modules/mpesa/ingest.js";
+import { promptProblem } from "../modules/mpesa/promptGuard.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -143,6 +144,8 @@ router.post("/stk", requireRole("ADMIN", "BURSAR"), async (req, res) => {
   if (!student) return res.status(404).json({ message: "Student not found" });
   const phone = normalizeKenyanPhone(req.body?.phone || student.guardianLinks[0]?.guardian.phone);
   if (!phone) return res.status(400).json({ message: "Give a Kenyan mobile number for the prompt." });
+  const blocked = await promptProblem({ schoolId: req.schoolId, studentId: student.id, phone });
+  if (blocked) return res.status(blocked.status).json({ message: blocked.message });
 
   const r = await stkPush(c, { phone, amount, accountReference: student.admissionNo, description: "School fees" });
   await prisma.mpesaStkRequest.create({

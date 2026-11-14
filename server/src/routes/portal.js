@@ -13,6 +13,7 @@ import { ownLearnerIds } from "../utils/learnerAccess.js";
 import { accountSummary } from "../modules/fees/ledger.js";
 import { getSchoolCalendar } from "../utils/schoolTime.js";
 import { stkPush } from "../modules/mpesa/daraja.js";
+import { promptProblem } from "../modules/mpesa/promptGuard.js";
 import { normalizeKenyanPhone } from "../utils/phone.js";
 
 const router = Router();
@@ -86,6 +87,8 @@ router.post("/learners/:id/pay", requireRole("PARENT"), async (req, res) => {
   ]);
   const phone = normalizeKenyanPhone(req.body?.phone || guardian?.phone);
   if (!phone) return res.status(400).json({ message: "A Kenyan mobile number is needed for the prompt." });
+  const blocked = await promptProblem({ schoolId: req.schoolId, studentId: student.id, phone });
+  if (blocked) return res.status(blocked.status).json({ message: blocked.message });
 
   const r = await stkPush(cfg, { phone, amount, accountReference: student.admissionNo, description: "School fees" });
   await prisma.mpesaStkRequest.create({

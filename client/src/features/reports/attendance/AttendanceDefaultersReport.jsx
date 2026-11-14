@@ -45,6 +45,7 @@ export default function AttendanceDefaultersReport() {
         ready={Boolean(q.data)}
         onExport={(format) => exportAttendanceDefaulters(params, format)}
         onPrint={() => printSection("print-attendance-defaulters")}
+        pdfFrom="print-attendance-defaulters"
       />
       <FilterBar>
         <Field label="Class">

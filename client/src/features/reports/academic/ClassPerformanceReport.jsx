@@ -67,6 +67,7 @@ export default function ClassPerformanceReport() {
         ready={Boolean(r)}
         onExport={(format) => exportClassPerformanceReport(effectiveSessionId, format)}
         onPrint={() => printSection("print-class-performance")}
+        pdfFrom="print-class-performance"
       />
       <FilterBar>
         <Field label="Class">

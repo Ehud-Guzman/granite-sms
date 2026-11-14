@@ -91,7 +91,7 @@ export default function PortalHome() {
         )}
       </div>
 
-      <TodayCard />
+      {!isParent && <TodayCard />}
 
       {noticesQ.data?.length > 0 && (
         <Card>

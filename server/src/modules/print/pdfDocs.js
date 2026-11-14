@@ -94,7 +94,7 @@ function drawLogo(doc, lh, x, y, size) {
 }
 
 /** The top of the page in the school's chosen layout. Returns the y to continue from. */
-function letterhead(doc, lh, title, subtitle) {
+export function letterhead(doc, lh, title, subtitle) {
   const { layout, motto } = lh.style;
   const F = lh.font;
   const sub = [lh.header, lh.contact].filter(Boolean);
@@ -181,7 +181,7 @@ function facts(doc, lh, y, pairs) {
  */
 function table(doc, lh, y, { columns, rows, footRows = [], maxHeight }) {
   const all = rows.length + footRows.length + 1;
-  const maxRow = lh.style.layout === "compact" ? 16 : 20;
+  const maxRow = lh.style.layout === "compact" ? 18 : 24;
   const rowH = Math.max(13, Math.min(maxRow, maxHeight / all));
   const size = rowH >= 17 ? 9.5 : rowH >= 15 ? 8.5 : 7.5;
   const widths = columns.map((c) => c.width);
@@ -248,6 +248,23 @@ function closing(doc, lh) {
   if (lh.footer) doc.text(lh.footer, M + W / 2, bottom - 12, { width: W / 2, align: "right" });
 }
 
+/** The key figures as tiles across the page (accent-tinted, value large). */
+function tiles(doc, lh, y, items) {
+  const list = items.filter(Boolean);
+  if (!list.length) return y;
+  const gap = 8;
+  const w = (W - gap * (list.length - 1)) / list.length;
+  const h = 44;
+  list.forEach(([label, value, sub], i) => {
+    const x = M + i * (w + gap);
+    doc.roundedRect(x, y, w, h, 6).fill(tint(lh.accent, 0.9));
+    doc.fillColor(MUTED).font(lh.font.regular).fontSize(7.5).text(label.toUpperCase(), x + 10, y + 7, { width: w - 20, characterSpacing: 0.6, lineBreak: false });
+    doc.fillColor(INK).font(lh.font.bold).fontSize(15).text(String(value ?? "—"), x + 10, y + 18, { width: w - 20, lineBreak: false, ellipsis: true, continued: !!sub });
+    if (sub) doc.font(lh.font.regular).fontSize(8.5).fillColor(MUTED).text(`  ${sub}`, { lineBreak: false });
+  });
+  return y + h + 12;
+}
+
 function noteBox(doc, lh, y, label, text, height) {
   doc.rect(M, y, W, height).lineWidth(0.6).strokeColor(RULE).stroke();
   doc.rect(M, y, 3, height).fill(lh.accent);
@@ -275,9 +292,14 @@ export function drawResultSlip(doc, lh, { payload, classLabel, extras = {} }) {
     ["Admission no", payload.student?.admissionNo],
     ["Class", classLabel],
   ];
-  if (show.position) pairs.push(["Position", payload.position ? `${ordinal(payload.position)} of ${payload.outOf}` : "—"]);
   if (show.feeBalance && extras.feeBalance !== undefined) pairs.push(["Fees", feeLine(extras.feeBalance)]);
   y = facts(doc, lh, y, pairs);
+  y = tiles(doc, lh, y, [
+    ["Total", fmtNum(payload.total)],
+    ["Average", fmtNum(payload.average, 2)],
+    ["Grade", payload.overallGrade || "—"],
+    show.position && ["Position", payload.position ? ordinal(payload.position) : "—", payload.position ? `of ${payload.outOf}` : ""],
+  ]);
   const scores = payload.subjectScores || [];
   y = table(doc, lh, y, {
     columns: [
@@ -311,11 +333,14 @@ export function drawReportCard(doc, lh, report, extras = {}) {
     ["Admission no", row.student.admissionNo],
     ["Class", cls],
   ];
-  if (show.position) pairs.push(["Position", `${ordinal(row.position)} of ${report.outOf}`]);
-  pairs.push(["Average", `${fmtNum(row.average, 2)} · grade ${row.overallGrade || "—"}${row.meanPoints != null ? ` · ${row.meanPoints} points` : ""}`]);
-  if (show.attendance) pairs.push(["Attendance", att ? `${att.present + att.late} of ${att.total} days${att.ratePct != null ? ` (${att.ratePct}%)` : ""}` : "—"]);
   if (show.feeBalance && extras.feeBalance !== undefined) pairs.push(["Fees", feeLine(extras.feeBalance)]);
   y = facts(doc, lh, y, pairs);
+  y = tiles(doc, lh, y, [
+    ["Average", fmtNum(row.average, 2), row.meanPoints != null ? `${row.meanPoints} pts` : ""],
+    ["Grade", row.overallGrade || "—"],
+    show.position && ["Position", ordinal(row.position), `of ${report.outOf}`],
+    show.attendance && ["Attendance", att?.ratePct != null ? `${att.ratePct}%` : "—", att ? `${att.present + att.late}/${att.total} days` : ""],
+  ]);
 
   const sessions = show.examColumns ? report.sessions.slice(0, 4) : [];
   const columns = [
@@ -347,8 +372,12 @@ export function drawReportCard(doc, lh, report, extras = {}) {
     );
     y = doc.y + 8;
   }
-  if (show.classTeacherComment) y = noteBox(doc, lh, y, "Class teacher's comment", row.comments.classTeacher, 54);
-  if (show.headComment) noteBox(doc, lh, y, "Head teacher's comment", row.comments.head, 54);
+  // Comment boxes share whatever room is left (no empty gap above the signatures).
+  const nBoxes = (show.classTeacherComment ? 1 : 0) + (show.headComment ? 1 : 0);
+  const room = A4.height - M - closingHeight(lh) - 12 - y;
+  const boxH = nBoxes ? Math.max(54, Math.min(120, room / nBoxes - 8)) : 0;
+  if (show.classTeacherComment) y = noteBox(doc, lh, y, "Class teacher's comment", row.comments.classTeacher, boxH);
+  if (show.headComment) noteBox(doc, lh, y, "Head teacher's comment", row.comments.head, boxH);
   closing(doc, lh);
 }
 

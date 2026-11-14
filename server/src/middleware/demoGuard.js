@@ -11,6 +11,7 @@ const EXEMPT = new Set([
   "/api/auth/demo-login",
   "/api/auth/select-school",
   "/api/settings/print/preview",
+  "/api/print/table",
 ]);
 
 export const DEMO_MESSAGE =

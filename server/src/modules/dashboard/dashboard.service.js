@@ -445,8 +445,9 @@ export async function getActivity(req) {
           at: r.receivedAt,
           module: "FEES",
           action: "PAYMENT_RECEIVED",
-          actorUserId: null,
-          actorName: r.receivedBy || null,
+          // receivedBy is the cashier's user id: named below like every other actor.
+          actorUserId: r.receivedBy || null,
+          actorName: null,
           entity: { receiptNo: r.receiptNo || null },
           meta: { amount: r.amount, method: r.method },
         });
@@ -525,12 +526,12 @@ export async function getActivity(req) {
   const enriched = sliced.map((x) => {
     const u = x.actorUserId ? usersById.get(x.actorUserId) : null;
     const actor = u
-      ? `${(u.teacher?.firstName || "").trim()} ${(u.teacher?.lastName || "").trim()}`.trim() || u.email || u.id
+      ? `${(u.teacher?.firstName || "").trim()} ${(u.teacher?.lastName || "").trim()}`.trim() || u.email || "A staff member"
       : x.actorName || null;
 
     return {
       ...x,
-      actor: actor || (x.actorUserId ? String(x.actorUserId) : "System"),
+      actor: actor || (x.actorUserId ? "A staff member" : "System"),
       actorRole: u?.role || null,
     };
   });

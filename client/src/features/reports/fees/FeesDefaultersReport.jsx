@@ -25,7 +25,7 @@ export default function FeesDefaultersReport() {
   const [year, setYear] = useCurrentYearState(true);
   const [term, setTerm] = useCurrentTermState();
   const [minBalance, setMinBalance] = useState("1");
-  const [limit, setLimit] = useState("100");
+  const [limit, setLimit] = useState("500");
 
   const classesQ = useQuery({ queryKey: ["classes", "active"], queryFn: () => listClasses({ active: true }) });
   const classes = useMemo(() => normalizeArray(classesQ.data), [classesQ.data]);
@@ -51,6 +51,7 @@ export default function FeesDefaultersReport() {
         ready={Boolean(r)}
         onExport={(format) => exportFeesDefaulters(params, format)}
         onPrint={() => printSection("print-fees-defaulters")}
+        pdfFrom="print-fees-defaulters"
       />
       <FilterBar>
         <Field label="Class">
@@ -80,9 +81,9 @@ export default function FeesDefaultersReport() {
         </Field>
         <Field label="Show">
           <SelectInput value={limit} onChange={setLimit}>
-            {["25", "50", "100", "250", "500"].map((n) => (
+            {["500", "25", "50", "100", "250"].map((n) => (
               <option key={n} value={n}>
-                Top {n}
+                {n === "500" ? "Everyone" : `Top ${n}`}
               </option>
             ))}
           </SelectInput>
@@ -108,19 +109,6 @@ export default function FeesDefaultersReport() {
                   { label: "Average owed", value: fmtKes((r.totalOutstanding ?? shownTotal) / Math.max(1, r.totalCount ?? rows.length)) },
                 ]}
               />
-
-              <Panel title="Largest balances" subtitle="Start the calls here">
-                <BarList
-                  tone="alert"
-                  items={rows.slice(0, 8).map((x) => ({
-                    key: x.invoiceId,
-                    label: x.student?.name || x.student?.admissionNo,
-                    sub: [x.student?.admissionNo, x.className].filter(Boolean).join(" · "),
-                    value: x.balance,
-                    display: fmtKes(x.balance),
-                  }))}
-                />
-              </Panel>
 
               <Panel title={`Everyone listed (${rows.length})`}>
                 <div className="overflow-x-auto">

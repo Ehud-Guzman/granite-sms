@@ -10,7 +10,7 @@ const router = Router();
 const FLAG_KEYS = ["enableClassTeachers", "enableSubjectAssignments"];
 
 // GET /api/settings (ADMIN)
-router.get("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.get("/", requireAuth, requireRole("ADMIN", "SYSTEM_ADMIN"), async (req, res) => {
   try {
     if (!req.schoolId) return res.status(400).json({ message: "Tenant required" });
 
@@ -32,7 +32,7 @@ router.get("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
 });
 
 // PATCH /api/settings (ADMIN)
-router.patch("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.patch("/", requireAuth, requireRole("ADMIN", "SYSTEM_ADMIN"), async (req, res) => {
   try {
     if (!req.schoolId) return res.status(400).json({ message: "Tenant required" });
 

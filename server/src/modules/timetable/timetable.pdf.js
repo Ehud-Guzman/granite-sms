@@ -88,6 +88,11 @@ export function drawTimetablePdf(res, lh, { filename, title, subtitle, setup, le
     doc.font(F.bold).fontSize(9).fillColor(INK).text(DAY_NAMES[day], M + 6, y + rowH / 2 - 5, { width: dayW - 8 });
     periods.forEach((p, i) => {
       if (p.kind === "BREAK") return;
+      // A period that doesn't run on this day (e.g. games day): shaded, not an empty slot.
+      if (p.days?.length && !p.days.includes(day)) {
+        doc.rect(colX[i], y, lessonW, rowH).fill("#f3f4f6");
+        return;
+      }
       const ls = byKey.get(`${day}|${p.id}`);
       if (!ls?.length) return;
       const w = lessonW;

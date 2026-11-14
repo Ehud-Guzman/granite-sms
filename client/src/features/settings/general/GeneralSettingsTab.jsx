@@ -540,7 +540,8 @@ export default function GeneralSettingsTab() {
       )}
 
       {/* Features */}
-      {!sys && (
+      {/* Hidden, not "Forbidden", for anyone not allowed to change it. */}
+      {!sys && flagsQ.error?.response?.status !== 403 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Features</CardTitle>

@@ -115,28 +115,19 @@ router.get("/", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
       where.year = year;
     }
 
-    // Optional hard-scope: TEACHER sees only assigned classes
-    // Flip this on once classTeacher assignments are reliable:
-    /*
+    // A teacher sees only the classes they teach: their class-teacher class
+    // and any class they have a subject in.
     if (req.role === "TEACHER") {
       const teacherId = req.user?.teacherId;
       if (!teacherId) return res.json([]);
-
-      const assigned = await prisma.classTeacher.findMany({
-        where: {
-          schoolId,
-          teacherId: String(teacherId),
-          isActive: true,
-        },
-        select: { classId: true },
-      });
-
-      const classIds = assigned.map((x) => x.classId);
+      const [ct, ta] = await Promise.all([
+        prisma.classTeacher.findMany({ where: { schoolId, teacherId: String(teacherId), isActive: true }, select: { classId: true } }),
+        prisma.teachingAssignment.findMany({ where: { schoolId, teacherId: String(teacherId), isActive: true }, select: { classId: true } }),
+      ]);
+      const classIds = [...new Set([...ct, ...ta].map((x) => x.classId))];
       if (classIds.length === 0) return res.json([]);
-
       where.id = { in: classIds };
     }
-    */
 
     const classes = await prisma.class.findMany({
       where,

@@ -51,6 +51,7 @@ export default function FeesSummaryReport() {
         ready={Boolean(r)}
         onExport={(format) => exportFeesClassSummary(params, format)}
         onPrint={() => printSection("print-fees-summary")}
+        pdfFrom="print-fees-summary"
       />
       <FilterBar>
         <Field label="Class">

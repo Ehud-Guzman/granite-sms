@@ -58,3 +58,28 @@ export async function printFromApi(url, params) {
   };
   document.body.appendChild(frame);
 }
+
+/**
+ * Downloads a report as a PDF on the school's letterhead: reads the tables
+ * shown inside the element `sectionId` (headings and rows, as on screen) and
+ * has the server draw them (POST /api/print/table).
+ */
+export async function downloadTablesPdf(sectionId, title, subtitle) {
+  const root = document.getElementById(sectionId);
+  if (!root) throw new Error("Nothing to download yet.");
+  const text = (el) => (el?.textContent || "").replace(/\s+/g, " ").trim();
+  const tables = [...root.querySelectorAll("table")].map((t) => ({
+    caption: text(t.closest("section")?.querySelector("h2, h3")),
+    columns: [...t.querySelectorAll("thead th")].map(text),
+    rows: [...t.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("td, th")].map(text)),
+  }));
+  const res = await api.post("/api/print/table", { title, subtitle, tables }, { responseType: "blob" });
+  const href = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = `${String(title).replace(/[^A-Za-z0-9-]+/g, "-")}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 60_000);
+}

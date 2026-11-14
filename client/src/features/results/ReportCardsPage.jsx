@@ -1,7 +1,7 @@
 // Term report cards: every published exam of a term combined by weight, with
 // grades from the class's scale, position, attendance and comments.
 // Staff pick a class; learners see their own card.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -152,6 +152,10 @@ export default function ReportCardsPage() {
   const [term, setTerm] = useCurrentTermState();
   const [classId, setClassId] = useState("");
   const [openId, setOpenId] = useState(null);
+  // Opening a learner brings their report card into view (it sits below the class list).
+  useEffect(() => {
+    if (openId) requestAnimationFrame(() => document.getElementById("open-report-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [openId]);
   // Printing uses the school's designed PDF (Settings > Branding).
   const [printing, setPrinting] = useState(null);
   const runPrint = async (which, url, params) => {
@@ -286,19 +290,8 @@ export default function ReportCardsPage() {
       )}
 
       {report && (isStudent ? report.students[0] : open) && (
-        <Card>
+        <Card id="open-report-card" className="scroll-mt-16">
           <CardContent className="pt-4 space-y-4">
-            <ReportCard report={report} row={isStudent ? report.students[0] : open} termLabel={termLabel} />
-            {!isStudent && (
-              <CommentsEditor
-                key={open.student.id}
-                row={open}
-                year={year}
-                term={term}
-                canHead={role === "ADMIN"}
-                onSaved={() => qc.invalidateQueries({ queryKey: ["reportCards"] })}
-              />
-            )}
             <div className="flex flex-wrap justify-end gap-2">
               <Button
                 onClick={() => {
@@ -323,6 +316,17 @@ export default function ReportCardsPage() {
                 {printing === "one" ? "Preparing…" : "Print this card"}
               </Button>
             </div>
+            <ReportCard report={report} row={isStudent ? report.students[0] : open} termLabel={termLabel} />
+            {!isStudent && (
+              <CommentsEditor
+                key={open.student.id}
+                row={open}
+                year={year}
+                term={term}
+                canHead={role === "ADMIN"}
+                onSaved={() => qc.invalidateQueries({ queryKey: ["reportCards"] })}
+              />
+            )}
           </CardContent>
         </Card>
       )}

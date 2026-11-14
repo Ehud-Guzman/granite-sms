@@ -52,5 +52,5 @@ export const NAV_BY_ROLE = {
     { label: "Fees", to: "/app/fees", icon: "fees", group: "Money" },
   ],
 
-  PARENT: [home("Home"), notices, { label: "Timetable", to: "/app/timetable", icon: "timetable", group: "Learning" }],
+  PARENT: [home("Home"), notices],
 };

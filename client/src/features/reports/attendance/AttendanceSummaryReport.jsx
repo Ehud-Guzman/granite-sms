@@ -63,6 +63,7 @@ export default function AttendanceSummaryReport() {
         ready={days.length > 0}
         onExport={(format) => exportAttendanceClassSummary(effectiveClassId, params, format)}
         onPrint={() => printSection("print-attendance-summary")}
+        pdfFrom="print-attendance-summary"
       />
       <FilterBar>
         <Field label="Class">

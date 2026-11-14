@@ -48,6 +48,7 @@ import { tenantContext } from "./middleware/tenant.js";
 import { demoGuard } from "./middleware/demoGuard.js";
 import { ipLimiter, userLimiter, loginPerAccountLimiter, loginPerIpLimiter } from "./middleware/rateLimits.js";
 import timetableRoutes from "./modules/timetable/timetable.routes.js";
+import tablePdfRoutes from "./modules/print/tableReport.js";
 
 
 const app = express();
@@ -275,6 +276,7 @@ app.use("/api/mpesa", mpesaRoutes);
 app.use("/api/portal", portalRoutes);
 app.use("/api/notices", noticeRoutes);
 app.use("/api/timetable", timetableRoutes);
+app.use("/api/print", tablePdfRoutes);
 
 // Features
 app.use("/api/attendance", attendanceRoutes);

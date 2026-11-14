@@ -1,12 +1,13 @@
 // The frame every report shares: a heading with export and print on the
 // right, and one compact row of filters.
 import { useState } from "react";
-import { Download, Printer } from "lucide-react";
+import { Download, FileDown, Printer } from "lucide-react";
+import { downloadTablesPdf } from "@/lib/download";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 
-export function ReportHeader({ title, subtitle, ready, onExport, onPrint }) {
+export function ReportHeader({ title, subtitle, ready, onExport, onPrint, pdfFrom }) {
   const [busy, setBusy] = useState(false);
   const run = async (format) => {
     setBusy(true);
@@ -18,8 +19,19 @@ export function ReportHeader({ title, subtitle, ready, onExport, onPrint }) {
       setBusy(false);
     }
   };
+  const pdf = async () => {
+    setBusy(true);
+    try {
+      await downloadTablesPdf(pdfFrom, title, subtitle);
+    } catch {
+      toast.error("Couldn't make the PDF. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Pinned under the top bar, so download and print are always to hand.
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 no-print">
+    <div className="sticky top-12 z-20 -mx-4 flex flex-wrap items-end justify-between gap-3 border-b bg-background/95 px-4 py-2 backdrop-blur no-print md:-mx-6 md:px-6">
       <div className="min-w-0">
         <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
         {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
@@ -36,8 +48,14 @@ export function ReportHeader({ title, subtitle, ready, onExport, onPrint }) {
             </Button>
           </>
         )}
+        {pdfFrom && (
+          <Button size="sm" disabled={!ready || busy} onClick={pdf}>
+            <FileDown className="mr-1.5 h-4 w-4" />
+            PDF
+          </Button>
+        )}
         {onPrint && (
-          <Button size="sm" disabled={!ready} onClick={onPrint}>
+          <Button variant="outline" size="sm" disabled={!ready} onClick={onPrint}>
             <Printer className="mr-1.5 h-4 w-4" />
             Print
           </Button>

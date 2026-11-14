@@ -149,7 +149,7 @@ export default function BrandingPrintTab() {
   // fall back to the currently selected school (SelectSchoolPage) and
   // otherwise leave it blank so that prompt actually shows.
   const [schoolId, setSchoolId] = useState(
-    () => localStorage.getItem("settings.branding.schoolId") || getSelectedSchool()?.id || ""
+    () => getSelectedSchool()?.id || localStorage.getItem("settings.branding.schoolId") || ""
   );
 
   useEffect(() => {

@@ -88,6 +88,7 @@ export default function FeesCollectionsReport() {
         ready={Boolean(r)}
         onExport={(format) => exportFeesCollections(params, format)}
         onPrint={() => printSection("print-fees-collections")}
+        pdfFrom="print-fees-collections"
       />
       <FilterBar>
         <Field label="From">

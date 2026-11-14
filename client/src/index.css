@@ -502,3 +502,10 @@ body,
   font-size: 10.5px;
   color: #444;
 }
+
+/* The demo strip is pinned on laptop widths; the sidebar and top bar sit below it. */
+@media (min-width: 1024px) {
+  :root:has(.demo-banner) {
+    --banner-h: 1.75rem;
+  }
+}

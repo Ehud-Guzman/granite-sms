@@ -15,7 +15,7 @@ export default function DemoBanner() {
   return (
     <div
       role="note"
-      className="w-full bg-slate-900 px-3 py-1.5 text-center text-xs font-medium text-white"
+      className="demo-banner w-full bg-slate-900 px-3 py-1.5 text-center text-xs font-medium text-white lg:sticky lg:top-0 lg:z-50 lg:h-7 lg:overflow-hidden lg:py-0 lg:leading-7"
     >
       Live demo · sample data · read-only
       {signedIn && (

@@ -194,7 +194,8 @@ export default function AppShell() {
     <div className="min-h-screen bg-background">
       <div className="flex min-h-screen">
         {/* Desktop sidebar: pinned to the screen; only its link list scrolls. */}
-        <aside className="hidden lg:flex sticky top-0 h-screen w-64 shrink-0 flex-col border-r bg-card">
+        {/* Below the demo strip when there is one (--banner-h, index.css), so the account and logout at the bottom are always on screen. */}
+        <aside className="hidden lg:flex sticky top-[var(--banner-h,0px)] h-[calc(100dvh-var(--banner-h,0px))] w-64 shrink-0 flex-col border-r bg-card">
           <SchoolHeader logoSrc={logoSrc} schoolName={schoolName} role={role} />
           <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
             <GroupedNav items={navItems} />
@@ -204,7 +205,7 @@ export default function AppShell() {
 
         {/* Main */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+          <header className="sticky top-0 lg:top-[var(--banner-h,0px)] z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
             <div className="h-12 ui-pad flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="lg:hidden">

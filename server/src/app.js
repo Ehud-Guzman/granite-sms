@@ -11,7 +11,7 @@ import crypto from "crypto";
 
 import { prisma } from "./lib/prisma.js";
 import { getSchoolCalendar } from "./utils/schoolTime.js";
-import { moduleAccess } from "./config/plans.js";
+import { moduleAccess, isLapsed } from "./config/plans.js";
 
 import authRoutes from "./routes/auth.js";
 
@@ -299,6 +299,7 @@ app.get("/api/me", async (req, res) => {
     // Which modules the school's plan includes, so menus hide the rest.
     // A platform admin outside any school sees everything.
     let features = { exams: true, fees: true, attendance: true };
+    let plan = null;
     if (req.schoolId) {
       const sub = await prisma.subscription.findFirst({
         where: { schoolId: req.schoolId },
@@ -307,11 +308,14 @@ app.get("/api/me", async (req, res) => {
       });
       // No subscription row yet: the first request makes a FREE trial (loadSubscription).
       features = sub ? moduleAccess(sub) : { exams: true, fees: true, attendance: true };
+      // Lapsed: everything still opens, but nothing can be changed.
+      if (sub) plan = { status: sub.status, endsAt: sub.currentPeriodEnd, readOnly: isLapsed(sub) };
     }
 
     return res.json({
       calendar,
       features,
+      plan,
       user: {
         ...base,
         role: req.role,

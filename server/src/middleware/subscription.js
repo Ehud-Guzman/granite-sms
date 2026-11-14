@@ -1,6 +1,6 @@
 // src/middleware/subscription.js
 import { prisma } from "../lib/prisma.js";
-import { PLAN_DEFAULTS, normalizePlanCode as normalizePlan } from "../config/plans.js";
+import { PLAN_DEFAULTS, normalizePlanCode as normalizePlan, planIncludes } from "../config/plans.js";
 import { upper } from "../utils/validate.js";
 
 function isWriteEnabledStatus(status) {
@@ -206,6 +206,12 @@ export function requireEntitlement(entitlementKey, opts = {}) {
     if (isRead && !enforceRead) return next();
 
     const sub = req.subscription;
+
+    // A lapsed plan stays read-only: the school can still look at what its
+    // plan included, but every change below is refused.
+    if (isRead && sub && planIncludes(sub, entitlementKey) && (!isWriteEnabledStatus(sub.status) || isExpired(sub))) {
+      return next();
+    }
 
     if (!sub) {
       return res.status(402).json({

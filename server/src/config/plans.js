@@ -23,9 +23,9 @@ export function normalizePlanCode(planCode) {
 
 /**
  * Which modules a school's plan includes, for the app's menus. A module is on
- * when the subscription is usable (TRIAL or ACTIVE, not past its end) and it
- * grants that module's read or write entitlement; a trial shows everything,
- * matching the entitlement checks (a trial may read every module).
+ * when the plan grants its read or write entitlement; a trial includes
+ * everything. Once a plan lapses (expired, cancelled, past due) the same
+ * modules stay visible read-only: reads are allowed, changes are refused.
  * The API still enforces each request; this only decides what is shown.
  */
 export const MODULE_KEYS = {
@@ -34,13 +34,28 @@ export const MODULE_KEYS = {
   attendance: ["ATTENDANCE_READ", "ATTENDANCE_WRITE"],
 };
 
-export function moduleAccess(sub) {
-  const off = Object.fromEntries(Object.keys(MODULE_KEYS).map((m) => [m, false]));
-  if (!sub) return off;
+/** True when the subscription can't be used for changes: not TRIAL/ACTIVE, or past its end. */
+export function isLapsed(sub) {
+  if (!sub) return true;
   const status = String(sub.status || "").toUpperCase();
   const expired = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).getTime() < Date.now() : false;
-  if (expired || (status !== "ACTIVE" && status !== "TRIAL")) return off;
-  if (status === "TRIAL") return Object.fromEntries(Object.keys(MODULE_KEYS).map((m) => [m, true]));
+  return expired || (status !== "ACTIVE" && status !== "TRIAL");
+}
+
+/**
+ * Whether the plan includes the module behind an entitlement key, whatever
+ * its state: a trial includes everything; otherwise the module's READ or
+ * WRITE key. A lapsed plan keeps these modules read-only.
+ */
+export function planIncludes(sub, key) {
+  if (!sub) return false;
+  if (String(sub.status || "").toUpperCase() === "TRIAL") return true;
   const ent = sub.entitlements && typeof sub.entitlements === "object" ? sub.entitlements : {};
-  return Object.fromEntries(Object.entries(MODULE_KEYS).map(([m, keys]) => [m, keys.some((k) => !!ent[k])]));
+  const module = Object.values(MODULE_KEYS).find((keys) => keys.includes(key));
+  return (module || [key]).some((k) => !!ent[k]);
+}
+
+/** { exams, fees, attendance }: the modules the plan includes (read-only once lapsed). */
+export function moduleAccess(sub) {
+  return Object.fromEntries(Object.entries(MODULE_KEYS).map(([m, keys]) => [m, planIncludes(sub, keys[0])]));
 }

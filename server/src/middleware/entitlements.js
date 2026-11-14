@@ -1,5 +1,6 @@
 // src/middleware/entitlements.js
 import { prisma } from "../lib/prisma.js";
+import { planIncludes } from "../config/plans.js";
 
 // Tiny in-memory cache (best effort). Prevents DB spam on every request.
 // Safe because entitlements don’t change often.
@@ -120,8 +121,11 @@ export function requireEntitlement(key) {
       // must not keep working just because `entitlements` still has a stale
       // `true` from when the school was paying — status/expiry is the source
       // of truth here, same as middleware/subscription.js's requireEntitlement.
+      // It stays READ-ONLY: the school can still look at what its plan
+      // included (its own records), but changes are refused.
       const statusOk = sub.status === "ACTIVE" || sub.status === "TRIAL";
       if (!statusOk || expired) {
+        if (isRead && planIncludes(sub, key)) return next();
         return res.status(402).json({
           message: "Subscription not active or expired.",
           code: "SUBSCRIPTION_INACTIVE",

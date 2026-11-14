@@ -78,6 +78,18 @@ function getPageTitle(pathname, role) {
 // ✅ One canonical query key everywhere in the app
 const MODULE_NAME = { exams: "Exams and results", fees: "Fees", attendance: "Attendance" };
 
+/** A lapsed plan: everything still opens, but nothing can be changed. */
+function ReadOnlyBanner({ role, plan }) {
+  const ended = plan?.endsAt ? new Date(plan.endsAt) : null;
+  const when = ended && ended < new Date() ? ` on ${ended.toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}` : "";
+  return (
+    <div className="border-b border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 md:px-6" role="status">
+      <b>Read-only:</b> the school&apos;s plan ended{when}. You can still look at everything, but changes are switched off until it&apos;s renewed.{" "}
+      {role === "ADMIN" ? "Contact your provider to renew." : "Ask the school office."}
+    </div>
+  );
+}
+
 /** Shown instead of a page whose module isn't on the school's plan. */
 function NotOnPlan({ module, role }) {
   return (
@@ -209,6 +221,7 @@ export default function AppShell() {
           </header>
 
           <main className="flex-1 min-w-0">
+            {data?.plan?.readOnly && role !== "SYSTEM_ADMIN" && <ReadOnlyBanner role={role} plan={data.plan} />}
             {(() => {
               const m = moduleOfPath(location.pathname);
               return m && features[m] === false ? <NotOnPlan module={m} role={role} /> : <Outlet />;

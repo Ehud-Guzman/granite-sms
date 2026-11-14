@@ -163,8 +163,26 @@ export default router;
 export const publicRouter = Router();
 const ACCEPT = { ResultCode: 0, ResultDesc: "Accepted" };
 
+// A confirmation with the right token is posted as a payment, so in
+// production the token alone isn't enough: callbacks must also come from
+// Safaricom's addresses. Without MPESA_ALLOWED_IPS a production server
+// refuses every callback (fail closed) rather than trusting the token
+// (audit 2, A2-SEC-03). Development and tests may leave it empty.
+let warnedNoAllowlist = false;
+export function mpesaAllowlist() {
+  return String(process.env.MPESA_ALLOWED_IPS || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 async function configFor(req, res) {
-  const allowed = String(process.env.MPESA_ALLOWED_IPS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const allowed = mpesaAllowlist();
+  if (!allowed.length && process.env.NODE_ENV === "production") {
+    if (!warnedNoAllowlist) {
+      warnedNoAllowlist = true;
+      console.error("MPESA: callback refused. Set MPESA_ALLOWED_IPS to Safaricom's callback IPs (docs/MPESA.md).");
+    }
+    res.status(503).json({ ResultCode: 1, ResultDesc: "Rejected" });
+    return null;
+  }
   if (allowed.length && !allowed.includes(req.ip)) {
     res.status(403).json({ ResultCode: 1, ResultDesc: "Rejected" });
     return null;

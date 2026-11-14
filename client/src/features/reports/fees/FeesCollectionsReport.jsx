@@ -1,12 +1,16 @@
 // Collections: money received between two dates, day by day (or month by
-// month for long ranges), split by payment method, with every receipt.
+// month for long ranges), split by payment method, with the receipts a page
+// at a time. The server sums the whole range (byDay, byMethod, count); the
+// export downloads every receipt.
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { getFeesCollections, exportFeesCollections } from "@/api/feesReports.api";
 import { printSection } from "@/lib/print";
-import { useSchoolCalendar, dateIn } from "@/lib/schoolCalendar";
+import { useSchoolCalendar } from "@/lib/schoolCalendar";
 import { getErrorMessage as errMsg } from "@/lib/errors";
+import usePageFor from "@/hooks/usePageFor";
+import Pager from "@/components/ui/pager";
 import PrintDocument from "@/components/print/PrintDocument";
 import { HeroPanel, Panel, ColumnChart, SegmentBar } from "@/components/insights/Insights";
 import ReportPrintTitle from "../components/ReportPrintTitle";
@@ -17,6 +21,7 @@ import FinanceNav from "./FinanceNav";
 
 const METHOD_LABEL = { CASH: "Cash", MPESA: "M-Pesa", BANK: "Bank", CHEQUE: "Cheque", OTHER: "Other" };
 const METHOD_TONE = { MPESA: "good", CASH: "sky", BANK: "violet", CHEQUE: "muted", OTHER: "muted" };
+const PAGE_SIZE = 50;
 
 function daysBetween(from, to) {
   const out = [];
@@ -30,16 +35,24 @@ function daysBetween(from, to) {
 }
 
 export default function FeesCollectionsReport() {
-  const { today, timezone } = useSchoolCalendar();
+  const { today } = useSchoolCalendar();
   const [from, setFrom] = useState(`${today.slice(0, 7)}-01`);
   const [to, setTo] = useState(today);
 
   const params = useMemo(() => (from && to && from <= to ? { from, to } : null), [from, to]);
-  const q = useQuery({ queryKey: ["feesReports", "collections", params], queryFn: () => getFeesCollections(params), enabled: Boolean(params) });
+  const [page, goTo] = usePageFor(`${from}|${to}`);
+  const q = useQuery({
+    queryKey: ["feesReports", "collections", params, page],
+    queryFn: () => getFeesCollections({ ...params, page, pageSize: PAGE_SIZE }),
+    enabled: Boolean(params),
+    placeholderData: (prev) => prev,
+  });
   const r = q.data;
-  const payments = useMemo(() => r?.payments || [], [r]);
+  const payments = r?.payments || [];
+  const count = r?.count || 0;
 
-  // Day by day in the school's time zone; month by month past ~2 months.
+  // Day by day in the school's time zone (the server groups by local day);
+  // month by month past ~2 months.
   const series = useMemo(() => {
     if (!params) return [];
     const days = daysBetween(params.from, params.to);
@@ -47,9 +60,9 @@ export default function FeesCollectionsReport() {
     const key = (iso) => (monthly ? iso.slice(0, 7) : iso);
     const buckets = new Map();
     for (const d of days) if (!buckets.has(key(d))) buckets.set(key(d), 0);
-    for (const p of payments) {
-      const k = key(dateIn(p.receivedAt, timezone));
-      if (buckets.has(k)) buckets.set(k, buckets.get(k) + Number(p.amount || 0));
+    for (const d of r?.byDay || []) {
+      const k = key(d.date);
+      if (buckets.has(k)) buckets.set(k, buckets.get(k) + Number(d.amount || 0));
     }
     return [...buckets].map(([k, v]) => ({
       key: k,
@@ -59,7 +72,7 @@ export default function FeesCollectionsReport() {
       value: v,
       display: fmtKes(v),
     }));
-  }, [payments, params, timezone]);
+  }, [r, params]);
 
   const best = series.reduce((b, p) => (p.value > (b?.value || 0) ? p : b), null);
   const activeDays = series.filter((p) => p.value > 0).length;
@@ -104,16 +117,16 @@ export default function FeesCollectionsReport() {
       {r && (
         <PrintDocument screen id="print-fees-collections" bodyClassName="space-y-4">
           <ReportPrintTitle title="Collections" subtitle={span} />
-          {payments.length === 0 ? (
+          {count === 0 ? (
             <ReportState prompt="No payments were received in this period." />
           ) : (
             <>
               <HeroPanel
                 eyebrow={`Received · ${span}`}
                 value={fmtKes(r.totalCollected)}
-                caption={`${payments.length.toLocaleString()} receipt${payments.length === 1 ? "" : "s"}`}
+                caption={`${count.toLocaleString()} receipt${count === 1 ? "" : "s"}`}
                 minis={[
-                  { label: "Average receipt", value: fmtKes(r.totalCollected / payments.length) },
+                  { label: "Average receipt", value: fmtKes(r.totalCollected / count) },
                   { label: "Best day", value: best ? `${best.label} · ${fmtKes(best.value)}` : "—" },
                   { label: "Days with payments", value: `${activeDays} of ${series.length}` },
                 ]}
@@ -128,7 +141,7 @@ export default function FeesCollectionsReport() {
                   />
                 </Panel>
               </div>
-              <Panel title={`Receipts (${payments.length})`}>
+              <Panel title={`Receipts (${count.toLocaleString()})`}>
                 <div className="max-h-[520px] overflow-auto print:max-h-none">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-card print:static">
@@ -153,6 +166,20 @@ export default function FeesCollectionsReport() {
                     </tbody>
                   </table>
                 </div>
+                <Pager
+                  className="-mx-5 -mb-5 mt-3 rounded-b-2xl print:hidden"
+                  page={r.page || page}
+                  pageSize={r.pageSize || PAGE_SIZE}
+                  total={count}
+                  busy={q.isFetching}
+                  onGo={goTo}
+                  noun="receipts"
+                />
+                {count > payments.length && (
+                  <p className="hidden pt-2 text-xs text-muted-foreground print:block">
+                    {payments.length} of {count.toLocaleString()} receipts shown. Export to Excel or CSV for the full list.
+                  </p>
+                )}
               </Panel>
               <ReportPrintFooter />
             </>

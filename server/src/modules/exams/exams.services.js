@@ -862,26 +862,38 @@ function rankResults(results) {
  * Shape: { subjects: [{id,name}], results: [{ student, subjectScores, total, average, overallGrade, missingCount, position }] }
  */
 async function computeLiveResults(db, { schoolId, session }) {
-  const grader = await graderForClass(db, { schoolId, classId: session.classId });
-  const [sheets, classStudents, marks] = await Promise.all([
+  // All independent, so fetched together. Marks come back flat (audit 2,
+  // A2-PERF-03): nesting the sheet and the student under each of ~1,400
+  // marks cost Prisma four times as long as the query itself. Only active
+  // learners count; that is checked below rather than by joining Student in
+  // SQL, which led Postgres to a plan probing every learner × every sheet.
+  const studentSelect = { id: true, admissionNo: true, firstName: true, lastName: true };
+  const [grader, sheets, classStudents, marks] = await Promise.all([
+    graderForClass(db, { schoolId, classId: session.classId }),
     db.markSheet.findMany({
       where: { schoolId, examSessionId: session.id },
       select: { id: true, subjectId: true, subject: { select: { id: true, name: true } } },
     }),
     db.student.findMany({
       where: { schoolId, classId: session.classId, isActive: true },
-      select: { id: true, admissionNo: true, firstName: true, lastName: true },
+      select: studentSelect,
     }),
     db.mark.findMany({
-      where: { schoolId, markSheet: { examSessionId: session.id }, student: { isActive: true } },
-      select: {
-        studentId: true,
-        score: true,
-        markSheet: { select: { subjectId: true } },
-        student: { select: { id: true, admissionNo: true, firstName: true, lastName: true } },
-      },
+      where: { schoolId, markSheet: { schoolId, examSessionId: session.id } },
+      select: { studentId: true, score: true, markSheetId: true },
     }),
   ]);
+
+  // Learners with marks here who have since left the class: fetched by id
+  // (active ones only), and kept in the order their marks came back.
+  const inClass = new Set(classStudents.map((st) => st.id));
+  const otherIds = [...new Set(marks.map((m) => m.studentId).filter((id) => !inClass.has(id)))];
+  const others = otherIds.length
+    ? await db.student.findMany({ where: { schoolId, id: { in: otherIds }, isActive: true }, select: studentSelect })
+    : [];
+  const studentById = new Map([...classStudents, ...others].map((st) => [st.id, st]));
+  const activeMarks = marks.filter((m) => studentById.has(m.studentId));
+  const subjectOfSheet = new Map(sheets.map((ms) => [ms.id, ms.subjectId]));
 
   const subjects = [];
   const seenSubjects = new Set();
@@ -895,9 +907,9 @@ async function computeLiveResults(db, { schoolId, session }) {
 
   const students = new Map(classStudents.map((st) => [st.id, st]));
   const scoreOf = new Map(); // `${studentId}:${subjectId}` -> score
-  for (const m of marks) {
-    students.set(m.studentId, m.student);
-    scoreOf.set(`${m.studentId}:${m.markSheet.subjectId}`, m.score);
+  for (const m of activeMarks) {
+    if (!students.has(m.studentId)) students.set(m.studentId, studentById.get(m.studentId));
+    scoreOf.set(`${m.studentId}:${subjectOfSheet.get(m.markSheetId)}`, m.score);
   }
 
   const results = [...students.values()].map((student) => {

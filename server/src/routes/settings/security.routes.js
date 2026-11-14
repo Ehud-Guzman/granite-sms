@@ -3,6 +3,7 @@ import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { upper, isValidSchoolId } from "../../utils/roleScope.js";
+import { DEFAULT_TZ, getSchoolCalendar, localDateString, startOfLocalDay } from "../../utils/schoolTime.js";
 
 const router = Router();
 
@@ -51,9 +52,12 @@ router.get("/overview", requireAuth, async (req, res) => {
       }
     }
 
+    // "Today" is the school's local day (audit 2, A2-DATA-04), not the
+    // server's: a Render server runs on UTC, three hours behind Nairobi.
+    // The platform view (no school) uses the default zone.
     const now = new Date();
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
+    const timezone = whereScope.schoolId ? (await getSchoolCalendar(whereScope.schoolId)).timezone : DEFAULT_TZ;
+    const startOfDay = startOfLocalDay(localDateString(now, timezone), timezone);
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     const lastEvent = await prisma.auditLog.findFirst({

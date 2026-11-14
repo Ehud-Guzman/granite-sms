@@ -7,6 +7,8 @@ import { requireEntitlementRead } from "../../middleware/subscription.js";
 import { exportCSV, exportXLSX } from "../../utils/export.js";
 import { toInt, toNumber } from "../../utils/validate.js";
 import { feesAudit, parseSchoolDateRange } from "./shared.js";
+import { getSchoolCalendar } from "../../utils/schoolTime.js";
+import { localDaySql, utcSql } from "../../utils/sqlTime.js";
 
 const router = Router();
 
@@ -36,36 +38,42 @@ router.get(
         if (!classRow) return res.status(400).json({ message: "Invalid classId" });
       }
 
-      const invoices = await prisma.feeInvoice.findMany({
-        where: {
-          schoolId: req.schoolId,
-          ...(classRow ? { classId: classRow.id } : {}),
-          year: y,
-          term: String(term),
-          status: { not: "VOID" },
-        },
-        select: { classId: true, total: true, paid: true, balance: true, status: true },
-      });
+      // Summed in Postgres by class and status (audit 2, A2-PERF-03: this used
+      // to load every invoice of the term and add them up here).
+      const invoiceWhere = {
+        schoolId: req.schoolId,
+        ...(classRow ? { classId: classRow.id } : {}),
+        year: y,
+        term: String(term),
+        status: { not: "VOID" },
+      };
+      const [groups, schoolClasses] = await Promise.all([
+        prisma.feeInvoice.groupBy({
+          by: ["classId", "status"],
+          where: invoiceWhere,
+          _sum: { total: true, paid: true, balance: true },
+          _count: { _all: true },
+        }),
+        prisma.class.findMany({
+          where: { schoolId: req.schoolId, ...(classRow ? { id: classRow.id } : {}) },
+          select: { id: true, name: true, stream: true, year: true },
+        }),
+      ]);
 
       const empty = () => ({ totalBilled: 0, totalPaid: 0, totalBalance: 0, invoiceCount: 0, statusCounts: {} });
-      const add = (acc, inv) => {
-        acc.totalBilled += Number(inv.total || 0);
-        acc.totalPaid += Number(inv.paid || 0);
-        acc.totalBalance += Number(inv.balance || 0);
-        acc.invoiceCount += 1;
-        acc.statusCounts[inv.status] = (acc.statusCounts[inv.status] || 0) + 1;
+      const add = (acc, g) => {
+        acc.totalBilled += Number(g._sum.total || 0);
+        acc.totalPaid += Number(g._sum.paid || 0);
+        acc.totalBalance += Number(g._sum.balance || 0);
+        acc.invoiceCount += g._count._all;
+        acc.statusCounts[g.status] = (acc.statusCounts[g.status] || 0) + g._count._all;
         return acc;
       };
-      const summary = invoices.reduce(add, empty());
+      const summary = groups.reduce(add, empty());
 
       const perClass = new Map();
-      for (const inv of invoices) perClass.set(inv.classId, add(perClass.get(inv.classId) || empty(), inv));
-      const classRows = perClass.size
-        ? await prisma.class.findMany({
-            where: { schoolId: req.schoolId, id: { in: [...perClass.keys()] } },
-            select: { id: true, name: true, stream: true, year: true },
-          })
-        : [];
+      for (const g of groups) perClass.set(g.classId, add(perClass.get(g.classId) || empty(), g));
+      const classRows = schoolClasses.filter((c) => perClass.has(c.id));
       const byClass = classRows
         .map((c) => {
           const x = perClass.get(c.id);
@@ -313,6 +321,14 @@ router.get(
 );
 
 
+/**
+ * GET /api/fees/reports/collections?from=YYYY-MM-DD&to=YYYY-MM-DD&page=1&pageSize=50
+ * Money received between two local days. The JSON gives the totals, the
+ * split by method and the amount per day for the whole range, all summed in
+ * Postgres, plus one page of receipts, newest first (audit 2, A2-PERF-03:
+ * this used to send every receipt in the range, about 1 MB a month at a
+ * large school). `export=csv|xlsx` still downloads every receipt.
+ */
 router.get(
   "/reports/collections",
   requireRole("ADMIN", "BURSAR"),
@@ -321,43 +337,30 @@ router.get(
     try {
       const { from, to, export: exportType } = req.query;
       const { fromDate, toDate } = await parseSchoolDateRange(req.schoolId, from, to);
+      const where = {
+        schoolId: req.schoolId,
+        receivedAt: { gte: fromDate, lte: toDate },
+        isReversed: false,
+      };
+      const newestFirst = [{ receivedAt: "desc" }, { id: "desc" }];
+      const isExport = exportType === "csv" || exportType === "xlsx";
+      const audit = (rows) =>
+        feesAudit(req, {
+          action: "REPORTS_FEES_COLLECTIONS_VIEWED",
+          targetType: "FEES_REPORT",
+          targetId: `${from}:${to}`,
+          metadata: { from, to, export: isExport ? exportType : null, rows },
+        });
 
-      const payments = await prisma.feePayment.findMany({
-        where: {
-          schoolId: req.schoolId,
-          receivedAt: { gte: fromDate, lte: toDate },
-          isReversed: false,
-        },
-        orderBy: { receivedAt: "desc" },
-      });
-
-      const rows = payments.map((p) => ({
-        receiptNo: p.receiptNo,
-        amount: p.amount,
-        method: p.method,
-        reference: p.reference,
-        receivedAt: p.receivedAt,
-      }));
-
-      await feesAudit(req, {
-  action: "REPORTS_FEES_COLLECTIONS_VIEWED",
-  targetType: "FEES_REPORT",
-  targetId: `${from}:${to}`,
-  metadata: {
-    from,
-    to,
-    export: exportType === "csv" || exportType === "xlsx" ? exportType : null,
-    rows: rows.length,
-  },
-});
-
-
-      // 🔹 EXPORT MODE
-      if (exportType === "csv") {
-        return exportCSV(res, "fees-collections", rows);
-      }
-
-      if (exportType === "xlsx") {
+      // 🔹 EXPORT MODE: every receipt in the range
+      if (isExport) {
+        const rows = await prisma.feePayment.findMany({
+          where,
+          orderBy: newestFirst,
+          select: { receiptNo: true, amount: true, method: true, reference: true, receivedAt: true },
+        });
+        await audit(rows.length);
+        if (exportType === "csv") return exportCSV(res, "fees-collections", rows);
         return exportXLSX(
           res,
           "fees-collections",
@@ -373,17 +376,49 @@ router.get(
         );
       }
 
-      // 🔹 NORMAL JSON RESPONSE
-      const totals = payments.reduce(
-        (acc, p) => {
-          acc.totalCollected += Number(p.amount || 0);
-          acc.byMethod[p.method] = (acc.byMethod[p.method] || 0) + p.amount;
-          return acc;
-        },
-        { totalCollected: 0, byMethod: {} }
-      );
+      // 🔹 NORMAL JSON RESPONSE: figures for the whole range, one page of receipts
+      const page = Math.max(toInt(req.query.page, 1) || 1, 1);
+      const pageSize = Math.min(Math.max(toInt(req.query.pageSize, 50) || 50, 1), 200);
+      const { timezone } = await getSchoolCalendar(req.schoolId);
 
-      return res.json({ from, to, ...totals, payments });
+      const [overall, methods, days, payments] = await Promise.all([
+        prisma.feePayment.aggregate({ where, _sum: { amount: true }, _count: { _all: true } }),
+        prisma.feePayment.groupBy({ by: ["method"], where, _sum: { amount: true } }),
+        prisma.$queryRaw`
+          SELECT ${localDaySql('"receivedAt"', timezone)} AS "date",
+                 SUM("amount")::bigint AS "amount",
+                 COUNT(*)::int AS "receipts"
+          FROM "FeePayment"
+          WHERE "schoolId" = ${req.schoolId}
+            AND "isReversed" = false
+            AND "receivedAt" >= ${utcSql(fromDate)}
+            AND "receivedAt" <= ${utcSql(toDate)}
+          GROUP BY 1
+          ORDER BY 1`,
+        prisma.feePayment.findMany({
+          where,
+          orderBy: newestFirst,
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          select: { id: true, receiptNo: true, amount: true, method: true, reference: true, receivedAt: true },
+        }),
+      ]);
+
+      const count = overall._count._all;
+      await audit(count);
+
+      return res.json({
+        from,
+        to,
+        totalCollected: Number(overall._sum.amount || 0),
+        byMethod: Object.fromEntries(methods.map((m) => [m.method, Number(m._sum.amount || 0)])),
+        // Days with money in, in the school's time zone ("YYYY-MM-DD").
+        byDay: days.map((d) => ({ date: d.date, amount: Number(d.amount), receipts: d.receipts })),
+        count,
+        page,
+        pageSize,
+        payments,
+      });
     } catch (err) {
       if (err?.status) return res.status(err.status).json({ message: err.message });
       console.error("COLLECTIONS EXPORT ERROR:", err);

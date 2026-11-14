@@ -35,6 +35,8 @@ export async function getClassPerformanceReport(req) {
       status: true,
       classId: true,
       examType: { select: { id: true, name: true, code: true, weight: true } },
+      // Fetched with the session rather than after it (one wait fewer).
+      class: { select: { id: true, name: true, stream: true, year: true, schoolId: true } },
     },
   });
 
@@ -46,10 +48,8 @@ export async function getClassPerformanceReport(req) {
     );
   }
 
-  const klass = await prisma.class.findFirst({
-    where: { id: session.classId, schoolId },
-    select: { id: true, name: true, stream: true, year: true },
-  });
+  const { schoolId: classSchoolId, ...classRow } = session.class || {};
+  const klass = session.class && classSchoolId === schoolId ? classRow : null;
 
   // Reuse the same engine the class-results screen uses (spoof req.params.id
   // the way this call site already relied on before — same technique, now

@@ -9,7 +9,8 @@ import helmet from "helmet";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 
-import { prisma } from "./lib/prisma.js";
+import { prisma, QUERY_STATS, openRequestStats } from "./lib/prisma.js";
+import { invalidateSchoolSummary } from "./modules/dashboard/summaryCache.js";
 import { getSchoolCalendar } from "./utils/schoolTime.js";
 import { moduleAccess, isLapsed } from "./config/plans.js";
 import { redactPath } from "./utils/logRedact.js";
@@ -61,6 +62,27 @@ app.use((req, res, next) => {
   res.setHeader("X-Request-Id", req.id);
   next();
 });
+
+// ---- Query counter (dev only, QUERY_STATS=1; see lib/prisma.js) ----
+if (QUERY_STATS) {
+  app.use((req, res, next) => {
+    const stats = { count: 0, dbMs: 0, approx: false, start: process.hrtime.bigint() };
+    openRequestStats.add(stats);
+    const done = () => openRequestStats.delete(stats);
+    res.on("finish", done);
+    res.on("close", done);
+    const writeHead = res.writeHead;
+    res.writeHead = function (...args) {
+      const ms = Number(process.hrtime.bigint() - stats.start) / 1e6;
+      if (!res.headersSent) {
+        res.setHeader("X-Query-Count", `${stats.approx ? "~" : ""}${stats.count}`);
+        res.setHeader("Server-Timing", `app;dur=${ms.toFixed(1)}, db;dur=${stats.dbMs}`);
+      }
+      return writeHead.apply(this, args);
+    };
+    next();
+  });
+}
 
 /** Project root: two levels up from server/src */
 const __filename = fileURLToPath(import.meta.url);
@@ -225,6 +247,18 @@ app.use("/api/users", usersRoutes);
 // requireAuth + tenantContext
 // ===============================
 app.use("/api", requireAuth, tenantContext, userLimiter);
+
+// A successful write in a school drops that school's cached dashboard
+// summary (modules/dashboard/summaryCache.js), so payments, reversals,
+// registers and the rest show on the next load.
+app.use("/api", (req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+    res.on("finish", () => {
+      if (res.statusCode < 400 && req.schoolId) invalidateSchoolSummary(req.schoolId);
+    });
+  }
+  next();
+});
 
 // Core
 app.use("/api/students/import", studentImportRoutes);

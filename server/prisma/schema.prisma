@@ -787,6 +787,9 @@ model FeeInvoice {
   @@index([schoolId, studentId])
   // Paged invoice list: newest first within a school / year / term.
   @@index([schoolId, year, term, createdAt])
+  // Dashboard "outstanding" (balance > 0, any year): reads only what a
+  // school is owed instead of every invoice in the table (audit 2).
+  @@index([schoolId, balance])
 }
 
 model FeeInvoiceLine {

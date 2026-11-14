@@ -1,6 +1,6 @@
 # To do: speed fix (Audit 2, A2-PERF-01 and A2-PERF-03)
 
-**Status:** not started · **Effort:** 2–3 days · **When:** before a school with more than about 800 learners. Not needed for the demo (212 learners are fast).
+**Status:** done 14 Nov 2026; results in `AUDIT_REPORT_2.md` section 2a · **Effort:** 2–3 days · **When:** before a school with more than about 800 learners. Not needed for the demo (212 learners are fast).
 
 Start a session with: *"Do the speed fix in docs/audit-2/TODO_SPEED_FIX.md."*
 

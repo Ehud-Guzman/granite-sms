@@ -10,6 +10,7 @@ import { lockStudent, allocatePayment, nextDocumentNo } from "../fees/ledger.js"
 import { getSchoolCalendar, localDateString } from "../../utils/schoolTime.js";
 import { notifyPayment } from "../sms/notify.js";
 import { logAudit } from "../../utils/audit.js";
+import { invalidateSchoolSummary } from "../dashboard/summaryCache.js";
 
 const norm = (v) => String(v || "").toUpperCase().replace(/[\s\-_/.]/g, "");
 
@@ -110,7 +111,12 @@ export async function recordMpesaPayment({ schoolId, transId, amount, billRef, m
     targetId: String(transId),
     metadata: { amount: amt, billRef, source },
   });
-  if (result.paymentId) notifyPayment({ schoolId, paymentId: result.paymentId });
+  if (result.paymentId) {
+    // Safaricom's callback has no signed-in user, so app.js's write hook
+    // doesn't see it: clear the dashboard here.
+    invalidateSchoolSummary(schoolId);
+    notifyPayment({ schoolId, paymentId: result.paymentId });
+  }
   return { ...result, duplicate: false };
 }
 

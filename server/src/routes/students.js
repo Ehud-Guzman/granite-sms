@@ -280,11 +280,20 @@ router.get("/", requireRole("ADMIN", "TEACHER", "BURSAR"), async (req, res) => {
       return res.json({ items, total, page, pageSize });
     }
 
+    // Without ?page this is the old array form, used per class by the screens.
+    // It's capped so an unfiltered call can't pull a whole large school
+    // (audit 2, A2-PERF-02); X-Truncated tells the caller to use ?page.
+    const UNPAGED_MAX = 1000;
     const students = await prisma.student.findMany({
       where,
       orderBy: { createdAt: "desc" },
       select,
+      take: UNPAGED_MAX + 1,
     });
+    if (students.length > UNPAGED_MAX) {
+      students.length = UNPAGED_MAX;
+      res.setHeader("X-Truncated", "true");
+    }
 
     return res.json(students);
   } catch (err) {

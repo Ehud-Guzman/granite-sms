@@ -115,6 +115,35 @@ export async function queueSms(db, { schoolId, createdById = null, messages }) {
   return rows.length;
 }
 
+/**
+ * Sends one message that holds a secret (a temporary password) right away,
+ * and keeps only `stored` (the text with the secret masked) in the outbox.
+ * The real text is never saved, so staff reading the SMS log can't see it
+ * (audit 2, A2-SEC-04). It's never retried: on failure, issue a new password.
+ */
+export async function sendSecretSms(db, { schoolId, createdById = null, to, guardianId = null, kind, body, stored }) {
+  const p = provider();
+  let r = { ok: false, error: "No SMS provider configured" };
+  if (p) {
+    try {
+      r = await p.send(to, body);
+    } catch (err) {
+      r = { ok: false, error: String(err?.message || err).slice(0, 200) };
+    }
+  }
+  await db.smsMessage.create({
+    data: {
+      schoolId, to, kind, guardianId, createdById,
+      body: String(stored).slice(0, 459),
+      attempts: 3, // never picked up again by flushOutbox
+      ...(r.ok
+        ? { status: "SENT", sentAt: new Date(), providerId: r.providerId || null }
+        : { status: p ? "FAILED" : "SKIPPED", error: `${String(r.error || "Failed").slice(0, 150)}. Not retried: it held a password.` }),
+    },
+  });
+  return r.ok;
+}
+
 let flushing = null;
 /**
  * Sends queued messages (oldest first, a batch at a time). Without a
@@ -132,6 +161,15 @@ export async function flushOutbox({ limit = 200 } = {}) {
         take: limit,
       });
       for (const m of batch) {
+        // Claim the row before sending: only the instance whose update still
+        // finds it unchanged sends it. Without this, two servers flushing at
+        // once both sent every message (audit 2, A2-OPS-01). The attempt is
+        // counted here, so a crash mid-send is retried at most 3 times.
+        const claimed = await prisma.smsMessage.updateMany({
+          where: { id: m.id, status: m.status, attempts: m.attempts },
+          data: { attempts: { increment: 1 } },
+        });
+        if (claimed.count !== 1) continue;
         if (!p) {
           await prisma.smsMessage.update({ where: { id: m.id }, data: { status: "SKIPPED", error: "No SMS provider configured" } });
           continue;
@@ -145,8 +183,8 @@ export async function flushOutbox({ limit = 200 } = {}) {
         await prisma.smsMessage.update({
           where: { id: m.id },
           data: r.ok
-            ? { status: "SENT", sentAt: new Date(), providerId: r.providerId || null, attempts: { increment: 1 }, error: null }
-            : { status: "FAILED", error: String(r.error || "Failed").slice(0, 200), attempts: { increment: 1 } },
+            ? { status: "SENT", sentAt: new Date(), providerId: r.providerId || null, error: null }
+            : { status: "FAILED", error: String(r.error || "Failed").slice(0, 200) },
         });
       }
       return batch.length;

@@ -11,19 +11,30 @@ Details: [BASELINE.md](BASELINE.md) (Phase 0), [PHASE1.md](PHASE1.md) (regressio
 - **What's open:** 6 Medium security and ops findings, 3 Medium speed findings at large-school size, 2 Medium UX/accessibility findings, and a set of Lows.
 - **Tests:** 187 server tests pass (183 before Audit 2, plus 4 new M-Pesa tests). 8 more, gated behind `AUDIT2_SWEEP=1`, state the safe behaviour for open findings and fail until each is fixed.
 
-## 2. All open findings, in fix order
+## 2. Findings, in fix order
+
+**Update, 14 Nov:** seven of the Mediums are now fixed on `main`, guarded by `server/tests/security.fixes.test.js`:
+
+- SMS: parent passwords are masked in the log, and rows are claimed before sending.
+- M-Pesa prompts: they only go to a guardian on the learner's record, at most 3 per number every 10 minutes.
+- Impersonation: platform owners can't be targeted, and the token lasts 1 hour.
+- Client: `client/public/_headers` adds a CSP and other security headers.
+- Brand colours: text colour is now chosen by contrast.
+- Student list: the unpaged list is capped at 1,000 rows (with an `X-Truncated` header).
+
+Still open: dashboard and report speed, and error tracking (needs a Sentry DSN).
 
 | # | ID | Sev | Finding | Effort |
 |---|---|---|---|---|
-| 1 | A2-SEC-04 | Med | Parent temporary passwords sit in the SMS log, which bursars can read, so a bursar can take over a parent account | S |
-| 2 | A2-OPS-01 | Med | SMS goes out twice when 2+ server instances run (rows aren't claimed). Run a single instance until fixed. | S |
-| 3 | A2-SEC-07 | Med | M-Pesa PIN prompts go to any phone, with no per-phone or per-requester limit | S |
-| 4 | A2-SEC-05/06 | Med | Impersonation can target another platform owner, and its token lasts 12 hours | S |
-| 5 | A2-SEC-08 | Med | No CSP or security headers on the client, and the token is in `localStorage` | S |
-| 6 | A2-UX-02 | Med | School brand colours are applied with no contrast check, so a light colour gives unreadable button text (WCAG AA) | S |
+| 1 | A2-SEC-04 | **Fixed** | Parent temporary passwords sit in the SMS log, which bursars can read, so a bursar can take over a parent account | S |
+| 2 | A2-OPS-01 | **Fixed** | SMS goes out twice when 2+ server instances run (rows aren't claimed). Run a single instance until fixed. | S |
+| 3 | A2-SEC-07 | **Fixed** | M-Pesa PIN prompts go to any phone, with no per-phone or per-requester limit | S |
+| 4 | A2-SEC-05/06 | **Fixed** | Impersonation can target another platform owner, and its token lasts 12 hours | S |
+| 5 | A2-SEC-08 | **Fixed** | No CSP or security headers on the client, and the token is in `localStorage` | S |
+| 6 | A2-UX-02 | **Fixed** | School brand colours are applied with no contrast check, so a light colour gives unreadable button text (WCAG AA) | S |
 | 7 | A2-PERF-01 | Med | Admin dashboard p95 705 ms at 1,484 learners (budget 500) | M |
 | 8 | A2-PERF-03 | Med | Class performance report 568 ms; fee class summary 419 ms; collections report returns 977 KB | M |
-| 9 | A2-PERF-02 | Med | Unpaged `GET /api/students` returns every learner (676 KB at 1,484) | S |
+| 9 | A2-PERF-02 | **Fixed** | Unpaged `GET /api/students` returns every learner (676 KB at 1,484) | S |
 | 10 | A2-OPS-02 | Med | No error tracking or alerting (109 `console.*` calls, no Sentry). A production fault would go unseen. | S |
 | 11 | A2-SEC-03 rest | Low | Not yet done: checking payments with Daraja's Transaction Status API, and a way to issue a new callback token | M |
 | 12 | Lows | Low | A2-SEC-01, 02, 09–17; A2-DATA-01–04; A2-CODE-01–05; A2-UX-01, 03–05 (see the PHASE files and section 3) | S each |

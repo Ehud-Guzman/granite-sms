@@ -1,0 +1,11 @@
+# Security headers for the client (Cloudflare static assets; audit 2, A2-SEC-08).
+# Scripts only from this origin: an injected <script> or inline handler won't run,
+# which matters because the session token is kept in localStorage.
+# connect-src allows https: because the API's address differs per deployment;
+# narrow it to the real API origin once production is fixed.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()

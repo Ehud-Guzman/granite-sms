@@ -17,7 +17,7 @@ import { normalizePhone } from "../utils/phone.js";
 import { teacherClassIds } from "../utils/teacherScope.js";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { queueSms, smsSettings, flushSoon } from "../modules/sms/sms.js";
+import { smsSettings, sendSecretSms } from "../modules/sms/sms.js";
 
 const router = Router();
 router.use(requireTenant);
@@ -307,13 +307,16 @@ router.post("/:id/login", requireRole("ADMIN"), async (req, res) => {
   let smsQueued = false;
   if (req.body?.sendSms && (await smsSettings(prisma, req.schoolId))) {
     const school = await prisma.school.findUnique({ where: { id: req.schoolId }, select: { name: true, shortName: true } });
-    await queueSms(prisma, {
+    const text = (pw) => `${school?.shortName || school?.name}: your parent login is ${loginId}, temporary password ${pw}. You will be asked to change it.`;
+    smsQueued = await sendSecretSms(prisma, {
       schoolId: req.schoolId,
       createdById: req.user.id,
-      messages: [{ to: g.phone, guardianId: g.id, kind: "PARENT_LOGIN", body: `${school?.shortName || school?.name}: your parent login is ${loginId}, temporary password ${temp}. You will be asked to change it.` }],
+      to: g.phone,
+      guardianId: g.id,
+      kind: "PARENT_LOGIN",
+      body: text(temp),
+      stored: text("••••••"),
     });
-    flushSoon();
-    smsQueued = true;
   }
 
   await logAudit({ req, ...actorCtx(req), schoolId: req.schoolId, action: "PARENT_LOGIN_CREATED", targetType: "USER", targetId: user.id, metadata: { guardianId: g.id, smsQueued } });
